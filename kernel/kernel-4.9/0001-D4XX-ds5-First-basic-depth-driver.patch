@@ -1,0 +1,2122 @@
+From 6cafcaaabd0b7b4f337b3de1a738d6a8dd34f42e Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Wed, 18 Sep 2019 14:53:30 +0300
+Subject: [PATCH] D4XX: ds5 First basic depth driver
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ arch/arm64/configs/tegra_defconfig         |    1 +
+ drivers/media/i2c/Kconfig                  |    2 +
+ drivers/media/i2c/Makefile                 |    2 +
+ drivers/media/i2c/d4xx/Kconfig             |   38 +
+ drivers/media/i2c/d4xx/Makefile            |    2 +
+ drivers/media/i2c/d4xx/d4xx_dfu.c          |  408 ++++++++++
+ drivers/media/i2c/d4xx/d4xx_dfu.h          |   76 ++
+ drivers/media/i2c/d4xx/rs_d4xx.c           | 1190 ++++++++++++++++++++++++++++
+ drivers/media/i2c/d4xx/rs_d4xx.h           |   80 ++
+ drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h |  166 ++++
+ drivers/media/v4l2-core/v4l2-ioctl.c       |    2 +
+ include/uapi/linux/videodev2.h             |    5 +
+ 12 files changed, 1972 insertions(+)
+ create mode 100644 drivers/media/i2c/d4xx/Kconfig
+ create mode 100644 drivers/media/i2c/d4xx/Makefile
+ create mode 100644 drivers/media/i2c/d4xx/d4xx_dfu.c
+ create mode 100644 drivers/media/i2c/d4xx/d4xx_dfu.h
+ create mode 100644 drivers/media/i2c/d4xx/rs_d4xx.c
+ create mode 100644 drivers/media/i2c/d4xx/rs_d4xx.h
+ create mode 100644 drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h
+
+diff --git a/arch/arm64/configs/tegra_defconfig b/arch/arm64/configs/tegra_defconfig
+index 2a68133..4fdce5b 100644
+--- a/arch/arm64/configs/tegra_defconfig
++++ b/arch/arm64/configs/tegra_defconfig
+@@ -756,6 +756,7 @@ CONFIG_VIDEO_OV5693=y
+ CONFIG_VIDEO_OV9281=y
+ CONFIG_VIDEO_OV10823=y
+ CONFIG_VIDEO_OV23850=y
++CONFIG_VIDEO_RSD4XX=m
+ CONFIG_I2C_IOEXPANDER_PCA9570=y
+ CONFIG_VIDEO_TC358840=y
+ CONFIG_I2C_IOEXPANDER_SER_MAX9295=y
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 5a27bff..734bfa0 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -678,6 +678,8 @@ config VIDEO_S5C73M3
+ 
+ comment "Flash devices"
+ 
++source "drivers/media/i2c/d4xx/Kconfig"
++
+ config VIDEO_ADP1653
+ 	tristate "ADP1653 flash support"
+ 	depends on I2C && VIDEO_V4L2 && MEDIA_CONTROLLER
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index 92773b2..e937ad1 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -72,6 +72,7 @@ obj-$(CONFIG_VIDEO_S5K6A3)	+= s5k6a3.o
+ obj-$(CONFIG_VIDEO_S5K4ECGX)	+= s5k4ecgx.o
+ obj-$(CONFIG_VIDEO_S5K5BAF)	+= s5k5baf.o
+ obj-$(CONFIG_VIDEO_S5C73M3)	+= s5c73m3/
++obj-$(CONFIG_VIDEO_RSD4XX)	+= d4xx/
+ obj-$(CONFIG_VIDEO_ADP1653)	+= adp1653.o
+ obj-$(CONFIG_VIDEO_AS3645A)	+= as3645a.o
+ obj-$(CONFIG_VIDEO_LM3560)	+= lm3560.o
+@@ -82,3 +83,4 @@ obj-$(CONFIG_VIDEO_IR_I2C)  += ir-kbd-i2c.o
+ obj-$(CONFIG_VIDEO_ML86V7667)	+= ml86v7667.o
+ obj-$(CONFIG_VIDEO_OV2659)	+= ov2659.o
+ obj-$(CONFIG_VIDEO_TC358743)	+= tc358743.o
++obj-$(CONFIG_I2C_IOEXPANDER_PCA9570) += pca9570.o
+diff --git a/drivers/media/i2c/d4xx/Kconfig b/drivers/media/i2c/d4xx/Kconfig
+new file mode 100644
+index 0000000..4e3cb00
+--- /dev/null
++++ b/drivers/media/i2c/d4xx/Kconfig
+@@ -0,0 +1,38 @@
++#
++# RealSense Video device configuration
++#
++
++if VIDEO_V4L2
++
++config VIDEO_IR_I2C
++	tristate "I2C module for IR" if !MEDIA_SUBDRV_AUTOSELECT
++	depends on I2C && RC_CORE
++	default y
++	---help---
++	  Most boards have an IR chip directly connected via GPIO. However,
++	  some video boards have the IR connected via I2C bus.
++
++	  If your board doesn't have an I2C IR chip, you may disable this
++	  option.
++
++	  In doubt, say Y.
++
++#
++# Encoder / Decoder module configuration
++#
++
++menu "VIDEO_RSD4XX"
++	visible if (!MEDIA_SUBDRV_AUTOSELECT || COMPILE_TEST)
++
++comment "Real Sense MIPI video device family"
++
++config VIDEO_RSD4XX
++	tristate "Intel RealSense D4XX camera support"
++	depends on I2C && VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API && TEGRA_CAMERA_PLATFORM
++	---help---
++	  This is a V4L2 sensor-level driver for Intel RealSense D4XX
++	  3D camera with an embedded ASIC image signal processor.
++
++endmenu
++
++endif
+diff --git a/drivers/media/i2c/d4xx/Makefile b/drivers/media/i2c/d4xx/Makefile
+new file mode 100644
+index 0000000..fea3c6b
+--- /dev/null
++++ b/drivers/media/i2c/d4xx/Makefile
+@@ -0,0 +1,2 @@
++obj-$(CONFIG_VIDEO_RSD4XX)	+= rs_d4xx.o
++obj-$(CONFIG_VIDEO_RSD4XX)	+= d4xx_dfu.o
+diff --git a/drivers/media/i2c/d4xx/d4xx_dfu.c b/drivers/media/i2c/d4xx/d4xx_dfu.c
+new file mode 100644
+index 0000000..45e00bc
+--- /dev/null
++++ b/drivers/media/i2c/d4xx/d4xx_dfu.c
+@@ -0,0 +1,408 @@
++/*
++ * rs_d4xx.c - Intel(R) RealSense(TM) D4XX camera driver
++ *
++ * Copyright (c) 2017-2019, INTEL CORPORATION.  All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++//#include <linux/delay.h>
++//#include <linux/gpio.h>
++//#include <linux/i2c.h>
++//#include <linux/kernel.h>
++//#include <linux/media.h>
++#include <linux/module.h>
++#include <d4xx_dfu.h>
++#include <rs_d4xx.h>
++//#include <linux/of.h>
++//#include <linux/of_device.h>
++//#include <linux/of_gpio.h>
++//#include <linux/regmap.h>
++//#include <linux/regulator/consumer.h>
++//#include <linux/slab.h>
++//#include <linux/string.h>
++//#include <linux/videodev2.h>
++//#include <linux/media.h>
++
++#define DFU_WAIT_RET_LEN 	6
++#define dfu_read_with_check(tc_dev, addr, val) {\
++	if (dfu_read(tc_dev, addr, val))	\
++		return -EINVAL;}
++#define dfu_raw_read_with_check(tc_dev, addr, buf, size)	{\
++	if (dfu_raw_read(tc_dev, addr, buf, size))	\
++		return -EINVAL;}
++#define dfu_write_with_check(tc_dev, addr, val) {\
++	if (dfu_write(tc_dev, addr, val)) 	\
++		return -EINVAL;}
++#define dfu_raw_write_with_check(tc_dev, addr, buf, size) {\
++	if (dfu_raw_write(tc_dev, addr, buf, size)) 	\
++		return -EINVAL;}
++
++static const struct hwm_cmd cmd_switch_to_dfu = {
++	.header = 0x14,
++	.magic_word = 0xCDAB,
++	.opcode = 0x1e,
++	.param1 = 0x01,
++};
++
++enum table_id {
++	COEF_CALIBRATION_ID = 0x19,
++	DEPTH_CALIBRATION_ID = 0x1f,
++	RGB_CALIBRATION_ID = 0x20,
++	IMU_CALIBRATION_ID = 0x22
++} table_id_t;
++
++static const struct hwm_cmd get_calib_data = {
++	.header = 0x14,
++	.magic_word = 0xCDAB,
++	.opcode = 0x15,
++	.param1 = 0x00,	//table_id
++};
++
++static const struct hwm_cmd set_calib_data = {
++	.header = 0x0114,
++	.magic_word = 0xCDAB,
++	.opcode = 0x16,
++	.param1 = 0x00,	//table_id
++};
++
++static inline int dfu_write(struct d4xx_dfu_dev *dfu_dev, u16 reg, u16 val)
++{
++	struct camera_common_data *s_data = dfu_dev->tc_dev->s_data;
++	int ret = regmap_write(s_data->regmap, reg, val);
++
++	if (ret < 0)
++		dev_err(s_data->dev, "%s(): i2c write failed %d, 0x%04x = 0x%x\n",
++			__func__, ret, reg, val);
++	else
++		if (dfu_dev->dfu_state_flag == D4XX_DFU_IDLE)
++			dev_info(s_data->dev, "%s(): i2c write 0x%04x: 0x%x\n",
++				 __func__, reg, val);
++
++	return ret;
++}
++
++static int dfu_raw_write(struct d4xx_dfu_dev *dfu_dev, u16 reg, 
++	const void *val, size_t val_len)
++{
++	struct camera_common_data *s_data = dfu_dev->tc_dev->s_data;
++	int ret = regmap_raw_write(s_data->regmap, reg, val, val_len);
++
++	if (ret < 0)
++		dev_err(s_data->dev, "%s(): i2c raw write failed %d, %04x size(%d) bytes\n",
++			__func__, ret, reg, (int)val_len);
++	else
++		if (dfu_dev->dfu_state_flag == D4XX_DFU_IDLE)
++			dev_info(s_data->dev, "%s(): i2c raw write 0x%04x: %d bytes\n",
++				 __func__, reg, (int)val_len);
++
++	return ret;
++}
++
++static inline int dfu_read(struct d4xx_dfu_dev *dfu_dev, u16 reg, u16 *val)
++{
++	unsigned int data;
++	struct camera_common_data *s_data = dfu_dev->tc_dev->s_data;
++	int ret = regmap_read(s_data->regmap, reg, &data);
++
++	if (ret < 0)
++		dev_err(s_data->dev, "%s(): i2c read failed %d, 0x%04x\n",
++			__func__, ret, reg);
++	else {
++		*val = data & 0xffff;
++		if (dfu_dev->dfu_state_flag == D4XX_DFU_IDLE)
++			dev_info(s_data->dev, "%s(): i2c read 0x%04x: 0x%x\n",
++				 __func__, reg, *val);
++	}
++
++	return ret;
++}
++
++static int dfu_raw_read(struct d4xx_dfu_dev *dfu_dev, u16 reg, void *val,
++	size_t val_len)
++{
++	struct camera_common_data *s_data = dfu_dev->tc_dev->s_data;
++	int ret = regmap_raw_read(s_data->regmap, reg, val, val_len);
++	if (ret < 0)
++		dev_err(s_data->dev, "%s(): i2c read failed %d, 0x%04x\n",
++			__func__, ret, reg);
++
++	return ret;
++}
++
++static int d4xx_dfu_wait_for_status(struct d4xx_dfu_dev *dfu_dev)
++{
++	struct camera_common_data *s_data = dfu_dev->tc_dev->s_data;
++	int i, ret = 0;
++	u16 status;
++
++	for (i = 0; i < D4XX_START_MAX_COUNT; i++)
++	{
++		dfu_read(dfu_dev, 0x5000, &status);
++		if (status == 0x0001 || status == 0x0002)
++		{
++			dev_err(s_data->dev, "%s(): dfu failed status(0x%4x)\n", __func__, status);
++			ret = -EREMOTEIO;
++			break;
++		}
++		if (!status)
++			break;
++		msleep_range(D4XX_START_POLL_TIME);
++		}
++
++	return ret;
++};
++
++static int d4xx_dfu_switch_to_dfu(struct d4xx_dfu_dev *dfu_dev)
++{
++	int ret;
++	int i = D4XX_START_MAX_COUNT;
++	u16 status;
++
++	dfu_raw_write_with_check(dfu_dev, 0x4900, &cmd_switch_to_dfu, sizeof(cmd_switch_to_dfu));
++	dfu_write_with_check(dfu_dev, 0x490c, 0x01); /* execute cmd */
++	/*Wait for DFU fw to boot*/
++	do {
++		msleep_range(D4XX_START_POLL_TIME*10);
++		ret = dfu_read(dfu_dev, 0x5000, &status);
++	} while (ret && i-- );
++	return ret;
++};
++
++static int d4xx_dfu_wait_for_get_dfu_status(struct d4xx_dfu_dev *dfu_dev,
++	enum dfu_fw_state exp_state)
++{
++	struct camera_common_data *s_data = dfu_dev->tc_dev->s_data;
++	int ret = 0;
++	u16 status,dfu_state_len = 0x0000;
++	unsigned char dfu_asw_buf[DFU_WAIT_RET_LEN];
++	unsigned int dfu_wr_wait_msec = 0;
++	do {
++		dfu_write_with_check(dfu_dev, 0x5008, 0x0003); // Get Write state
++		do {
++			dfu_read_with_check(dfu_dev, 0x5000, &status);
++			if (status == 0x0001) {
++				dev_err(s_data->dev, "%s(): Write status error I2C_STATUS_ERROR(1)\n", __func__);
++				return -EINVAL;
++			} else
++				if (status == 0x0002 && dfu_wr_wait_msec)
++					msleep_range(dfu_wr_wait_msec);
++					//dev_notice(dev, "%s():waiting (%x)\n", __func__, dfu_wr_wait_msec);
++
++		} while (status);
++
++		dfu_read_with_check(dfu_dev, 0x5004, &dfu_state_len);
++		if (dfu_state_len != DFU_WAIT_RET_LEN) {
++			dev_err(s_data->dev, "%s(): Wrong answer len (%d)\n", __func__, dfu_state_len);
++			return -EINVAL;
++		}
++		dfu_raw_read_with_check(dfu_dev, 0x4e00, &dfu_asw_buf, DFU_WAIT_RET_LEN);
++		if (dfu_asw_buf[0]) {
++			dev_err(s_data->dev, "%s(): Wrong dfu_status (%d)\n", __func__, dfu_asw_buf[0]);
++			return -EINVAL;
++		}
++		dfu_wr_wait_msec = (((unsigned int)dfu_asw_buf[3]) << 16) | (((unsigned int)dfu_asw_buf[2]) << 8) | dfu_asw_buf[1];
++	} while (dfu_asw_buf[4] == dfuDNBUSY && exp_state == dfuDNLOAD_IDLE);
++
++
++	if  (dfu_asw_buf[4] != exp_state) {
++		dev_notice(s_data->dev, "%s(): Wrong dfu_state (%d) while expected(%d)\n", __func__, dfu_asw_buf[4], exp_state);
++		ret =  -EINVAL;
++	}
++	return ret;
++};
++
++static int d4xx_dfu_get_dev_info(struct d4xx_dfu_dev *dfu_dev, struct __fw_status *buf)
++{
++	struct camera_common_data *s_data = dfu_dev->tc_dev->s_data;
++	int ret;
++	u16 len = 0;
++
++	ret = dfu_write(dfu_dev, 0x5008, 0x0002); //Upload DFU cmd
++	if (!ret)
++		ret = d4xx_dfu_wait_for_status(dfu_dev);
++	if (!ret)
++		dfu_read_with_check(dfu_dev, 0x5004, &len);
++	/*Sanity check*/
++	if (len == sizeof(struct __fw_status)) {
++		dfu_raw_read_with_check(dfu_dev, 0x4e00, buf, len);
++	} else {
++		dev_err(s_data->dev, "%s(): Wrong state size (%d)\n", __func__, len);
++		ret = -EINVAL;
++	}
++	return ret;
++};
++
++static int d4xx_dfu_detach(struct d4xx_dfu_dev *dfu_dev)
++{
++	struct camera_common_data *s_data = dfu_dev->tc_dev->s_data;
++	struct __fw_status buf;
++	int ret;
++
++	dfu_write_with_check(dfu_dev, 0x500c, 0x00);
++	ret = d4xx_dfu_wait_for_get_dfu_status(dfu_dev, dfuIDLE);
++	if (!ret)
++		ret = d4xx_dfu_get_dev_info(dfu_dev, &buf);
++	dev_notice(s_data->dev, "%s():DFU ver (0x%x) recieved\n", __func__, buf.DFU_version);
++	dev_notice(s_data->dev, "%s():FW last version (0x%x) recieved\n", __func__, buf.FW_lastVersion);
++	dev_notice(s_data->dev, "%s():FW status (%s)\n", __func__, buf.DFU_isLocked ? "locked" : "unlocked");
++	return ret;
++};
++
++/* When a process reads from our device, this gets called. */
++static ssize_t device_read(struct file *flip, char *buffer, size_t len, loff_t *offset)
++{
++	struct d4xx_dfu_dev *dfu_dev = flip->private_data;
++	u16 fw_ver;
++	char msg[20];
++	int ret = 0;
++
++	if (mutex_lock_interruptible(&dfu_dev->lock))
++		return -ERESTARTSYS;
++	ret = dfu_read(dfu_dev, D4XX_FW_VERSION, &fw_ver);
++	if (ret < 0)
++		goto e_dfu_read_failed;
++	sprintf(msg ,"DFU info: \tver: (0x%x)\n", fw_ver);
++	if (copy_to_user(buffer, msg, strlen(msg)))
++		ret = -EFAULT;
++	else {
++		dfu_dev->msg_write_once = ~dfu_dev->msg_write_once;
++		ret = strlen(msg) & dfu_dev->msg_write_once;
++	}
++
++e_dfu_read_failed:
++	mutex_unlock(&dfu_dev->lock);
++	return ret;
++};
++
++static ssize_t device_write(struct file *flip, const char *buffer, size_t len, loff_t *offset)
++{
++	struct d4xx_dfu_dev *dfu_dev = flip->private_data;
++	const struct device *dev = dfu_dev->tc_dev->dev;
++	int ret = 0;
++
++	if (mutex_lock_interruptible(&dfu_dev->lock))
++		return -ERESTARTSYS;
++	switch (dfu_dev->dfu_state_flag) {
++
++	case D4XX_DFU_OPEN:
++		ret = d4xx_dfu_switch_to_dfu(dfu_dev);
++		if (ret < 0) {
++			dev_err(dev, "%s(): Switch to dfu failed (%d)\n", __func__, ret);
++			goto dfu_write_error;
++		}
++		/*no break - procceed to recovery*/
++	case D4XX_DFU_RECOVERY:
++		ret = d4xx_dfu_detach(dfu_dev);
++		if (ret < 0) {
++			dev_err(dev, "%s(): Detach failed (%d)\n", __func__, ret);
++			goto dfu_write_error;
++		}
++		dfu_dev->dfu_state_flag = D4XX_DFU_IN_PROGRESS;
++		dfu_dev->init_v4l_f = 1;
++
++		/*no break - procceed to download*/
++	case D4XX_DFU_IN_PROGRESS: {
++		unsigned int dfu_full_blocks = len / DFU_BLOCK_SIZE;
++		unsigned int dfu_part_blocks = len % DFU_BLOCK_SIZE;
++
++		while (dfu_full_blocks--) {
++			if(copy_from_user(dfu_dev->dfu_msg , buffer, DFU_BLOCK_SIZE)) {
++				ret = -EFAULT;
++				goto dfu_write_error;
++			}
++			ret = dfu_raw_write(dfu_dev, 0x4a00, buffer, DFU_BLOCK_SIZE);
++			if (ret < 0)
++				goto dfu_write_error;
++			ret = d4xx_dfu_wait_for_get_dfu_status (dfu_dev, dfuDNLOAD_IDLE);
++			if (ret < 0)
++				goto dfu_write_error;
++			buffer += DFU_BLOCK_SIZE;
++		}
++		if(copy_from_user(dfu_dev->dfu_msg , buffer, dfu_part_blocks)) {
++				ret = -EFAULT;
++				goto dfu_write_error;
++		}
++		if (dfu_part_blocks) {
++			ret = dfu_raw_write(dfu_dev, 0x4a00, buffer, dfu_part_blocks);
++			if (!ret) {
++				ret = d4xx_dfu_wait_for_get_dfu_status (dfu_dev, dfuDNLOAD_IDLE);
++			}
++			if (!ret)
++				ret = dfu_write(dfu_dev, 0x4a04, 0x00); /*Download complete */
++			if (!ret)
++				ret = d4xx_dfu_wait_for_get_dfu_status (dfu_dev, dfuMANIFEST);
++			if (ret < 0)
++				goto dfu_write_error;
++			dfu_dev->dfu_state_flag = D4XX_DFU_DONE;
++		}
++		dev_notice(dfu_dev->tc_dev->dev, "%s(): DFU block (%d) bytes written\n", __func__, (int)len);
++		break;
++	}
++	default:
++		dev_err(dev, "%s(): Wrong state (%d)\n", __func__, dfu_dev->dfu_state_flag);
++		ret =  -EINVAL;
++		goto dfu_write_error;
++
++	};
++	mutex_unlock(&dfu_dev->lock);
++	return len;
++
++dfu_write_error:
++	//TODO: Reset device here
++	dfu_dev->dfu_state_flag = D4XX_DFU_ERROR;
++	mutex_unlock(&dfu_dev->lock);
++	return ret;
++};
++
++static int device_open(struct inode *inode, struct file *file)
++{
++	struct d4xx_dfu_dev *dfu_dev = container_of(inode->i_cdev, struct d4xx_dfu_dev, d4xx_cdev);
++	struct tegracam_device *tc_dev = dfu_dev->tc_dev;
++
++	try_module_get(THIS_MODULE);
++	if (dfu_dev->device_open_count)
++		return -EBUSY;
++	dfu_dev->device_open_count++;
++	if (dfu_dev->dfu_state_flag  != D4XX_DFU_RECOVERY)
++		dfu_dev->dfu_state_flag = D4XX_DFU_OPEN;
++	dfu_dev->dfu_msg = devm_kzalloc(tc_dev->dev, DFU_BLOCK_SIZE, GFP_KERNEL);
++	file->private_data = dfu_dev;
++	return 0;
++};
++
++static int device_release(struct inode *inode, struct file *file)
++{
++	struct d4xx_dfu_dev *dfu_dev = container_of(inode->i_cdev, struct d4xx_dfu_dev, d4xx_cdev);
++	struct tegracam_device *tc_dev = dfu_dev->tc_dev;
++
++	dfu_dev->device_open_count--;
++	if (dfu_dev->dfu_state_flag  != D4XX_DFU_RECOVERY)
++		dfu_dev->dfu_state_flag = D4XX_DFU_IDLE;
++	if (dfu_dev->dfu_state_flag == D4XX_DFU_DONE && dfu_dev->init_v4l_f)
++		d4xx_v4l_init(tc_dev);
++	dfu_dev->init_v4l_f = 0;
++	if (dfu_dev->dfu_msg)
++		devm_kfree(tc_dev->dev, dfu_dev->dfu_msg);
++	dfu_dev->dfu_msg = NULL;
++	module_put(THIS_MODULE);
++	return 0;
++};
++
++const struct file_operations d4xx_device_file_ops = {
++	.owner  = THIS_MODULE,
++	.read = &device_read,
++	.write = &device_write,
++	.open = &device_open,
++	.release = &device_release
++};
++
+diff --git a/drivers/media/i2c/d4xx/d4xx_dfu.h b/drivers/media/i2c/d4xx/d4xx_dfu.h
+new file mode 100644
+index 0000000..fee0310
+--- /dev/null
++++ b/drivers/media/i2c/d4xx/d4xx_dfu.h
+@@ -0,0 +1,76 @@
++/*
++ * rs_d4xx_mode_tbls.h - Intel(R) RealSense(TM) D4XX camera driver
++ *
++ * Copyright (c) 2017-2019, INTEL CORPORATION.  All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef __D4XX_DFU__
++#define __D4XX_DFU__
++
++#include <media/camera_common.h>
++
++#define D4XX_FW_VERSION			0x030C
++#define D4XX_FW_BUILD			0x030E
++
++/* DFU definition section */
++#define DFU_MAGIC_NUMBER "/0x01/0x02/0x03/0x04"
++#define DFU_BLOCK_SIZE 1024
++enum dfu_fw_state {
++    appIDLE                = 0x0000,
++    appDETACH              = 0x0001,
++    dfuIDLE                = 0x0002,
++    dfuDNLOAD_SYNC         = 0x0003,
++    dfuDNBUSY              = 0x0004,
++    dfuDNLOAD_IDLE         = 0x0005,
++    dfuMANIFEST_SYNC       = 0x0006,
++    dfuMANIFEST            = 0x0007,
++    dfuMANIFEST_WAIT_RESET = 0x0008,
++    dfuUPLOAD_IDLE         = 0x0009,
++    dfuERROR               = 0x000a
++};
++
++enum dfu_state {
++	D4XX_DFU_IDLE = 0,
++	D4XX_DFU_RECOVERY,
++	D4XX_DFU_OPEN,
++	D4XX_DFU_IN_PROGRESS,
++	D4XX_DFU_DONE,
++	D4XX_DFU_ERROR
++} dfu_state_t;
++
++struct d4xx_dfu_dev {
++	struct cdev d4xx_cdev;
++	struct class *d4xx_class;
++	struct tegracam_device *tc_dev;
++	int device_open_count;
++	enum dfu_state dfu_state_flag;
++	struct mutex lock;
++	unsigned char *dfu_msg;
++	u16 msg_write_once;
++	unsigned char init_v4l_f;
++};
++
++struct __fw_status {
++	uint32_t	spare1;
++	uint32_t	FW_lastVersion;
++	uint32_t	FW_highestVersion;
++	uint16_t	FW_DownloadStatus;
++	uint16_t	DFU_isLocked;
++	uint16_t	DFU_version;
++	uint8_t		ivcamSerialNum[8];
++	uint8_t		spare2[42];
++};
++
++#endif /* __D4XX_DFU__ */
+diff --git a/drivers/media/i2c/d4xx/rs_d4xx.c b/drivers/media/i2c/d4xx/rs_d4xx.c
+new file mode 100644
+index 0000000..fb0b1dc
+--- /dev/null
++++ b/drivers/media/i2c/d4xx/rs_d4xx.c
+@@ -0,0 +1,1190 @@
++/*
++ * rs_d4xx.c - Intel(R) RealSense(TM) D4XX camera driver
++ *
++ * Copyright (c) 2017-2019, INTEL CORPORATION.  All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++#define __NEED_MEDIA_LEGACY_API
++
++#include <linux/delay.h>
++#include <linux/gpio.h>
++#include <linux/i2c.h>
++#include <linux/kernel.h>
++#include <linux/media.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <linux/of_gpio.h>
++#include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
++#include <linux/slab.h>
++#include <linux/string.h>
++#include <linux/videodev2.h>
++#include <linux/media.h>
++
++#include <media/media-entity.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-subdev.h>
++#include <media/v4l2-mediabus.h>
++
++#include <media/tegra_v4l2_camera.h>
++#include <media/tegracam_core.h>
++#include "rs_d4xx.h"
++#include "rs_d4xx_mode_tbls.h"
++
++static const struct of_device_id d4xx_of_match[] = {
++	{ .compatible = "intel,d4xx",},
++	{ },
++};
++MODULE_DEVICE_TABLE(of, d4xx_of_match);
++
++#define D4XX_N_CONTROLS			8
++
++#define CSI2_MAX_VIRTUAL_CHANNELS	4
++
++#define d4xx_read_with_check(state, addr, val) {\
++	if (d4xx_read(state, addr, val))	\
++		return -EINVAL;}
++#define d4xx_raw_read_with_check(state, addr, buf, size)	{\
++	if (d4xx_raw_read(state, addr, buf, size))	\
++		return -EINVAL;}
++#define d4xx_write_with_check(state, addr, val) {\
++	if (d4xx_write(state, addr, val)) 	\
++		return -EINVAL;}
++#define d4xx_raw_write_with_check(state, addr, buf, size) {\
++	if (d4xx_raw_write(state, addr, buf, size)) 	\
++		return -EINVAL;}
++
++enum table_id {
++	COEF_CALIBRATION_ID = 0x19,
++	DEPTH_CALIBRATION_ID = 0x1f,
++	RGB_CALIBRATION_ID = 0x20,
++	IMU_CALIBRATION_ID = 0x22
++} table_id_t;
++
++static const struct hwm_cmd get_calib_data = {
++	.header = 0x14,
++	.magic_word = 0xCDAB,
++	.opcode = 0x15,
++	.param1 = 0x00,	//table_id
++};
++
++static const struct hwm_cmd set_calib_data = {
++	.header = 0x0114,
++	.magic_word = 0xCDAB,
++	.opcode = 0x16,
++	.param1 = 0x00,	//table_id
++};
++
++/*************************/
++
++
++enum {
++	DS4XX_D415,
++	DS4XX_D31,
++	DS4XX_D465,
++};
++
++struct d4xx_counters {
++	unsigned int n_res;
++	unsigned int n_fmt;
++	unsigned int n_ctrl;
++};
++
++static inline int d4xx_write(struct d4xx *state, u16 reg, u16 val)
++{
++	const struct device *dev = state->s_data->dev;
++	int ret = regmap_write(state->s_data->regmap, reg, val);
++
++	if (ret < 0)
++		dev_err(dev, "%s(): i2c write failed %d, 0x%04x = 0x%x\n",
++			__func__, ret, reg, val);
++	else
++		if (state->dfu_dev.dfu_state_flag == D4XX_DFU_IDLE)
++			dev_info(dev, "%s(): i2c write 0x%04x: 0x%x\n",
++				 __func__, reg, val);
++
++	return ret;
++}
++
++static inline int d4xx_bwrite(struct camera_common_data *s_data, u16 reg, u8 val)
++{
++	struct d4xx *state = container_of (&s_data, struct d4xx, s_data);
++	return d4xx_write(state, reg, (u16)val);
++}
++
++static int d4xx_raw_write(struct d4xx *state, u16 reg, const void *val, size_t val_len)
++{
++	const struct device *dev = state->s_data->dev;
++	int ret = regmap_raw_write(state->s_data->regmap, reg, val, val_len);
++
++	if (ret < 0)
++		dev_err(dev, "%s(): i2c raw write failed %d, %04x size(%d) bytes\n",
++			__func__, ret, reg, (int)val_len);
++	else
++		if (state->dfu_dev.dfu_state_flag == D4XX_DFU_IDLE)
++			dev_info(dev, "%s(): i2c raw write 0x%04x: %d bytes\n",
++				 __func__, reg, (int)val_len);
++
++	return ret;
++}
++
++static inline int d4xx_read(struct d4xx *state, u16 reg, u16 *val)
++{
++	unsigned int data;
++	const struct device *dev = state->s_data->dev;
++	int ret = regmap_read(state->s_data->regmap, reg, &data);
++
++	if (ret < 0)
++		dev_err(dev, "%s(): i2c read failed %d, 0x%04x\n",
++			__func__, ret, reg);
++	else {
++		*val = data & 0xffff;
++		if (state->dfu_dev.dfu_state_flag == D4XX_DFU_IDLE)
++			dev_info(dev, "%s(): i2c read 0x%04x: 0x%x\n",
++				 __func__, reg, *val);
++	}
++
++	return ret;
++}
++
++static inline int d4xx_bread(struct camera_common_data *s_data, u16 reg, u8 *val)
++{
++	struct d4xx *state = container_of (&s_data, struct d4xx, s_data);
++	u16 w_val;
++	int ret = d4xx_read(state, reg, &w_val);
++	if (!ret)
++		*val = (u8)w_val;
++	return ret;
++}
++
++static int d4xx_raw_read(struct d4xx *state, u16 reg, void *val,
++ size_t val_len)
++{
++	const struct device *dev = state->s_data->dev;
++	int ret = regmap_raw_read(state->s_data->regmap, reg, val, val_len);
++	if (ret < 0)
++		dev_err(dev, "%s(): i2c read failed %d, 0x%04x\n",
++			__func__, ret, reg);
++
++	return ret;
++}
++
++static int d4xx_write_table(struct d4xx *priv,
++				const d4xx_reg table[])
++{
++	struct camera_common_data *s_data = priv->s_data;
++
++	return regmap_util_write_table_8(s_data->regmap,
++					 table,
++					 NULL, 0,
++					 D4XX_TABLE_WAIT_MS,
++					 D4XX_TABLE_END);
++}
++
++
++static struct camera_common_pdata *d4xx_parse_dt(struct tegracam_device *tc_dev);
++/* Pad ops */
++
++static const u8 d4xx_default_framerate = 30;
++
++// **********************
++// FIXME: D16 width must be doubled, because an 8-bit format is used. Check how
++// the Tegra driver propagates resolutions and formats.
++// **********************
++
++
++#define D4XX_DEPTH_N_FORMATS 1
++#define D4XX_RGB_N_FORMATS 1
++
++static const struct v4l2_mbus_framefmt d4xx_mbus_framefmt_template = {
++	.width = 0,
++	.height = 0,
++	.code = MEDIA_BUS_FMT_FIXED,
++	.field = V4L2_FIELD_NONE,
++	.colorspace = V4L2_COLORSPACE_DEFAULT,
++	.ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT,
++	.quantization = V4L2_QUANTIZATION_DEFAULT,
++	.xfer_func = V4L2_XFER_FUNC_DEFAULT,
++};
++
++static int d4xx_hw_set_auto_exposure(struct d4xx *state, u32 val)
++{
++	int ret;
++	u16 value;
++	if (state->is_rgb) {
++		if (0 == val)
++			val = 1;
++		else
++			val = 8;
++		d4xx_read(state, D4XX_RGB_CONTROL_BASE | D4XX_AUTO_EXPOSURE_MODE, &value);
++		ret = d4xx_write(state, D4XX_RGB_CONTROL_BASE | D4XX_AUTO_EXPOSURE_MODE, val);
++		d4xx_read(state, D4XX_RGB_CONTROL_BASE | D4XX_AUTO_EXPOSURE_MODE, &value);
++		d4xx_read(state, 0x401C, &value);
++		d4xx_read(state, 0x403C, &value);
++	}
++	else {
++		d4xx_read(state, D4XX_DEPTH_CONTROL_BASE | D4XX_AUTO_EXPOSURE_MODE, &value);
++		ret = d4xx_write(state, D4XX_DEPTH_CONTROL_BASE | D4XX_AUTO_EXPOSURE_MODE, val);
++		d4xx_read(state, D4XX_DEPTH_CONTROL_BASE | D4XX_AUTO_EXPOSURE_MODE, &value);
++		d4xx_read(state, 0x401C, &value);
++		d4xx_read(state, 0x403C, &value);
++	}
++	return ret;
++}
++
++/* Manual exposure in us between 1 and 166ms */
++static int d4xx_hw_set_exposure(struct d4xx *state, u32 val)
++{
++	int ret;
++	u16 value;
++
++	if (!state->is_rgb) {
++		if (val < 10)
++			val = 1000;
++		else if (val > 1660)
++			val = 166000;
++		else
++			val *= 100;
++	} else {
++		if (val < 1)
++			val = 1;
++		else if (val > 10000)
++			val = 10000;
++	}
++
++	if (state->is_rgb) {
++		//if (state->rgb.sensor.streaming)
++			ret = d4xx_write(state, D4XX_RGB_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_MSB, val >> 16);
++	}
++	else
++		ret = d4xx_write(state, D4XX_DEPTH_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_MSB, val >> 16);
++
++	if (!ret) {
++		if (state->is_rgb) {
++			//if (state->rgb.sensor.streaming)
++				ret = d4xx_write(state, D4XX_RGB_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_LSB, val & 0xffff);
++		}
++		else
++			ret = d4xx_write(state, D4XX_DEPTH_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_LSB, val & 0xffff);
++	}
++
++	d4xx_read(state, D4XX_DEPTH_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_LSB, &value);
++	d4xx_read(state, D4XX_DEPTH_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_MSB, &value);
++	d4xx_read(state, D4XX_RGB_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_LSB, &value);
++	d4xx_read(state, D4XX_RGB_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_MSB, &value);
++	d4xx_read(state, 0x401C, &value);
++	d4xx_read(state, 0x403C, &value);
++
++	return ret;
++}
++
++#define D4XX_MAX_LOG_WAIT 50
++#define D4XX_MAX_LOG_SLEEP 10
++#define D4XX_MAX_LOG_POLL (D4XX_MAX_LOG_WAIT / D4XX_MAX_LOG_SLEEP)
++
++// TODO: why to use D4XX_DEPTH_Y_STREAMS_DT?
++#define D4XX_CAMERA_CID_BASE	(V4L2_CTRL_CLASS_CAMERA | D4XX_DEPTH_Y_STREAMS_DT)
++
++#define D4XX_CAMERA_CID_LOG			(D4XX_CAMERA_CID_BASE+0)
++#define D4XX_CAMERA_CID_LASER_POWER		(D4XX_CAMERA_CID_BASE+1)
++#define D4XX_CAMERA_CID_MANUAL_LASER_POWER	(D4XX_CAMERA_CID_BASE+2)
++#define D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_GET	(D4XX_CAMERA_CID_BASE+3)
++#define D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET	(D4XX_CAMERA_CID_BASE+4)
++#define D4XX_CAMERA_COEFF_CALIBRATION_TABLE_GET	(D4XX_CAMERA_CID_BASE+5)
++#define D4XX_CAMERA_COEFF_CALIBRATION_TABLE_SET	(D4XX_CAMERA_CID_BASE+6)
++
++static int d4xx_s_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct d4xx *state = container_of(ctrl->handler, struct d4xx,
++					 ctrls.handler);
++	struct v4l2_subdev *sd = &state->mux.sd.subdev;
++	int ret;
++
++	v4l2_dbg(1, 1, sd, "ctrl: %s, value: %d\n", ctrl->name, ctrl->val);
++
++// FIXME: Check for streaming statuus "success"
++
++	mutex_lock(&state->dfu_dev.lock);
++
++	if (state->power == 0)
++		goto unlock;
++
++	switch (ctrl->id) {
++	case V4L2_CID_ANALOGUE_GAIN:
++		/* FIXME: unit conversion! */
++		d4xx_write(state, D4XX_MANUAL_GAIN, ctrl->val);
++		break;
++
++	case V4L2_CID_EXPOSURE_AUTO:
++		d4xx_hw_set_auto_exposure(state, ctrl->val);
++		break;
++
++	case V4L2_CID_EXPOSURE_ABSOLUTE:
++		d4xx_hw_set_exposure(state, ctrl->val);
++		break;
++	case D4XX_CAMERA_CID_LASER_POWER:
++		d4xx_write(state, D4XX_LASER_POWER | D4XX_DEPTH_CONTROL_BASE, ctrl->val);
++		break;
++	case D4XX_CAMERA_CID_MANUAL_LASER_POWER:
++		d4xx_write(state, D4XX_MANUAL_LASER_POWER, ctrl->val);
++		break;
++	}
++
++unlock:
++	ret = 0/*d4xx_clear_error(state)*/;
++	mutex_unlock(&state->dfu_dev.lock);
++
++	return ret;
++}
++static int d4xx_get_calibration_data(struct d4xx *state, enum table_id id, unsigned char *table, int length)
++{
++	struct hwm_cmd cmd;
++	int ret;
++	int i = D4XX_START_MAX_COUNT;
++	u16 table_length = 0;
++	u16 status = 2;
++
++	memcpy(&cmd, &get_calib_data, sizeof(get_calib_data));
++	cmd.param1 = id;
++	d4xx_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
++	d4xx_write_with_check(state, 0x490c, 0x01); /* execute cmd */
++	do {
++		ret = d4xx_read(state, 0x5000, &status);
++	} while (ret && i-- && status != 1);
++
++	if (ret || status == 1) {
++		dev_err(state->s_data->dev, "%s(): Failed to get calibration table %d, error: %x\n", __func__, id, status);
++		return status;
++	}
++
++	d4xx_read_with_check(state, 0x4908, &table_length);
++	if (table_length > length) {
++		dev_err(state->s_data->dev, "%s(): Calibration buffer to big %d\n", __func__, table_length);
++		return -EINVAL;
++	}
++	d4xx_raw_read_with_check(state, 0x4900, table, table_length);
++	
++	return ret;
++}
++
++static int d4xx_set_calibration_data(struct d4xx *state, struct hwm_cmd *cmd, u16 length)
++{
++	int ret;
++	int i = D4XX_START_MAX_COUNT;
++	u16 status = 2;
++	
++	d4xx_raw_write_with_check(state, 0x4900, cmd, length);
++	d4xx_write_with_check(state, 0x490c, 0x01); /* execute cmd */
++	do {
++		ret = d4xx_read(state, 0x5000, &status);
++	} while (ret && i-- && status != 1);
++
++	if (ret || status == 1) {
++		dev_err(state->s_data->dev, "%s(): Failed to set calibration table, error: %x\n", __func__, status);
++		return status;
++	}
++	return ret;
++}
++
++static int d4xx_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct d4xx *state = container_of(ctrl->handler, struct d4xx,
++					 ctrls.handler);
++	u16 log_prepare[] = {0x0014, 0xcdab, 0x000f, 0x0000, 0x0400, 0x0000,
++			     0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
++	u16 execute_cmd = 0x0001;
++	unsigned int i;
++	u32 data;
++	int ret = 0;
++
++	switch (ctrl->id) {
++	case D4XX_CAMERA_CID_LOG:
++		// TODO: wrap HWMonitor command
++		//       1. prepare and send command
++		//       2. send command
++		//       3. execute command
++		//       4. wait for ccompletion
++		ret = regmap_raw_write(state->s_data->regmap, 0x4900,
++				       log_prepare, sizeof(log_prepare));
++		if (ret < 0)
++			return ret;
++
++		ret = regmap_raw_write(state->s_data->regmap, 0x490C,
++				&execute_cmd, sizeof(execute_cmd));
++		if (ret < 0)
++			return ret;
++
++		for (i = 0; i < D4XX_MAX_LOG_POLL; i++) {
++			ret = regmap_raw_read(state->s_data->regmap, 0x4904,
++					      &data, sizeof(data));
++			dev_info(state->s_data->dev, "%s(): log ready 0x%x\n",
++				 __func__, data);
++			if (ret < 0)
++				return ret;
++			if (!data)
++				break;
++		}
++
++//		if (i == D4XX_MAX_LOG_POLL)
++//			return -ETIMEDOUT;
++
++		ret = regmap_raw_read(state->s_data->regmap, 0x4908,
++				      &data, sizeof(data));
++		dev_info(state->s_data->dev, "%s(): log size 0x%x\n",
++			 __func__, data);
++		if (ret < 0)
++			return ret;
++		if (!data)
++			return 0;
++		if (data > 1024)
++			return -ENOBUFS;
++		ret = regmap_raw_read(state->s_data->regmap, 0x4900,
++				      ctrl->p_new.p_u8, data);
++		break;
++	case D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_GET:
++
++		ret = d4xx_get_calibration_data(state, DEPTH_CALIBRATION_ID,ctrl->p_new.p_u8, 256);
++		break;
++	case D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET: {
++			struct hwm_cmd *calib_cmd;
++
++			calib_cmd = devm_kzalloc(state->s_data->dev, sizeof(struct hwm_cmd) + 256, GFP_KERNEL);
++			memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
++			memcpy(calib_cmd->Data, ctrl->p_cur.p_u8 , 256);
++			calib_cmd->param1 = DEPTH_CALIBRATION_ID;
++
++			ret = d4xx_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 256);
++			devm_kfree(state->s_data->dev, calib_cmd);
++			break;
++		}
++	}
++	return ret;
++}
++
++#define USE_Y
++
++static int d4xx_fixed_configuration(struct i2c_client *client, struct d4xx *state)
++{
++	u16 cfg0 = 0, cfg1 = 0, dw = 0, dh = 0, yw = 0, yh = 0, dev_type = 0;
++	int ret;
++
++	ret = d4xx_read(state, D4XX_DEPTH_Y_STREAMS_DT, &cfg0);
++	if (!ret)
++		ret = d4xx_read(state, D4XX_DEPTH_Y_STREAMS_MD, &cfg1);
++	if (!ret)
++		ret = d4xx_read(state, D4XX_DEPTH_RES_WIDTH, &dw);
++	if (!ret)
++		ret = d4xx_read(state, D4XX_DEPTH_RES_HEIGHT, &dh);
++	if (!ret)
++		ret = d4xx_read(state, D4XX_Y_RES_WIDTH, &yw);
++	if (!ret)
++		ret = d4xx_read(state, D4XX_Y_RES_HEIGHT, &yh);
++	if (!ret)
++		ret = d4xx_read(state, D4XX_DEVICE_TYPE, &dev_type);
++	if (ret < 0)
++		return ret;
++
++	dev_info(&client->dev, "%s(): cfg0 %x %ux%u cfg1 %x %ux%u\n", __func__,
++		 cfg0, dw, dh, cfg1, yw, yh);
++
++	return 0;
++}
++
++static int d4xx_parse_cam(struct i2c_client *client, struct d4xx *state)
++{
++	int ret = d4xx_fixed_configuration(client, state);
++	if (ret < 0)
++		return ret;
++
++	return 0;
++}
++
++static int d4xx_hw_init(struct i2c_client *c, struct d4xx *state)
++{
++	struct v4l2_subdev *sd = &state->mux.sd.subdev;
++	u16 mipi_status = 0, n_lanes = 0, phy = 0, drate_min = 0, drate_max = 0;
++	int ret = d4xx_read(state, 0x300, &n_lanes);
++	if (!ret)
++		ret = d4xx_read(state, 0x304, &phy);
++
++	if (!ret)
++		ret = d4xx_read(state, 0x308, &drate_min);
++
++	if (!ret)
++		ret = d4xx_read(state, 0x30a, &drate_max);
++
++	if (!ret)
++		dev_info(sd->dev, "%s(): %d: %u lanes, phy %x, data rate %u-%u\n",
++			 __func__, __LINE__, n_lanes, phy, drate_min, drate_max);
++
++#ifdef CONFIG_TEGRA_CAMERA_PLATFORM
++	n_lanes = state->mux.sd.numlanes;
++#else
++	n_lanes = 2;
++#error get lane information
++#endif
++
++	ret = d4xx_write(state, 0x400, n_lanes - 1);
++	if (!ret)
++		/* Valid data rates: 1254MHz (default), 1452MHz */
++		ret = d4xx_write(state, 0x402, 1254);
++	if (!ret)
++		ret = d4xx_read(state, 0x500, &mipi_status);
++
++	dev_info(sd->dev, "%s(): %d phandle %x node %s status %x\n", __func__, __LINE__,
++		 c->dev.of_node->phandle, c->dev.of_node->full_name, mipi_status);
++
++	return ret;
++}
++
++static const struct v4l2_ctrl_ops d4xx_ctrl_ops = {
++	.s_ctrl	= d4xx_s_ctrl,
++	.g_volatile_ctrl = d4xx_g_volatile_ctrl,
++};
++
++static const struct v4l2_ctrl_config d4xx_ctrl_log = {
++	.ops = &d4xx_ctrl_ops,
++	.id = D4XX_CAMERA_CID_LOG,
++	.name = "Logger",
++	.type = V4L2_CTRL_TYPE_U8,
++	.dims = {1024},
++	.elem_size = sizeof(u8),
++	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
++	.step = 1,
++};
++
++static const struct v4l2_ctrl_config d4xx_ctrl_laser_power = {
++	.ops = &d4xx_ctrl_ops,
++	.id = D4XX_CAMERA_CID_LASER_POWER,
++	.name = "Laser power on/off",
++	.type = V4L2_CTRL_TYPE_BOOLEAN,
++	.min = 0,
++	.max = 1,
++	.step = 1,
++	.def = 0,
++};
++
++static const struct v4l2_ctrl_config d4xx_ctrl_manual_laser_power = {
++	.ops = &d4xx_ctrl_ops,
++	.id = D4XX_CAMERA_CID_MANUAL_LASER_POWER,
++	.name = "Manual laser power",
++	.type = V4L2_CTRL_TYPE_INTEGER,
++	.min = 0,
++	.max = 360,
++	.step = 30,
++	.def = 240,
++};
++
++static int d4xx_ctrl_init(struct d4xx *state)
++{
++	const struct v4l2_ctrl_ops *ops = &d4xx_ctrl_ops;
++	struct d4xx_ctrls *ctrls = &state->ctrls;
++	struct v4l2_ctrl_handler *hdl = &ctrls->handler;
++	struct v4l2_subdev *sd = &state->mux.sd.subdev;
++	u8 max;
++	int ret;
++
++	ret = v4l2_ctrl_handler_init(hdl, D4XX_N_CONTROLS);
++	if (ret < 0) {
++		v4l2_err(sd, "cannot init ctrl handler (%d)\n", ret);
++		return ret;
++	}
++
++	ctrls->log = v4l2_ctrl_new_custom(hdl, &d4xx_ctrl_log, NULL);
++
++	// TODO: wait for decision from FW if to replace with one control
++	//       should report as cluster?
++	ctrls->laser_power = v4l2_ctrl_new_custom(hdl, &d4xx_ctrl_laser_power, NULL);
++	ctrls->manual_laser_power = v4l2_ctrl_new_custom(hdl, &d4xx_ctrl_manual_laser_power, NULL);
++
++	// TODO: remove this comment
++	// V4L2 Doc: It is recommended to add controls in ascending control ID order:
++	//           it will be a bit faster that way
++
++	/* Exposure time: x 100 us. */
++	ctrls->exposure = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_EXPOSURE_ABSOLUTE,
++					    10, 166 * 10, 1, 2 * 10);
++
++	/* Total gain */
++	ctrls->gain = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_ANALOGUE_GAIN,
++					16, 248, 1, 16);
++
++	/* Assume both shutter and aperture priorities are supported */
++	max = /*sensor->exposure_priority ? V4L2_EXPOSURE_APERTURE_PRIORITY :*/
++		V4L2_EXPOSURE_MANUAL;
++	ctrls->auto_exp = v4l2_ctrl_new_std_menu(hdl, ops,
++						 V4L2_CID_EXPOSURE_AUTO,
++						 max, 0, V4L2_EXPOSURE_AUTO);
++
++	// TODO: this prevents setting of manual exposure
++	// v4l2_ctrl_auto_cluster(3, &ctrls->auto_exp, 0, false);
++
++	if (hdl->error) {
++		v4l2_err(sd, "error creating controls (%d)\n", hdl->error);
++		ret = hdl->error;
++		v4l2_ctrl_handler_free(hdl);
++		return ret;
++	}
++
++	// TODO: consider invoking v4l2_ctrl_handler_setup(hdl);
++
++	state->mux.sd.subdev.ctrl_handler = hdl;
++
++	return 0;
++}
++
++int d4xx_v4l_init(struct tegracam_device *tc_dev)
++{
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	u16 fw_ver;
++	int ret;
++
++	ret = d4xx_parse_cam(state->client, state);
++	if (ret < 0)
++		return ret;
++
++	d4xx_read_with_check(state, D4XX_FW_VERSION, &fw_ver);
++	dev_info(tc_dev->dev, "%s(): D4XX firmware %x\n", __func__, fw_ver);
++
++	//porting: ret = d4xx_mux_init(c, state);
++	ret = tegracam_v4l2subdev_register(state->tc_dev, true);
++	if (ret < 0)
++		return ret;
++
++	ret = d4xx_hw_init(state->client, state);
++	if (ret < 0)
++		return ret;
++
++	ret = d4xx_ctrl_init(state);
++	if (ret < 0)
++		return ret;
++
++	return 0;
++}
++
++static int d4xx_mux_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
++{
++	struct d4xx *state = v4l2_get_subdevdata(sd);
++
++	dev_info(sd->dev, "%s(): %s (%p)\n", __func__, sd->name, fh);
++	if (state->dfu_dev.dfu_state_flag)
++		return -EBUSY;
++	try_module_get(THIS_MODULE);
++	state->dfu_dev.device_open_count++;
++
++	return 0;
++};
++
++static int d4xx_mux_close(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
++{
++	struct d4xx *state = v4l2_get_subdevdata(sd);
++
++	dev_info(sd->dev, "%s(): %s (%p)\n", __func__, sd->name, fh);
++	state->dfu_dev.device_open_count--;
++	module_put(THIS_MODULE);
++	return 0;
++};
++
++static int d4xx_set_power(struct d4xx *state, int on)
++{
++	int ret = 0;
++
++	mutex_lock(&state->dfu_dev.lock);
++
++	if (state->power != !on) {
++		mutex_unlock(&state->dfu_dev.lock);
++		return 0;
++	}
++
++//	gpio_set_value_cansleep(state->pwdn_gpio, on);
++
++	dev_info(state->s_data->dev, "%s(): power %d\n", __func__, on);
++
++	usleep_range(100, 200);
++
++	if (on) {
++		state->power = true;
++	} else {
++		state->power = false;
++	}
++
++	mutex_unlock(&state->dfu_dev.lock);
++
++	/* Restore controls when powering on */
++	if (on)
++		ret = v4l2_ctrl_handler_setup(&state->ctrls.handler);
++
++	return ret;
++}
++
++/* Core ops */
++static int d4xx_mux_set_power(struct v4l2_subdev *sd, int on)
++{
++	struct d4xx *state = container_of(sd, struct d4xx, mux.sd.subdev);
++
++	return d4xx_set_power(state, on);
++}
++
++static const struct v4l2_subdev_core_ops d4xx_mux_core_ops = {
++	.s_power = d4xx_mux_set_power,
++//	.log_status = v4l2_ctrl_subdev_log_status,
++};
++
++static const struct v4l2_subdev_internal_ops d4xx_mux_internal_ops = {
++	.open = d4xx_mux_open,
++	.close = d4xx_mux_close,
++};
++
++static const struct regmap_config d4xx_regmap_config = {
++	.reg_bits = 16,
++	.val_bits = 16,
++	.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++	.val_format_endian = REGMAP_ENDIAN_NATIVE,
++	.use_single_rw = true,
++};
++
++static void d4xx_mux_remove(struct d4xx *state)
++{
++	camera_common_cleanup(&state->mux.sd);
++	v4l2_async_unregister_subdev(&state->mux.sd.subdev);
++	v4l2_ctrl_handler_free(state->mux.sd.subdev.ctrl_handler);
++	//porting: media_entity_cleanup(&state->mux.sd.subdev.entity);
++}
++
++static int d4xx_power_on(struct camera_common_data *s_data)
++{
++	return 0;
++}
++
++static int d4xx_power_off(struct camera_common_data *s_data)
++{
++	return 0;
++}
++
++static int d4xx_power_get(struct tegracam_device *tc_dev)
++{
++	dev_info(tc_dev->dev, "%s()\n", __func__);
++
++	return 0;
++}
++
++static int d4xx_power_put(struct tegracam_device *tc_dev)
++{
++	struct camera_common_data *s_data = tc_dev->s_data;
++	struct camera_common_power_rail *pw = s_data->power;
++
++	if (unlikely(!pw))
++		return -EFAULT;
++
++	return 0;
++}
++
++static int d4xx_start_streaming(struct tegracam_device *tc_dev)
++{
++	struct camera_common_data *s_data = tc_dev->s_data;
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	struct d4xx *priv = (struct d4xx *)tegracam_get_privdata(tc_dev);
++	u16 streaming = 0, rate = 0, depth_status = 0 , rgb_status = 0;
++	int ret = 0;
++	unsigned int i;
++
++	ret = d4xx_write_table(priv, mode_table[D4XX_MODE_START_STREAM]);
++	if (ret) {
++		dev_err(s_data->dev, "Failed to write table id\n");
++		return ret;
++	}
++
++	for (i = 0; i < D4XX_START_MAX_COUNT; i++) {
++		d4xx_read(state, 0x1004, &streaming);
++		d4xx_read(state, 0x4800, &depth_status);
++		d4xx_read(state, 0x4802, &rgb_status);
++		if (/*status || */(streaming & 0xf00) == ((2 << 8)))
++			break;
++		msleep_range(D4XX_START_POLL_TIME);
++	}
++	d4xx_read(state, 0x402, &rate);
++
++	dev_info(s_data->dev, "%s(): streaming %x depth status 0x%04x, rgb status 0x%04x, rate %u\n", __func__,
++		 streaming, depth_status, rgb_status, rate);
++
++	return ret;
++}
++
++static int d4xx_stop_streaming(struct tegracam_device *tc_dev)
++{
++	struct camera_common_data *s_data = tc_dev->s_data;
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	struct d4xx *priv = (struct d4xx *)tegracam_get_privdata(tc_dev);
++	u16 streaming = 0, rate = 0, depth_status = 0 , rgb_status = 0;
++	int ret = 0;
++
++	dev_info(tc_dev->dev, "%s()\n", __func__);
++
++	ret = d4xx_read(state, 0x1004, &streaming);
++	if (ret)
++		return ret;
++	ret = d4xx_read(state, 0x4800, &depth_status);
++	if (ret)
++		return ret;
++	ret = d4xx_read(state, 0x4802, &rgb_status);
++	if (ret)
++		return ret;
++
++	ret = d4xx_write_table(priv, mode_table[D4XX_MODE_STOP_STREAM]);
++	if (ret) {
++		dev_err(s_data->dev, "Failed to write table id\n");
++		return ret;
++	}
++
++	d4xx_read(state, 0x402, &rate);
++	dev_info(&state->client->dev, "%s(): streaming %x depth status 0x%04x, rgb status 0x%04x, rate %u\n", __func__,
++		 streaming, depth_status, rgb_status, rate);
++
++	return 0;
++}
++
++static int d4xx_set_mode(struct tegracam_device *tc_dev)
++{
++	struct d4xx *priv = (struct d4xx *)tegracam_get_privdata(tc_dev);
++	struct camera_common_data *s_data = tc_dev->s_data;
++	struct device *dev = tc_dev->dev;
++	const struct of_device_id *match;
++	int err = 0;
++	u16 cfg0 = 0, cfg1 = 0, dw = 0, dh = 0, yw = 0, yh = 0, dev_type = 0;
++
++	match = of_match_device(d4xx_of_match, dev);
++	if (!match) {
++		dev_err(dev, "Failed to find matching dt id\n");
++		return -EINVAL;
++	}
++	err = d4xx_write_table(priv, mode_table[s_data->mode_prop_idx]);
++	if (err) {
++		dev_err(dev, "Failed to write table id\n");
++		return err;
++	}
++
++	err = d4xx_read(priv, D4XX_DEPTH_Y_STREAMS_DT, &cfg0);
++	if (!err)
++		err = d4xx_read(priv, D4XX_DEPTH_Y_STREAMS_MD, &cfg1);
++	if (!err)
++		err = d4xx_read(priv, D4XX_DEPTH_RES_WIDTH, &dw);
++	if (!err)
++		err = d4xx_read(priv, D4XX_DEPTH_RES_HEIGHT, &dh);
++	if (!err)
++		err = d4xx_read(priv, D4XX_Y_RES_WIDTH, &yw);
++	if (!err)
++		err = d4xx_read(priv, D4XX_Y_RES_HEIGHT, &yh);
++	if (!err)
++		err = d4xx_read(priv, D4XX_DEVICE_TYPE, &dev_type);
++	if (err < 0)
++		return err;
++
++	dev_info(s_data->dev, "%s(): cfg0 %x %ux%u cfg1 %x %ux%u\n", __func__,
++		 cfg0, dw, dh, cfg1, yw, yh);
++
++	return err;
++}
++
++static struct camera_common_sensor_ops d4xx_common_ops = {
++	.numfrmfmts = ARRAY_SIZE(d4xx_frmfmt),
++	.frmfmt_table = d4xx_frmfmt,
++	.power_on = d4xx_power_on,
++	.power_off = d4xx_power_off,
++	.write_reg = d4xx_bwrite,
++	.read_reg = d4xx_bread,
++	.parse_dt = d4xx_parse_dt,
++	.power_get = d4xx_power_get,
++	.power_put = d4xx_power_put,
++	.set_mode = d4xx_set_mode,
++	.start_streaming = d4xx_start_streaming,
++	.stop_streaming = d4xx_stop_streaming,
++};
++
++static int d4xx_fill_string_ctrl(struct tegracam_device *tc_dev,
++				struct v4l2_ctrl *ctrl)
++{
++	dev_info(tc_dev->dev, "%s()\n", __func__);
++	return 0;
++}
++
++static int d4xx_set_group_hold(struct tegracam_device *tc_dev, bool val)
++{
++	dev_info(tc_dev->dev, "%s()\n", __func__);
++	return 0;
++}
++
++struct class* g_d4xx_class;
++atomic_t primary_chardev=ATOMIC_INIT(0);
++
++int d4xx_chrdev_init(struct i2c_client *c, struct d4xx *state)
++{
++	struct cdev *d4xx_cdev = &state->dfu_dev.d4xx_cdev;
++	struct class* *d4xx_class = &state->dfu_dev.d4xx_class;
++	struct device *chr_dev;
++	char dev_name[sizeof(D4XX_DRIVER_NAME_DFU) +5];
++	dev_t *dev_num = &c->dev.devt;
++	int ret;
++
++	dev_info(&c->dev, "%s()\n", __func__);
++	/* Request the kernel for N_MINOR devices */
++	ret = alloc_chrdev_region(dev_num, 0, 1, D4XX_DRIVER_NAME_DFU);
++	if (ret < 0)
++		return ret;
++	//dev_info(&c->dev, "%s(): <Major, Minor>: <%d, %d>\n", __func__, MAJOR(*dev_num), MINOR(*dev_num));
++
++	if (!atomic_cmpxchg (&primary_chardev, 0, MAJOR(*dev_num))) {
++		dev_info(&c->dev, "%s(): <Major, Minor>: <%d, %d>\n", __func__, MAJOR(*dev_num), MINOR(*dev_num));
++		/* Create a class : appears at /sys/class */
++		*d4xx_class = class_create(THIS_MODULE, D4XX_DRIVER_NAME_CLASS);
++		if (IS_ERR(*d4xx_class)) {
++			dev_err(&c->dev, "Could not create class device\n");
++			unregister_chrdev_region(0, 1);
++			ret = PTR_ERR(*d4xx_class);
++			return ret;
++		}
++		g_d4xx_class = *d4xx_class;
++	} else
++		*d4xx_class = g_d4xx_class;
++        /* Associate the cdev with a set of file_operations */
++        cdev_init(d4xx_cdev, &d4xx_device_file_ops);
++        /* Build up the current device number. To be used further */
++        *dev_num = MKDEV(MAJOR(*dev_num), MINOR(*dev_num));
++        /* Create a device node for this device. Look, the class is
++         * being used here. The same class is associated with N_MINOR
++         * devices. Once the function returns, device nodes will be
++         * created as /dev/my_dev0, /dev/my_dev1,... You can also view
++         * the devices under /sys/class/my_driver_class.
++         */
++	sprintf (dev_name, "%s%d", D4XX_DRIVER_NAME_DFU, MAJOR(*dev_num));
++	chr_dev = device_create(*d4xx_class, NULL, *dev_num, NULL, dev_name);
++        if (IS_ERR(chr_dev)) {
++		ret = PTR_ERR(chr_dev);
++		dev_err(&c->dev,"Could not create device\n");
++		class_destroy(*d4xx_class);
++		unregister_chrdev_region(0, 1);
++		return ret;
++	}
++        /* Now make the device live for the users to access */
++        cdev_add(d4xx_cdev, *dev_num, 1);
++	return 0;
++};
++
++int d4xx_chrdev_remove(struct d4xx *state)
++{
++	struct class* *d4xx_class = &state->dfu_dev.d4xx_class;
++	dev_t *dev_num = &state->s_data->dev->devt;
++
++	dev_info(state->s_data->dev, "%s()\n", __func__);
++	unregister_chrdev_region(*dev_num, 1);
++	device_destroy(*d4xx_class, *dev_num);
++	if (atomic_cmpxchg (&primary_chardev, MAJOR(*dev_num), 0) == MAJOR(*dev_num))
++		class_destroy(*d4xx_class);
++	return 0;
++};
++
++static const u32 ctrl_cid_list[] = {
++	TEGRA_CAMERA_CID_FUSE_ID,
++	TEGRA_CAMERA_CID_HDR_EN,
++	TEGRA_CAMERA_CID_SENSOR_MODE_ID,
++};
++#define D4XX_FUSE_ID_SIZE	6
++#define D4XX_FUSE_ID_STR_SIZE	(D4XX_FUSE_ID_SIZE * 2)
++
++static struct tegracam_ctrl_ops d4xx_tegra_ctrl_ops = {
++	.numctrls = ARRAY_SIZE(ctrl_cid_list),
++	.ctrl_cid_list = ctrl_cid_list,
++	.string_ctrl_size = {0, D4XX_FUSE_ID_STR_SIZE},
++	.set_group_hold = d4xx_set_group_hold,
++	.fill_string_ctrl = d4xx_fill_string_ctrl,
++};
++
++
++static int d4xx_probe(struct i2c_client *c, const struct i2c_device_id *id)
++{
++	struct d4xx *state = devm_kzalloc(&c->dev, sizeof(*state), GFP_KERNEL);
++	u16 rec_state;
++	int ret, err = 0;
++	const char *str;
++
++	if (!state)
++		return -ENOMEM;
++
++	mutex_init(&state->dfu_dev.lock);
++
++	state->client = c;
++
++	state->vcc = devm_regulator_get(&c->dev, "vcc");
++	if (IS_ERR(state->vcc)) {
++		ret = PTR_ERR(state->vcc);
++		dev_warn(&c->dev, "failed %d to get vcc regulator\n", ret);
++		return ret;
++	}
++
++	if (state->vcc) {
++		ret = regulator_enable(state->vcc);
++		if (ret < 0) {
++			dev_warn(&c->dev, "failed %d to enable the vcc regulator\n", ret);
++			return ret;
++		}
++	}
++
++	state->tc_dev = devm_kzalloc(&c->dev,
++			sizeof(struct tegracam_device), GFP_KERNEL);
++	if (!state->tc_dev)
++		return -ENOMEM;
++
++	state->tc_dev->client = c;
++	state->tc_dev->dev = &c->dev;
++
++	strncpy(state->tc_dev->name, "d4xx", sizeof(state->tc_dev->name));
++
++	state->tc_dev->dev_regmap_config = &d4xx_regmap_config;
++	state->tc_dev->sensor_ops = &d4xx_common_ops;
++	state->tc_dev->v4l2sd_internal_ops = &d4xx_mux_internal_ops;
++	state->tc_dev->tcctrl_ops = &d4xx_tegra_ctrl_ops;
++
++	ret = tegracam_device_register(state->tc_dev);
++	if (ret) {
++		dev_err(&c->dev, "Failed to initialize d4xx.\n");
++		goto e_regulator;
++	}
++	state->s_data = state->tc_dev->s_data;
++	state->dfu_dev.tc_dev = state->tc_dev;
++	tegracam_set_privdata(state->tc_dev, (void *)state);
++
++	ret = d4xx_chrdev_init(c, state);
++	if (ret < 0)
++		goto e_tegracam;
++	ret = d4xx_read(state, 0x5020, &rec_state);
++	if (ret < 0) {
++		dev_err(&c->dev, "%s(): cannot communicate with D4XX: %d\n", __func__, ret);
++		goto e_chardev;
++	}
++
++	if (rec_state == 0x201) {
++		dev_info(&c->dev, "%s(): D4XX recovery state\n", __func__);
++		state->dfu_dev.dfu_state_flag = D4XX_DFU_RECOVERY;
++		return 0;
++	}
++
++	err = of_property_read_string(c->dev.of_node, "cam-type",
++			&str);
++	if (!err && !strncmp(str, "RGB", strlen("RGB")))
++		state->is_rgb = 1;
++
++	ret = d4xx_v4l_init(state->tc_dev);
++	if (ret < 0)
++		goto e_regulator;
++	/* Override I2C drvdata */
++//	i2c_set_clientdata(c, state);
++
++/*	regulators? clocks?
++	devm_regulator_bulk_get(&c->dev, D4XX_N_SUPPLIES, state->supplies);
++	state->clock = devm_clk_get(&c->dev, D4XX_CLK_NAME);
++	if (IS_ERR(state->clock)) {
++		ret = -EPROBE_DEFER;
++		goto err;
++	}
++*/
++	return 0;
++
++ e_regulator:
++	if (state->vcc)
++		regulator_disable(state->vcc);
++e_chardev:
++	d4xx_chrdev_remove(state);
++e_tegracam:
++	tegracam_device_unregister(state->tc_dev);
++	return ret;
++}
++
++static int d4xx_remove(struct i2c_client *c)
++{
++	struct d4xx *state = container_of(i2c_get_clientdata(c), struct d4xx, mux.sd.subdev);
++
++	dev_info(&c->dev, "%s()\n", __func__);
++	if (state->vcc)
++		regulator_disable(state->vcc);
++//	gpio_free(state->pwdn_gpio);
++	d4xx_chrdev_remove(state);
++	if (state->dfu_dev.dfu_state_flag != D4XX_DFU_RECOVERY)
++		d4xx_mux_remove(state);
++	return 0;
++}
++
++static const struct i2c_device_id d4xx_id[] = {
++	{ D4XX_DRIVER_NAME, DS4XX_D415 },
++	{ D4XX_DRIVER_NAME_ASR, DS4XX_D31 },
++	{ D4XX_DRIVER_NAME_AWG, DS4XX_D465 },
++	{ },
++};
++MODULE_DEVICE_TABLE(i2c, d4xx_id);
++
++static struct camera_common_pdata *d4xx_parse_dt(struct tegracam_device *tc_dev)
++{
++	struct device *dev = tc_dev->dev;
++	struct device_node *np = dev->of_node;
++	struct camera_common_pdata *board_priv_pdata;
++	const struct of_device_id *match;
++	struct camera_common_pdata *ret = NULL;
++	int gpio = -1;
++
++	if (!np)
++		return NULL;
++
++	match = of_match_device(d4xx_of_match, dev);
++	if (!match) {
++		dev_err(dev, "Failed to find matching dt id\n");
++		return NULL;
++	}
++
++	board_priv_pdata = devm_kzalloc(dev,
++					sizeof(*board_priv_pdata), GFP_KERNEL);
++	if (!board_priv_pdata)
++		return NULL;
++
++	gpio = of_get_named_gpio(np, "pwdn-gpios", 0);
++	if (gpio < 0) {
++		if (gpio == -EPROBE_DEFER)
++			ret = ERR_PTR(-EPROBE_DEFER);
++		dev_err(dev, "reset-gpios not found %d\n", gpio);
++		goto error;
++	}
++	board_priv_pdata->reset_gpio = (unsigned int)gpio;
++
++	return board_priv_pdata;
++
++error:
++	devm_kfree(dev, board_priv_pdata);
++	return ret;
++}
++
++static struct i2c_driver d4xx_i2c_driver = {
++	.driver = {
++		.owner = THIS_MODULE,
++		.name = D4XX_DRIVER_NAME
++	},
++	.probe		= d4xx_probe,
++	.remove		= d4xx_remove,
++	.id_table	= d4xx_id,
++};
++
++module_i2c_driver(d4xx_i2c_driver);
++
++MODULE_DESCRIPTION("Intel RealSense D4xx camera driver");
++MODULE_AUTHOR("Alexander Gantman (alexander.gantman@intel.com)");
++MODULE_LICENSE("GPL v2");
++
+diff --git a/drivers/media/i2c/d4xx/rs_d4xx.h b/drivers/media/i2c/d4xx/rs_d4xx.h
+new file mode 100644
+index 0000000..1ae58a6
+--- /dev/null
++++ b/drivers/media/i2c/d4xx/rs_d4xx.h
+@@ -0,0 +1,80 @@
++/*
++ * rs_d4xx.h - Intel(R) RealSense(TM) D4XX camera driver
++ *
++ * Copyright (c) 2017-2019, INTEL CORPORATION.  All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef __RS_D4XX__
++#define __RS_D4XX__
++
++#include <d4xx_dfu.h>
++#include <media/camera_common.h>
++
++
++//#define D4XX_DRIVER_NAME "DS5 RealSense camera driver"
++#define D4XX_DRIVER_NAME "d4xx"
++#define D4XX_DRIVER_NAME_AWG "d4xx-awg"
++#define D4XX_DRIVER_NAME_ASR "d4xx-asr"
++#define D4XX_DRIVER_NAME_CLASS "d4xx-class"
++#define D4XX_DRIVER_NAME_DFU "d4xx-dfu"
++#define D4XX_START_POLL_TIME	10
++#define D4XX_START_MAX_TIME	50
++#define D4XX_START_MAX_COUNT (D4XX_START_MAX_TIME / D4XX_START_POLL_TIME)
++
++struct d4xx_ctrls {
++	struct v4l2_ctrl_handler handler;
++	struct {
++		struct v4l2_ctrl *log;
++		struct v4l2_ctrl *laser_power;
++		struct v4l2_ctrl *manual_laser_power;
++		struct v4l2_ctrl *auto_exp;
++		struct v4l2_ctrl *exposure;
++		/* TODO: double-check: in DS5 manual gain only works with manual exposure */
++		struct v4l2_ctrl *gain;
++	};
++};
++
++struct d4xx {
++	struct {
++		struct camera_common_data sd;
++	} mux;
++	struct d4xx_ctrls ctrls;
++	struct d4xx_dfu_dev dfu_dev;
++	bool power;
++	struct i2c_client *client;
++	/*struct d4xx_vchan virtual_channels[CSI2_MAX_VIRTUAL_CHANNELS];*/
++	/* All below pointers are used for writing, cannot be const */
++	struct regulator *vcc;
++	struct tegracam_device *tc_dev;
++	struct camera_common_data *s_data;
++	int is_rgb;
++};
++
++struct hwm_cmd {
++	unsigned short header;
++	unsigned short magic_word;
++	unsigned int   opcode;
++	unsigned int param1;
++	unsigned int param2;
++	unsigned int param3;
++	unsigned int param4;
++	unsigned char Data[0];
++};
++
++const struct file_operations d4xx_device_file_ops;
++
++int d4xx_v4l_init(struct tegracam_device *tc_dev);
++
++#endif /* __RS_D4XX__ */
+diff --git a/drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h b/drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h
+new file mode 100644
+index 0000000..7160ca3
+--- /dev/null
++++ b/drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h
+@@ -0,0 +1,166 @@
++/*
++ * rs_d4xx_mode_tbls.h - Intel(R) RealSense(TM) D4XX camera driver
++ *
++ * Copyright (c) 2017-2019, INTEL CORPORATION.  All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef __D4XX_I2C_TABLES__
++#define __D4XX_I2C_TABLES__
++
++#include <media/camera_common.h>
++#include <linux/miscdevice.h>
++
++#define D4XX_DEVICE_TYPE		0x0310
++#define D4XX_DEVICE_TYPE_D43X		5
++#define D4XX_DEVICE_TYPE_D46X		4
++#define D4XX_DEPTH_Y_STREAMS_DT		0x4000
++#define D4XX_DEPTH_Y_STREAMS_DT_IR	0x4001
++#define D4XX_DEPTH_Y_STREAMS_MD		0x4002
++#define D4XX_DEPTH_RES_WIDTH		0x4004
++#define D4XX_DEPTH_RES_WIDTH_HI		0x4005
++#define D4XX_DEPTH_RES_HEIGHT		0x4008
++#define D4XX_DEPTH_RES_HEIGHT_HI	0x4009
++#define D4XX_DEPTH_Y_FPS		0x400C
++#define D4XX_Y_RES_WIDTH		0x4010
++#define D4XX_Y_RES_HEIGHT		0x4014
++#define D4XX_RGB_STREAM_DT		0x4020
++#define D4XX_RGB_STREAM_MD		0x4022
++#define D4XX_RGB_RES_WIDTH		0x4024
++#define D4XX_RGB_RES_WIDTH_HI		0x4025
++#define D4XX_RGB_RES_HEIGHT		0x4028
++#define D4XX_RGB_RES_HEIGHT_HI		0x4029
++#define D4XX_RGB_FPS			0x402C
++
++#define D4XX_DEPTH_CONTROL_BASE		0x4100
++#define D4XX_RGB_CONTROL_BASE		0x4200
++#define D4XX_AUTO_EXPOSURE_MODE		0x000C
++#define D4XX_MANUAL_EXPOSURE_LSB	0x0000
++#define D4XX_MANUAL_EXPOSURE_MSB	0x0002
++#define D4XX_MANUAL_GAIN		0x0004
++#define D4XX_LASER_POWER		0x0008
++#define D4XX_MANUAL_LASER_POWER		0x4124
++
++
++#define D4XX_TABLE_WAIT_MS	0
++#define D4XX_TABLE_END	1
++#define D4XX_MAX_RETRIES	3
++#define D4XX_WAIT_MS_STOP	1
++#define D4XX_WAIT_MS_START	30
++#define D4XX_WAIT_MS_STREAM	200
++#define D4XX_GAIN_TABLE_SIZE 255
++
++/* #define INIT_ET_INSETTING 1 */
++
++#define d4xx_reg struct reg_8
++
++
++static d4xx_reg d4xx_start[] = {
++	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_START}, //todo: rework 
++	{0x1000, 0x02},
++	{D4XX_TABLE_END, 0x00}
++};
++
++static d4xx_reg d4xx_stop[] = {
++	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_STOP},
++	{0x1000, 0x01},
++	{D4XX_TABLE_END, 0x00}
++};
++
++static  d4xx_reg d465_1280x1024_z16[] = {
++	{D4XX_DEPTH_Y_STREAMS_DT, 0x31},
++	{D4XX_DEPTH_Y_STREAMS_MD, 0x00},
++	{D4XX_DEPTH_Y_FPS, 0x1e},
++	{D4XX_DEPTH_RES_WIDTH, 0x0},
++	{D4XX_DEPTH_RES_WIDTH_HI, 0x05},
++	{D4XX_DEPTH_RES_HEIGHT, 0x00 },
++	{D4XX_DEPTH_RES_HEIGHT_HI, 0x04},
++	{D4XX_TABLE_END, 0x00}
++};
++
++static  d4xx_reg d465_640x512_z16[] = {
++	{D4XX_DEPTH_Y_STREAMS_DT, 0x31},
++	{D4XX_DEPTH_Y_STREAMS_MD, 0x00},
++	{D4XX_DEPTH_Y_FPS, 0x1e},
++	{D4XX_DEPTH_RES_WIDTH, 0x80},
++	{D4XX_DEPTH_RES_WIDTH_HI, 0x02},
++	{D4XX_DEPTH_RES_HEIGHT, 0x00},
++	{D4XX_DEPTH_RES_HEIGHT_HI, 0x02},
++	{D4XX_TABLE_END, 0x00}
++};
++
++static  d4xx_reg d465_1920x1080_rgb[] = {
++	{D4XX_RGB_STREAM_DT, 0x1e},
++	{D4XX_RGB_STREAM_MD, 0x00},
++	{D4XX_RGB_FPS, 0x1e},
++	{D4XX_RGB_RES_WIDTH, 0x80},
++	{D4XX_RGB_RES_WIDTH_HI, 0x07},
++	{D4XX_RGB_RES_HEIGHT, 0x38 },
++	{D4XX_RGB_RES_HEIGHT_HI, 0x04},
++	{D4XX_TABLE_END, 0x00}
++};
++
++static  d4xx_reg d465_1280x720_rgb[] = {
++	{D4XX_RGB_STREAM_DT, 0x1e},
++	{D4XX_RGB_STREAM_MD, 0x00},
++	{D4XX_RGB_FPS, 0x1e},
++	{D4XX_RGB_RES_WIDTH, 0x00},
++	{D4XX_RGB_RES_WIDTH_HI, 0x05},
++	{D4XX_RGB_RES_HEIGHT, 0xd0 },
++	{D4XX_RGB_RES_HEIGHT_HI, 0x02},
++	{D4XX_TABLE_END, 0x00}
++};
++
++enum {
++	D465_MODE_1280X1024_Z16,
++	D465_MODE_640X512_Z16,
++	D465_MODE_1920X1080_RGB,
++	D465_MODE_1280X720_RGB,
++	D4XX_MODE_START_STREAM,
++	D4XX_MODE_STOP_STREAM,
++};
++
++static const int D4XX_30fps[] = {
++	30,
++};
++
++static const int D4XX_60fps[] = {
++	60,
++};
++
++static const int D4XX_6_30fps[] = {
++	6,
++	30,
++};
++
++static d4xx_reg *mode_table[] = {
++	[D465_MODE_1280X1024_Z16] = d465_1280x1024_z16,
++	[D465_MODE_640X512_Z16] = d465_640x512_z16,
++	[D465_MODE_1920X1080_RGB] = d465_1920x1080_rgb,
++	[D465_MODE_1280X720_RGB] = d465_1280x720_rgb,
++	[D4XX_MODE_START_STREAM] = d4xx_start,
++	[D4XX_MODE_STOP_STREAM] = d4xx_stop,
++};
++/*
++ * WARNING: frmfmt ordering need to match mode definition in
++ * device tree!
++ */
++static const struct camera_common_frmfmt d4xx_frmfmt[] = {
++	{{1280, 720}, D4XX_6_30fps, 2, 0,
++			D465_MODE_1280X1024_Z16},
++	{{640, 512}, D4XX_6_30fps, 2, 1,
++			D465_MODE_640X512_Z16},
++	/* Add modes with no device tree support after below */
++};
++#endif /* __D4XX_I2C_TABLES__ */
+diff --git a/drivers/media/v4l2-core/v4l2-ioctl.c b/drivers/media/v4l2-core/v4l2-ioctl.c
+index f7a7f97..ad50307 100644
+--- a/drivers/media/v4l2-core/v4l2-ioctl.c
++++ b/drivers/media/v4l2-core/v4l2-ioctl.c
+@@ -1169,10 +1169,12 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
+ 	case V4L2_PIX_FMT_GREY:		descr = "8-bit Greyscale"; break;
+ 	case V4L2_PIX_FMT_Y4:		descr = "4-bit Greyscale"; break;
+ 	case V4L2_PIX_FMT_Y6:		descr = "6-bit Greyscale"; break;
++	case V4L2_PIX_FMT_Y8:		descr = "8-bit Greyscale"; break;
+ 	case V4L2_PIX_FMT_Y10:		descr = "10-bit Greyscale"; break;
+ 	case V4L2_PIX_FMT_Y12:		descr = "12-bit Greyscale"; break;
+ 	case V4L2_PIX_FMT_Y16:		descr = "16-bit Greyscale"; break;
+ 	case V4L2_PIX_FMT_Y16_BE:	descr = "16-bit Greyscale BE"; break;
++	case V4L2_PIX_FMT_Z16:		descr = "16-bit Depth"; break;
+ 	case V4L2_PIX_FMT_Y10BPACK:	descr = "10-bit Greyscale (Packed)"; break;
+ 	case V4L2_PIX_FMT_PAL8:		descr = "8-bit Palette"; break;
+ 	case V4L2_PIX_FMT_UV8:		descr = "8-bit Chrominance UV 4-4"; break;
+diff --git a/include/uapi/linux/videodev2.h b/include/uapi/linux/videodev2.h
+index f4adb1c..17ad6af 100644
+--- a/include/uapi/linux/videodev2.h
++++ b/include/uapi/linux/videodev2.h
+@@ -440,6 +440,8 @@ struct v4l2_capability {
+ #define V4L2_CAP_EXT_PIX_FORMAT		0x00200000  /* Supports the extended pixel format */
+ #define V4L2_CAP_SDR_OUTPUT		0x00400000  /* Is a SDR output device */
+ 
++#define V4L2_CAP_META_CAPTURE		0x00800000  /* Is a metadata capture device */
++
+ #define V4L2_CAP_READWRITE              0x01000000  /* read/write systemcalls */
+ #define V4L2_CAP_ASYNCIO                0x02000000  /* async I/O */
+ #define V4L2_CAP_STREAMING              0x04000000  /* streaming I/O ioctls */
+@@ -638,6 +640,7 @@ struct v4l2_pix_format {
+ #define V4L2_PIX_FMT_JPGL	v4l2_fourcc('J', 'P', 'G', 'L') /* JPEG-Lite */
+ #define V4L2_PIX_FMT_SE401      v4l2_fourcc('S', '4', '0', '1') /* se401 janggu compressed rgb */
+ #define V4L2_PIX_FMT_S5C_UYVY_JPG v4l2_fourcc('S', '5', 'C', 'I') /* S5C73M3 interleaved UYVY/JPEG */
++#define V4L2_PIX_FMT_Y8       v4l2_fourcc('Y', '8', ' ', ' ') /* Greyscale 8-bit */
+ #define V4L2_PIX_FMT_Y8I      v4l2_fourcc('Y', '8', 'I', ' ') /* Greyscale 8-bit L/R interleaved */
+ #define V4L2_PIX_FMT_Y12I     v4l2_fourcc('Y', '1', '2', 'I') /* Greyscale 12-bit L/R interleaved */
+ #define V4L2_PIX_FMT_Z16      v4l2_fourcc('Z', '1', '6', ' ') /* Depth data 16-bit */
+@@ -658,6 +661,8 @@ struct v4l2_pix_format {
+ /* priv field value to indicates that subsequent fields are valid. */
+ #define V4L2_PIX_FMT_PRIV_MAGIC		0xfeedcafe
+ 
++#define V4L2_META_FMT_D4XX_CSI2    v4l2_fourcc('D', '4', 'X', 'X') /* D4XX Payload Header metadata */
++
+ /* Flags */
+ #define V4L2_PIX_FMT_FLAG_PREMUL_ALPHA	0x00000001
+ 
+-- 
+2.7.4
+

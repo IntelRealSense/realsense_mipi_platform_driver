@@ -1,0 +1,246 @@
+From aff1f806e01847c5075945fcccc4f7931f66924c Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Mon, 16 Sep 2019 13:11:58 +0300
+Subject: [PATCH] d4xx: ds5 depth dts support       - tca9546 - regulator
+ always-on
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ ...ra186-cvb-prod-p2597-b00-p3310-1000-a00-00.dtsi |   2 +
+ .../tegra186-quill-camera-ds5.dtsi                 | 211 +++++++++++++++++++++
+ 2 files changed, 213 insertions(+)
+ create mode 100644 kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+
+diff --git a/kernel-dts/t18x-common-platforms/tegra186-cvb-prod-p2597-b00-p3310-1000-a00-00.dtsi b/kernel-dts/t18x-common-platforms/tegra186-cvb-prod-p2597-b00-p3310-1000-a00-00.dtsi
+index 62f836e..20cbf1a 100644
+--- a/kernel-dts/t18x-common-platforms/tegra186-cvb-prod-p2597-b00-p3310-1000-a00-00.dtsi
++++ b/kernel-dts/t18x-common-platforms/tegra186-cvb-prod-p2597-b00-p3310-1000-a00-00.dtsi
+@@ -132,6 +132,8 @@
+ 			regulator-max-microvolt = <1800000>;
+ 			gpio = <&gpio_i2c_0_77 9 1>;
+ 			enable-active-high;
++			regulator-always-on;
++			regulator-boot-on;
+ 		};
+ 
+ 		vdd_hdmi: regulator@3 {
+diff --git a/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi b/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+new file mode 100644
+index 0000000..72f6347
+--- /dev/null
++++ b/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+@@ -0,0 +1,211 @@
++#define CAMERA_I2C_MUX_BUS(x) (0x1E + x)
++#define CAM2_PWDN TEGRA_MAIN_GPIO(X, 0)
++#define CAM4_PWDN TEGRA_MAIN_GPIO(K, 0)
++#define CAM0_RGB_RST_L	TEGRA_MAIN_GPIO(F, 5)
++#define CAM0_RGB_PWDN	TEGRA_MAIN_GPIO(D, 0)
++#define CAM1_RGB_RST_L	TEGRA_MAIN_GPIO(F, 5)
++#define CAM1_RGB_PWDN	TEGRA_MAIN_GPIO(D, 0)
++#define CAM2_RGB_RST_L	TEGRA_MAIN_GPIO(F, 5)
++#define CAM2_RGB_PWDN	TEGRA_MAIN_GPIO(D, 0)
++
++#define CAM0_RST_L	TEGRA_MAIN_GPIO(R, 5)
++#define CAM0_PWDN	TEGRA_MAIN_GPIO(R, 0)
++#define CAM1_RST_L	TEGRA_MAIN_GPIO(R, 1)
++#define CAM1_PWDN	TEGRA_MAIN_GPIO(L, 6)
++
++
++#define PCA9532_TYPE_LED 1
++#define PCA9532_PWM0 2
++#define PWM_CALIB_GPIO	TEGRA_MAIN_GPIO(X, 6)
++
++/ {
++	i2c@3180000 {
++		clock-frequency = <400000>;
++		tca9548@72 {
++			compatible = "nxp,pca9548";
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <0x72>;
++			vcc-supply = <&en_vdd_cam>;
++			vcc-pullup-supply = <&vdd_3v3>;
++			skip_mux_detect;
++			force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
++			status = "ok";
++			i2c@0 {
++				reg = <0x0>;	// line 4 of the I2C switch
++				#address-cells = <0x1>;
++				i2c-mux,deselect-on-exit;
++				#size-cells = <0x0>;
++
++				d4m0: d4m@10 {
++					status = "ok";
++					reg = <0x10>;
++					compatible = "intel,d4xx";
++					vcc-supply = <&en_vdd_cam>;
++					pwdn-gpios = <&tegra_main_gpio CAM0_PWDN GPIO_ACTIVE_HIGH>;
++					cam-type = "Depth";
++					ports {
++						#address-cells = <1>;
++						#size-cells = <0>;
++
++						port@0 {
++							reg = <0>;
++							d4m_out0: endpoint {
++								vc-id = <0>;
++								port-index = <0>;
++								bus-width = <2>;
++								remote-endpoint = <&ds5_csi_in0>;
++								src_y0: source@0 {
++									data-types = <0x2a
++											0x1e
++											0x2b
++											0x30
++											0x32>;
++									virt-chan = <0>;
++								};
++							};
++						};
++					};
++					/* mode0: Y8, mode1: depth D16 */
++					mode0 {
++						pixel_t = "yuv_uyvy16";
++						num_lanes = "2";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_a";
++						mclk_khz = "24000";
++						pix_clk_hz = "156750000";
++						discontinuous_clk = "yes";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						line_length = "1280"; /* 2200 */
++						mclk_multiplier = "15.625";
++						embedded_metadata_height = "0";
++						min_framerate = "6";
++						max_framerate = "30";
++					};
++					mode1 {
++						pixel_t = "yuv_uyvy16";
++						num_lanes = "2";
++						active_w = "640";
++						active_h = "512";
++						tegra_sinterface = "serial_a";
++						mclk_khz = "24000";
++						pix_clk_hz = "375000000";
++						discontinuous_clk = "yes";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						line_length = "640"; /* 2200 */
++						mclk_multiplier = "15.625";
++						embedded_metadata_height = "0";
++						min_framerate = "6";
++						max_framerate = "30";
++					};
++					mode2 {
++						pixel_t = "bayer_bggr10";
++						num_lanes = "2";
++						active_w = "1920";
++						active_h = "1080";
++						tegra_sinterface = "serial_a";
++						mclk_khz = "24000";
++						pix_clk_hz = "375000000";
++						discontinuous_clk = "yes";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						line_length = "1920";
++						mclk_multiplier = "15.625";
++						embedded_metadata_height = "0";
++						min_framerate = "6";
++						max_framerate = "30";
++					};
++					mode3 {
++						pixel_t = "bayer_bggr10";
++						num_lanes = "2";
++						active_w = "1280";
++						active_h = "720";
++						tegra_sinterface = "serial_a";
++						mclk_khz = "24000";
++						pix_clk_hz = "375000000";
++						discontinuous_clk = "yes";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						line_length = "1280";
++						mclk_multiplier = "15.625";
++						embedded_metadata_height = "0";
++						min_framerate = "6";
++						max_framerate = "30";
++					};
++				};
++			};
++
++		};
++	};
++	host1x {
++		csi_base: nvcsi@150c0000 {
++			#address-cells = <0x1>;
++			#size-cells = <0x0>;
++
++			num-channels = <1>;
++
++			channel@0 {
++				reg = <0x0>;
++				status = "ok";
++
++				ports {
++					#address-cells = <0x1>;
++					#size-cells = <0x0>;
++
++					port@0 {
++						reg = <0>;
++						status = "ok";
++
++						ds5_csi_in0: endpoint@0 {
++							status = "ok";
++							port-index = <0>;
++							bus-width = <2>;
++							vc-id = <0>;
++							remote-endpoint = <&d4m_out0>;
++						};
++					};
++					port@1 {
++						reg = <1>;
++						status = "ok";
++						csi_out0: endpoint@1 {
++							status = "ok";
++							remote-endpoint = <&vi_in0>;
++						};
++					};
++
++				};
++			};
++
++		};
++
++		vi_base: vi@15700000 {
++			num-channels = <1>;
++
++			ports {
++				#address-cells = <0x1>;
++				#size-cells = <0x0>;
++
++				port@0 {
++					reg = <0>;
++					status = "ok";
++
++					vi_in0: endpoint {
++						status = "ok";
++						port-index = <0>;
++						bus-width = <2>;
++						remote-endpoint = <&csi_out0>;
++					};
++				};
++			};
++			sources {
++				source@0 {
++					remote-source = <&src_y0>;
++				};
++			};
++		};
++	};
++
++};
+-- 
+2.7.4
+

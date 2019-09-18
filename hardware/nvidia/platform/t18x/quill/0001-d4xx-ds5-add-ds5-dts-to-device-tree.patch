@@ -1,0 +1,34 @@
+From 89a92e0d692992ba0c0b924ef2006f92f70cc7f0 Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Tue, 10 Sep 2019 11:46:07 +0300
+Subject: [PATCH] d4xx: ds5 - add ds5 dts to device tree
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ kernel-dts/tegra186-quill-p3310-1000-a00-00-base.dts | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/kernel-dts/tegra186-quill-p3310-1000-a00-00-base.dts b/kernel-dts/tegra186-quill-p3310-1000-a00-00-base.dts
+index ed560d3..ee26811 100644
+--- a/kernel-dts/tegra186-quill-p3310-1000-a00-00-base.dts
++++ b/kernel-dts/tegra186-quill-p3310-1000-a00-00-base.dts
+@@ -16,6 +16,7 @@
+ #include <t18x-common-platforms/tegra186-quill-common-p3310-1000-a00.dtsi>
+ #include <t18x-common-platforms/tegra186-quill-power-tree-p3310-1000-a00-00.dtsi>
+ #include <t18x-common-platforms/tegra186-quill-camera-modules.dtsi>
++#include <t18x-common-platforms/tegra186-quill-camera-ds5.dtsi>
+ #include <t18x-common-modules/tegra186-display-e3320-1000-a00.dtsi>
+ 
+ /* comms dtsi file should be included after gpio dtsi file */
+@@ -24,7 +25,7 @@
+ #include <t18x-common-modules/tegra186-super-module-e2614-p2597-1000-a00.dtsi>
+ #include <t18x-common-plugin-manager/tegra186-quill-display-plugin-manager.dtsi>
+ #include <t18x-common-prod/tegra186-priv-quill-p3310-1000-a00-prod.dtsi>
+-#include <t18x-common-plugin-manager/tegra186-quill-camera-plugin-manager.dtsi>
++/*#include <t18x-common-plugin-manager/tegra186-quill-camera-plugin-manager.dtsi>*/
+ 
+ / {
+ 	model = "quill";
+-- 
+2.7.4
+
