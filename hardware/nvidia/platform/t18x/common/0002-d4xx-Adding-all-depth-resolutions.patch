@@ -1,0 +1,88 @@
+From ee766699c8d7c7e20e136ac81e6e3df9a78b89dc Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Mon, 28 Oct 2019 19:15:26 +0200
+Subject: [PATCH] d4xx: Adding all depth resolutions.
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ .../tegra186-quill-camera-ds5.dtsi                 | 42 +++++++++++++++++++---
+ 1 file changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi b/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+index 72f6347..c6229d0 100644
+--- a/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
++++ b/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+@@ -71,7 +71,7 @@
+ 						pixel_t = "yuv_uyvy16";
+ 						num_lanes = "2";
+ 						active_w = "1280";
+-						active_h = "720";
++						active_h = "960";
+ 						tegra_sinterface = "serial_a";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "156750000";
+@@ -87,8 +87,25 @@
+ 					mode1 {
+ 						pixel_t = "yuv_uyvy16";
+ 						num_lanes = "2";
++						active_w = "960";
++						active_h = "720";
++						tegra_sinterface = "serial_a";
++						mclk_khz = "24000";
++						pix_clk_hz = "375000000";
++						discontinuous_clk = "yes";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						line_length = "960"; /* 2200 */
++						mclk_multiplier = "15.625";
++						embedded_metadata_height = "0";
++						min_framerate = "6";
++						max_framerate = "30";
++					};
++					mode2 {
++						pixel_t = "yuv_uyvy16";
++						num_lanes = "2";
+ 						active_w = "640";
+-						active_h = "512";
++						active_h = "480";
+ 						tegra_sinterface = "serial_a";
+ 						mclk_khz = "24000";
+ 						pix_clk_hz = "375000000";
+@@ -101,7 +118,24 @@
+ 						min_framerate = "6";
+ 						max_framerate = "30";
+ 					};
+-					mode2 {
++					mode3 {
++						pixel_t = "yuv_uyvy16";
++						num_lanes = "2";
++						active_w = "320";
++						active_h = "240";
++						tegra_sinterface = "serial_a";
++						mclk_khz = "24000";
++						pix_clk_hz = "375000000";
++						discontinuous_clk = "yes";
++						dpcm_enable = "false";
++						cil_settletime = "0";
++						line_length = "320"; /* 2200 */
++						mclk_multiplier = "15.625";
++						embedded_metadata_height = "0";
++						min_framerate = "6";
++						max_framerate = "30";
++					};
++					/*mode2 {
+ 						pixel_t = "bayer_bggr10";
+ 						num_lanes = "2";
+ 						active_w = "1920";
+@@ -134,7 +168,7 @@
+ 						embedded_metadata_height = "0";
+ 						min_framerate = "6";
+ 						max_framerate = "30";
+-					};
++					};*/
+ 				};
+ 			};
+ 
+-- 
+2.7.4
+
