@@ -1,0 +1,180 @@
+From 3b392669c612c3ba0c017bdefcdd5cf4b037170c Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Tue, 29 Oct 2019 11:31:09 +0200
+Subject: [PATCH] d4xx: Adding missed functionality 	- calibration set/get 
+ - gvd
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ drivers/media/i2c/d4xx/d4xx_rs.c | 92 ++++++++++++++++++++++++++++++++++++----
+ drivers/media/i2c/d4xx/rs_d4xx.h |  8 ++++
+ 2 files changed, 92 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/i2c/d4xx/d4xx_rs.c b/drivers/media/i2c/d4xx/d4xx_rs.c
+index ea5473d..6311c95 100644
+--- a/drivers/media/i2c/d4xx/d4xx_rs.c
++++ b/drivers/media/i2c/d4xx/d4xx_rs.c
+@@ -88,6 +88,11 @@ static const struct hwm_cmd set_calib_data = {
+ 	.param1 = 0x00,	//table_id
+ };
+ 
++static const struct hwm_cmd gvd = {
++	.header = 0x14,
++	.magic_word = 0xCDAB,
++	.opcode = 0x10,
++};
+ /*************************/
+ 
+ 
+@@ -307,6 +312,27 @@ static int d4xx_hw_set_exposure(struct d4xx *state, u32 val)
+ #define D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET	(D4XX_CAMERA_CID_BASE+4)
+ #define D4XX_CAMERA_COEFF_CALIBRATION_TABLE_GET	(D4XX_CAMERA_CID_BASE+5)
+ #define D4XX_CAMERA_COEFF_CALIBRATION_TABLE_SET	(D4XX_CAMERA_CID_BASE+6)
++#define D4XX_CAMERA_CID_FW_VERSION		(D4XX_CAMERA_CID_BASE+7)
++#define D4XX_CAMERA_CID_GVD			(D4XX_CAMERA_CID_BASE+8)
++
++static int d4xx_set_calibration_data(struct d4xx *state, struct hwm_cmd *cmd, u16 length)
++{
++	int ret;
++	int i = D4XX_START_MAX_COUNT;
++	u16 status = 2;
++
++	d4xx_raw_write_with_check(state, 0x4900, cmd, length);
++	d4xx_write_with_check(state, 0x490c, 0x01); /* execute cmd */
++	do {
++		ret = d4xx_read(state, 0x5000, &status);
++	} while (ret && i-- && status != 1);
++
++	if (ret || status == 1) {
++		dev_err(state->s_data->dev, "%s(): Failed to set calibration table, error: %x\n", __func__, status);
++		return status;
++	}
++	return ret;
++}
+ 
+ static int d4xx_s_ctrl(struct v4l2_ctrl *ctrl)
+ {
+@@ -343,6 +369,39 @@ static int d4xx_s_ctrl(struct v4l2_ctrl *ctrl)
+ 	case D4XX_CAMERA_CID_MANUAL_LASER_POWER:
+ 		d4xx_write(state, D4XX_MANUAL_LASER_POWER, ctrl->val);
+ 		break;
++	case D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET: {
++		struct hwm_cmd *calib_cmd;
++
++		dev_info(&state->client->dev, "%s(): D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET \n", __func__);
++		dev_info(&state->client->dev, "%s(): table id: 0x%x\n", __func__, *((u8*)ctrl->p_new.p + 2));
++		if (ctrl->p_new.p && COEF_CALIBRATION_ID == *((u8*)ctrl->p_new.p + 2)) {
++			calib_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 256, GFP_KERNEL);
++			memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
++			calib_cmd->header = 276;
++			calib_cmd->param1 = DEPTH_CALIBRATION_ID;
++			memcpy(calib_cmd->Data, (u8*)ctrl->p_new.p , 256);
++			ret = d4xx_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 256);
++			devm_kfree(&state->client->dev, calib_cmd);
++		}
++		break;
++		}
++	case D4XX_CAMERA_COEFF_CALIBRATION_TABLE_SET: {
++			struct hwm_cmd *calib_cmd;
++
++			dev_info(&state->client->dev, "%s(): D4XX_CAMERA_COEFF_CALIBRATION_TABLE_SET \n", __func__);
++			dev_info(&state->client->dev, "%s(): table id %d\n", __func__, *((u8*)ctrl->p_new.p + 2));
++			if (ctrl->p_new.p && COEF_CALIBRATION_ID == *((u8*)ctrl->p_new.p + 2)) {
++				calib_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 512, GFP_KERNEL);
++				memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
++				calib_cmd->header = 532;
++				calib_cmd->param1 = COEF_CALIBRATION_ID;
++				memcpy(calib_cmd->Data, (u8*)ctrl->p_new.p , 512);
++				ret = d4xx_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 512);
++				devm_kfree(&state->client->dev, calib_cmd);
++			}
++
++		}
++		break;
+ 	}
+ 
+ unlock:
+@@ -382,22 +441,32 @@ static int d4xx_get_calibration_data(struct d4xx *state, enum table_id id, unsig
+ 	return ret;
+ }
+ 
+-static int d4xx_set_calibration_data(struct d4xx *state, struct hwm_cmd *cmd, u16 length)
++static int d4xx_gvd(struct d4xx *state, unsigned char *data)
+ {
++	struct hwm_cmd cmd;
+ 	int ret;
+-	int i = D4XX_START_MAX_COUNT;
++	u16 length = 0;
+ 	u16 status = 2;
+-	
+-	d4xx_raw_write_with_check(state, 0x4900, cmd, length);
++	u8 retries = 3;
++
++	memcpy(&cmd, &gvd, sizeof(gvd));
++	d4xx_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
+ 	d4xx_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+ 	do {
+-		ret = d4xx_read(state, 0x5000, &status);
+-	} while (ret && i-- && status != 1);
++		if (retries != 3)
++			msleep_range(10);
+ 
+-	if (ret || status == 1) {
+-		dev_err(state->s_data->dev, "%s(): Failed to set calibration table, error: %x\n", __func__, status);
++		ret = d4xx_read(state, 0x4904, &status);
++	} while (ret && retries-- && status != 0);
++
++	if (ret || status != 0) {
++		dev_err(&state->client->dev, "%s(): Failed to read GVD, HWM cmd status: %x\n", __func__, status);
+ 		return status;
+ 	}
++
++	ret = d4xx_raw_read(state, 0x4908, &length, sizeof(length));
++	d4xx_raw_read_with_check(state, 0x4900, data, length);
++
+ 	return ret;
+ }
+ 
+@@ -472,6 +541,13 @@ static int d4xx_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 			devm_kfree(state->s_data->dev, calib_cmd);
+ 			break;
+ 		}
++	case D4XX_CAMERA_CID_FW_VERSION:
++		*ctrl->p_new.p_u32 = state->fw_version << 16;
++		*ctrl->p_new.p_u32 |= state->fw_build;
++		break;
++	case D4XX_CAMERA_CID_GVD:
++		ret = d4xx_gvd(state, ctrl->p_new.p_u8);
++		break;
+ 	}
+ 	return ret;
+ }
+diff --git a/drivers/media/i2c/d4xx/rs_d4xx.h b/drivers/media/i2c/d4xx/rs_d4xx.h
+index af8afb3..c55da72 100644
+--- a/drivers/media/i2c/d4xx/rs_d4xx.h
++++ b/drivers/media/i2c/d4xx/rs_d4xx.h
+@@ -37,6 +37,12 @@ struct d4xx_ctrls {
+ 	struct v4l2_ctrl_handler handler;
+ 	struct {
+ 		struct v4l2_ctrl *log;
++		struct v4l2_ctrl *fw_version;
++		struct v4l2_ctrl *gvd;
++		struct v4l2_ctrl *get_depth_calib;
++		struct v4l2_ctrl *set_depth_calib;
++		struct v4l2_ctrl *get_coeff_calib;
++		struct v4l2_ctrl *set_coeff_calib;
+ 		struct v4l2_ctrl *laser_power;
+ 		struct v4l2_ctrl *manual_laser_power;
+ 		struct v4l2_ctrl *auto_exp;
+@@ -60,6 +66,8 @@ struct d4xx {
+ 	struct tegracam_device *tc_dev;
+ 	struct camera_common_data *s_data;
+ 	int is_rgb;
++	u16 fw_version;
++	u16 fw_build;
+ };
+ 
+ struct hwm_cmd {
+-- 
+2.7.4
+
