@@ -1,0 +1,192 @@
+From 8dda305a5831cd3ee11d8105a3df27d6efe03ea9 Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Tue, 5 Nov 2019 10:12:14 +0200
+Subject: [PATCH] d4xx: Added RGB support.       i2c switched to 100KHz      
+ DT still UYVY.       TODO: Move to Z16.
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ .../tegra186-quill-camera-ds5.dtsi                 | 98 ++++++++++++++++++----
+ 1 file changed, 84 insertions(+), 14 deletions(-)
+
+diff --git a/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi b/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+index 6d31dda..53dabdc 100644
+--- a/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
++++ b/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+@@ -20,7 +20,7 @@
+ 
+ / {
+ 	i2c@3180000 {
+-		clock-frequency = <400000>;
++		clock-frequency = <100000>;
+ 		tca9548@72 {
+ 			compatible = "nxp,pca9548";
+ 			#address-cells = <1>;
+@@ -79,9 +79,25 @@
+ 						cil_settletime = "0";
+ 						line_length = "1280"; /* 2200 */
+ 						mclk_multiplier = "15.625";
++
++						gain_factor = "1000000";
++						min_gain_val = "1000000";
++						max_gain_val = "177000000";
++						step_gain_val = "1";
++						default_gain = "1000000";
++						min_hdr_ratio = "32";
++						max_hdr_ratio = "32";
++						framerate_factor = "1000000";
++						min_framerate = "5000000";
++						max_framerate = "25000000";
++						step_framerate = "25";
++						default_framerate= "25000000";
++						exposure_factor = "1000000";
++						min_exp_time = "859";
++						max_exp_time = "15649";
++						step_exp_time = "1";
++						default_exp_time = "15649";/* us */
+ 						embedded_metadata_height = "0";
+-						min_framerate = "6";
+-						max_framerate = "30";
+ 					};
+ 					mode1 {
+ 						pixel_t = "yuv_uyvy16";
+@@ -96,9 +112,25 @@
+ 						cil_settletime = "0";
+ 						line_length = "960"; /* 2200 */
+ 						mclk_multiplier = "15.625";
++
++						gain_factor = "1000000";
++						min_gain_val = "1000000";
++						max_gain_val = "177000000";
++						step_gain_val = "1";
++						default_gain = "1000000";
++						min_hdr_ratio = "32";
++						max_hdr_ratio = "32";
++						framerate_factor = "1000000";
++						min_framerate = "5000000";
++						max_framerate = "25000000";
++						step_framerate = "25";
++						default_framerate= "25000000";
++						exposure_factor = "1000000";
++						min_exp_time = "859";
++						max_exp_time = "15649";
++						step_exp_time = "1";
++						default_exp_time = "15649";/* us */
+ 						embedded_metadata_height = "0";
+-						min_framerate = "6";
+-						max_framerate = "30";
+ 					};
+ 					mode2 {
+ 						pixel_t = "yuv_uyvy16";
+@@ -113,9 +145,25 @@
+ 						cil_settletime = "0";
+ 						line_length = "640"; /* 2200 */
+ 						mclk_multiplier = "15.625";
++
++						gain_factor = "1000000";
++						min_gain_val = "1000000";
++						max_gain_val = "177000000";
++						step_gain_val = "1";
++						default_gain = "1000000";
++						min_hdr_ratio = "32";
++						max_hdr_ratio = "32";
++						framerate_factor = "1000000";
++						min_framerate = "5000000";
++						max_framerate = "25000000";
++						step_framerate = "25";
++						default_framerate= "25000000";
++						exposure_factor = "1000000";
++						min_exp_time = "859";
++						max_exp_time = "15649";
++						step_exp_time = "1";
++						default_exp_time = "15649";/* us */
+ 						embedded_metadata_height = "0";
+-						min_framerate = "6";
+-						max_framerate = "30";
+ 					};
+ 					mode3 {
+ 						pixel_t = "yuv_uyvy16";
+@@ -130,9 +178,25 @@
+ 						cil_settletime = "0";
+ 						line_length = "320"; /* 2200 */
+ 						mclk_multiplier = "15.625";
++
++						gain_factor = "1000000";
++						min_gain_val = "1000000";
++						max_gain_val = "177000000";
++						step_gain_val = "1";
++						default_gain = "1000000";
++						min_hdr_ratio = "32";
++						max_hdr_ratio = "32";
++						framerate_factor = "1000000";
++						min_framerate = "5000000";
++						max_framerate = "25000000";
++						step_framerate = "25";
++						default_framerate= "25000000";
++						exposure_factor = "1000000";
++						min_exp_time = "859";
++						max_exp_time = "15649";
++						step_exp_time = "1";
++						default_exp_time = "15649";/* us */
+ 						embedded_metadata_height = "0";
+-						min_framerate = "6";
+-						max_framerate = "30";
+ 					};
+ 				};
+ 			};
+@@ -156,7 +220,7 @@
+ 							reg = <0>;
+ 							rgb4m_out0: endpoint {
+ 								vc-id = <0>;
+-								port-index = <3>;
++								port-index = <1>;
+ 								bus-width = <2>;
+ 								remote-endpoint = <&ds5_csi_in1>;
+ 								src_rgb0: source@0 {
+@@ -182,8 +246,11 @@
+ 						line_length = "1920"; /* 2200 */
+ 						mclk_multiplier = "15.625";
+ 						embedded_metadata_height = "0";
+-						min_framerate = "6";
++						min_framerate = "5";
+ 						max_framerate = "30";
++						step_framerate = "25";
++						default_framerate= "30";
++						framerate_factor = "1";
+ 					};
+ 					mode1 {
+ 						pixel_t = "yuv_uyvy16";
+@@ -199,8 +266,11 @@
+ 						line_length = "1280"; /* 2200 */
+ 						mclk_multiplier = "15.625";
+ 						embedded_metadata_height = "0";
+-						min_framerate = "6";
++						min_framerate = "5";
+ 						max_framerate = "30";
++						step_framerate = "25";
++						default_framerate= "30";
++						framerate_factor = "1";
+ 					};
+ 				};
+ 			};
+@@ -257,7 +327,7 @@
+ 						status = "ok";
+ 						ds5_csi_in1: endpoint@2 {
+ 							status = "ok";
+-							csi-port = <3>;
++							csi-port = <1>;
+ 							bus-width = <2>;
+ 							vc-id = <0>;
+ 							remote-endpoint = <&rgb4m_out0>;
+@@ -300,7 +370,7 @@
+ 					status = "ok";
+ 					vi_in1: endpoint {
+ 						status = "ok";
+-						port-index = <3>;
++						port-index = <1>;
+ 						bus-width = <2>;
+ 						remote-endpoint = <&rgb_csi_out1>;
+ 					};
+-- 
+2.7.4
+
