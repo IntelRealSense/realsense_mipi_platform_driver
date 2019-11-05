@@ -1,0 +1,345 @@
+From 2daea9cd38c506d98977a3b70a7e8c646511bdc2 Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Tue, 5 Nov 2019 10:10:08 +0200
+Subject: [PATCH] d4xx: Custom ctrls impl. into Tegra camera subsystem. 	added
+ 16bit i2c communication support.
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ .../media/platform/tegra/camera/tegracam_ctrls.c   | 128 ++++++++++++++++++++-
+ .../media/platform/tegra/camera/vi/vi4_formats.h   |   2 +-
+ drivers/media/platform/tegra/regmap_util.c         |  80 +++++++++++++
+ include/media/camera_common.h                      |  15 +++
+ include/media/tegra-v4l2-camera.h                  |  12 ++
+ 5 files changed, 235 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/platform/tegra/camera/tegracam_ctrls.c b/drivers/media/platform/tegra/camera/tegracam_ctrls.c
+index d437649..ce4bbab 100644
+--- a/drivers/media/platform/tegra/camera/tegracam_ctrls.c
++++ b/drivers/media/platform/tegra/camera/tegracam_ctrls.c
+@@ -33,8 +33,11 @@
+ #define TEGRACAM_DEF_CTRLS 1
+ 
+ static int tegracam_s_ctrl(struct v4l2_ctrl *ctrl);
++static int tegracam_g_volatile_ctrl(struct v4l2_ctrl *ctrl);
++
+ static const struct v4l2_ctrl_ops tegracam_ctrl_ops = {
+ 	.s_ctrl = tegracam_s_ctrl,
++	.g_volatile_ctrl = tegracam_g_volatile_ctrl,
+ };
+ 
+ static const u32 tegracam_def_cids[] = {
+@@ -162,6 +165,100 @@ static struct v4l2_ctrl_config ctrl_cfg_list[] = {
+ 		.max = CTRL_MAX_STR_SIZE,
+ 		.step = 2,
+ 	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_CID_SET_EXPOSURE_AUTO,
++		.name = "Exposure mode",
++		.type = V4L2_CTRL_TYPE_INTEGER_MENU,
++		.max = ARRAY_SIZE(switch_ctrl_qmenu) - 1,
++		.menu_skip_mask = 0,
++		.def = V4L2_EXPOSURE_AUTO,
++		.qmenu_int = switch_ctrl_qmenu,
++	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_CID_LASER_POWER,
++		.name = "Laser power on/off",
++		.type = V4L2_CTRL_TYPE_BOOLEAN,
++		.min = 0,
++		.max = 1,
++		.step = 1,
++		.def = 0,
++	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_CID_MANUAL_LASER_POWER,
++		.name = "Manual laser power",
++		.type = V4L2_CTRL_TYPE_INTEGER,
++		.min = 0,
++		.max = 360,
++		.step = 30,
++		.def = 240,
++	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_CID_FW_VERSION,
++		.name = "fw version",
++		.type = V4L2_CTRL_TYPE_U32,
++		.dims = {1},
++		.elem_size = sizeof(u32),
++		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
++		.step = 1,
++	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_CID_GVD,
++		.name = "GVD",
++		.type = V4L2_CTRL_TYPE_U8,
++		.dims = {239},
++		.elem_size = sizeof(u8),
++		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
++		.step = 1,
++	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_DEPTH_CALIBRATION_TBL_GET,
++		.name = "get depth calib",
++		.type = V4L2_CTRL_TYPE_U8,
++		.dims = {256},
++		.elem_size = sizeof(u8),
++		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
++		.step = 1,
++	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_DEPTH_CALIBRATION_TBL_SET,
++		.name = "set depth calib",
++		.type = V4L2_CTRL_TYPE_U8,
++		.dims = {256},
++		.elem_size = sizeof(u8),
++		.min = 0,
++		.max = 0xFFFFFFFF,
++		.def = 240,
++		.step = 1,
++	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_COEFF_CALIBRATION_TBL_GET,
++		.name = "get coeff calib",
++		.type = V4L2_CTRL_TYPE_U8,
++		.dims = {512},
++		.elem_size = sizeof(u8),
++		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
++		.step = 1,
++	},
++	{
++		.ops = &tegracam_ctrl_ops,
++		.id = TEGRA_CAMERA_COEFF_CALIBRATION_TBL_SET,
++		.name = "set coeff calib",
++		.type = V4L2_CTRL_TYPE_U8,
++		.dims = {512},
++		.elem_size = sizeof(u8),
++		.min = 0,
++		.max = 0xFFFFFFFF,
++		.def = 240,
++		.step = 1,
++	},
+ };
+ 
+ static int tegracam_get_ctrl_index(u32 cid)
+@@ -264,8 +361,24 @@ static int tegracam_set_ctrls(struct tegracam_ctrl_handler *handler,
+ 	case TEGRA_CAMERA_CID_GROUP_HOLD:
+ 		err = ops->set_group_hold(tc_dev, ctrl->val);
+ 		break;
++	case TEGRA_CAMERA_CID_SET_EXPOSURE_AUTO:
++		err = ops->set_exposure_auto(tc_dev, ctrl->val);
++		break;
++	case TEGRA_CAMERA_CID_LASER_POWER:
++		err = ops->laser_power(tc_dev, ctrl->val);
++		break;
++	case TEGRA_CAMERA_CID_MANUAL_LASER_POWER:
++		err = ops->manual_laser_power(tc_dev, *ctrl->p_new.p_s64);
++		break;
++	case TEGRA_CAMERA_DEPTH_CALIBRATION_TBL_SET:
++		err = ops->set_depth_calibration_table(tc_dev,
++							ctrl->p_new.p_s64);
++		break;
++	case TEGRA_CAMERA_COEFF_CALIBRATION_TBL_SET:
++		err = ops->set_camera_coeff_calibration_table(tc_dev,
++							ctrl->p_new.p_s64);
++		break;
+ 	default:
+-		pr_err("%s: unknown ctrl id.\n", __func__);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -360,6 +473,18 @@ static int tegracam_s_ctrl(struct v4l2_ctrl *ctrl)
+ 	return 0;
+ }
+ 
++static int tegracam_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct tegracam_ctrl_handler *handler =
++		container_of(ctrl->handler,
++			struct tegracam_ctrl_handler, ctrl_handler);
++	const struct tegracam_ctrl_ops *ops = handler->ctrl_ops;
++	
++	if (ops->g_volatile_ctrl)
++		return ops->g_volatile_ctrl(ctrl);
++	return 0;
++}
++
+ int tegracam_ctrl_set_overrides(struct tegracam_ctrl_handler *hdl)
+ {
+ 	struct v4l2_ext_controls ctrls;
+@@ -599,6 +724,7 @@ int tegracam_ctrl_handler_init(struct tegracam_ctrl_handler *handler)
+ 			}
+ 			ctrl_cfg->max = size;
+ 		}
++
+ 		ctrl = v4l2_ctrl_new_custom(&handler->ctrl_handler,
+ 			ctrl_cfg, NULL);
+ 		if (ctrl == NULL) {
+diff --git a/drivers/media/platform/tegra/camera/vi/vi4_formats.h b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
+index d0bbfa3..85ed018 100644
+--- a/drivers/media/platform/tegra/camera/vi/vi4_formats.h
++++ b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
+@@ -146,7 +146,7 @@ static const struct tegra_video_format vi4_video_formats[] = {
+ 				YUV422_8, YVYU, "YUV 4:2:2 YVYU"),
+ 
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_R16,
+-				USER_2, Z16, "Depth 16"),
++		      /*USER_2*/YUV422_8, Z16, "Depth 16"),
+ };
+ 
+ #endif
+diff --git a/drivers/media/platform/tegra/regmap_util.c b/drivers/media/platform/tegra/regmap_util.c
+index 112192c..9774cbe 100644
+--- a/drivers/media/platform/tegra/regmap_util.c
++++ b/drivers/media/platform/tegra/regmap_util.c
+@@ -176,3 +176,83 @@ regmap_util_write_table_16_as_8(struct regmap *regmap,
+ 
+ EXPORT_SYMBOL_GPL(regmap_util_write_table_16_as_8);
+ 
++int
++regmap_util_write_table_16(struct regmap *regmap,
++			  const struct reg_16 table[],
++			  const struct reg_16 override_list[],
++			  int num_override_regs, u16 wait_ms_addr, u16 end_addr)
++{
++	int err;
++	const struct reg_16 *next;
++	int i;
++	u16 val;
++
++	int range_start = -1;
++	int range_count = 0;
++	/* bug 200048392 -
++	 * the vi i2c cannot take a FIFO buffer bigger than 16 bytes
++	 */
++	u16 range_vals[16];
++	int max_range_vals = ARRAY_SIZE(range_vals);
++
++	for (next = table;; next++) {
++		/* If we have a range open and */
++		/* either the address doesn't match */
++		/* or the temporary storage is full, flush */
++		if  ((next->addr != range_start + range_count) ||
++		     (next->addr == end_addr) ||
++		     (next->addr == wait_ms_addr) ||
++		     (range_count == max_range_vals)) {
++
++			if (range_count == 1) {
++				err =
++				    regmap_write(regmap, range_start,
++						 range_vals[0]);
++			} else if (range_count > 1) {
++				err =
++				    regmap_bulk_write(regmap, range_start,
++						      &range_vals[0],
++						      range_count);
++			}
++
++			if (err) {
++				pr_err("%s:regmap_util_write_table:%d",
++				       __func__, err);
++				return err;
++			}
++
++			range_start = -1;
++			range_count = 0;
++
++			/* Handle special address values */
++			if (next->addr == end_addr)
++				break;
++
++			if (next->addr == wait_ms_addr) {
++				msleep_range(next->val);
++				continue;
++			}
++		}
++
++		val = next->val;
++
++		/* When an override list is passed in, replace the reg */
++		/* value to write if the reg is in the list            */
++		if (override_list) {
++			for (i = 0; i < num_override_regs; i++) {
++				if (next->addr == override_list[i].addr) {
++					val = override_list[i].val;
++					break;
++				}
++			}
++		}
++
++		if (range_start == -1)
++			range_start = next->addr;
++
++		range_vals[range_count++] = val;
++	}
++	return 0;
++};
++
++EXPORT_SYMBOL_GPL(regmap_util_write_table_16);
+diff --git a/include/media/camera_common.h b/include/media/camera_common.h
+index 9bb6b1d..816e8d8 100644
+--- a/include/media/camera_common.h
++++ b/include/media/camera_common.h
+@@ -114,6 +114,13 @@ regmap_util_write_table_16_as_8(struct regmap *regmap,
+ 				int num_override_regs,
+ 				u16 wait_ms_addr, u16 end_addr);
+ 
++int
++regmap_util_write_table_16(struct regmap *regmap,
++			  const struct reg_16 table[],
++			  const struct reg_16 override_list[],
++			  int num_override_regs,
++			  u16 wait_ms_addr, u16 end_addr);
++
+ enum switch_state {
+ 	SWITCH_OFF,
+ 	SWITCH_ON,
+@@ -204,6 +211,14 @@ struct tegracam_ctrl_ops {
+ 			struct sensor_blob *blob, s64 val);
+ 	int (*set_group_hold_ex)(struct tegracam_device *tc_dev,
+ 			struct sensor_blob *blob, bool val);
++	int (*set_exposure_auto)(struct tegracam_device *tc_dev, bool val);
++	int (*laser_power)(struct tegracam_device *tc_dev, bool val);
++	int (*manual_laser_power)(struct tegracam_device *tc_dev, s64 val);
++	int (*g_volatile_ctrl)(struct v4l2_ctrl *ctrl);
++	int (*set_depth_calibration_table)(struct tegracam_device *tc_dev,
++				s64 *val);
++	int (*set_camera_coeff_calibration_table)(struct tegracam_device *tc_dev,
++				s64 *val);
+ };
+ 
+ struct tegracam_ctrl_handler {
+diff --git a/include/media/tegra-v4l2-camera.h b/include/media/tegra-v4l2-camera.h
+index d1c71fc..f9b794a 100644
+--- a/include/media/tegra-v4l2-camera.h
++++ b/include/media/tegra-v4l2-camera.h
+@@ -38,6 +38,18 @@
+ #define TEGRA_CAMERA_CID_FRAME_RATE		(TEGRA_CAMERA_CID_BASE+11)
+ #define TEGRA_CAMERA_CID_EXPOSURE_SHORT		(TEGRA_CAMERA_CID_BASE+12)
+ 
++/*D4XX controls*/
++#define TEGRA_CAMERA_CID_LOG			(TEGRA_CAMERA_CID_BASE+13)
++#define TEGRA_CAMERA_CID_LASER_POWER		(TEGRA_CAMERA_CID_BASE+14)
++#define TEGRA_CAMERA_CID_MANUAL_LASER_POWER	(TEGRA_CAMERA_CID_BASE+15)
++#define TEGRA_CAMERA_DEPTH_CALIBRATION_TBL_GET	(TEGRA_CAMERA_CID_BASE+16)
++#define TEGRA_CAMERA_DEPTH_CALIBRATION_TBL_SET	(TEGRA_CAMERA_CID_BASE+17)
++#define TEGRA_CAMERA_COEFF_CALIBRATION_TBL_GET	(TEGRA_CAMERA_CID_BASE+18)
++#define TEGRA_CAMERA_COEFF_CALIBRATION_TBL_SET	(TEGRA_CAMERA_CID_BASE+19)
++#define TEGRA_CAMERA_CID_FW_VERSION		(TEGRA_CAMERA_CID_BASE+20)
++#define TEGRA_CAMERA_CID_GVD			(TEGRA_CAMERA_CID_BASE+21)
++#define TEGRA_CAMERA_CID_SET_EXPOSURE_AUTO	(TEGRA_CAMERA_CID_BASE+22)
++
+ #define TEGRA_CAMERA_CID_SENSOR_CONFIG		(TEGRA_CAMERA_CID_BASE+50)
+ #define TEGRA_CAMERA_CID_SENSOR_MODE_BLOB	(TEGRA_CAMERA_CID_BASE+51)
+ #define TEGRA_CAMERA_CID_SENSOR_CONTROL_BLOB	(TEGRA_CAMERA_CID_BASE+52)
+-- 
+2.7.4
+

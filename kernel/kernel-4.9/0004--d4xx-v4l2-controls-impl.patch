@@ -1,0 +1,902 @@
+From c6fb117d95df926ce484ac4540050f9500ee34b4 Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Tue, 5 Nov 2019 10:07:48 +0200
+Subject: [PATCH] d4xx: - v4l2 controls impl.       - RGB skeleton.       -
+ Switching i2c to 16bit ctrl/data width.
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ drivers/media/i2c/d4xx/d4xx_rs.c           | 438 +++++++++++++----------------
+ drivers/media/i2c/d4xx/rs_d4xx.h           |   8 +-
+ drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h |  73 ++---
+ 3 files changed, 227 insertions(+), 292 deletions(-)
+
+diff --git a/drivers/media/i2c/d4xx/d4xx_rs.c b/drivers/media/i2c/d4xx/d4xx_rs.c
+index 0205864..31ca21c 100644
+--- a/drivers/media/i2c/d4xx/d4xx_rs.c
++++ b/drivers/media/i2c/d4xx/d4xx_rs.c
+@@ -198,7 +198,7 @@ static int d4xx_write_table(struct d4xx *priv,
+ {
+ 	struct camera_common_data *s_data = priv->s_data;
+ 
+-	return regmap_util_write_table_8(s_data->regmap,
++	return regmap_util_write_table_16(s_data->regmap,
+ 					 table,
+ 					 NULL, 0,
+ 					 D4XX_TABLE_WAIT_MS,
+@@ -231,9 +231,27 @@ static const struct v4l2_mbus_framefmt d4xx_mbus_framefmt_template = {
+ 	.xfer_func = V4L2_XFER_FUNC_DEFAULT,
+ };
+ 
+-static int d4xx_hw_set_auto_exposure(struct d4xx *state, u32 val)
++static int d4xx_hw_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
+ {
+-	int ret;
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++#ifdef _RGB_FLAYVOR
++	return d4xx_write(state, D4XX_RGB_FPS, val);
++#else
++	return d4xx_write(state, D4XX_DEPTH_Y_FPS, val);
++#endif
++}
++
++static int d4xx_hw_set_gain(struct tegracam_device *tc_dev, s64 val)
++{
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	dev_info(tc_dev->dev, "%s()\n", __func__);
++	return d4xx_write(state, D4XX_MANUAL_GAIN, val);
++}
++
++static int d4xx_hw_set_auto_exposure(struct tegracam_device *tc_dev, bool val)
++{
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	int ret = 0;
+ 	u16 value;
+ #ifdef _RGB_FLAYVOR 
+ 	val = (val ? 8 : 1);
+@@ -252,12 +270,28 @@ static int d4xx_hw_set_auto_exposure(struct d4xx *state, u32 val)
+ 	return ret;
+ }
+ 
++static int d4xx_ctrl_laser_power(struct tegracam_device *tc_dev, bool val)
++{
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	return d4xx_write(state, D4XX_LASER_POWER | D4XX_DEPTH_CONTROL_BASE, val);
++}
++
++static int d4xx_ctrl_manual_laser_power(struct tegracam_device *tc_dev, s64 val)
++{
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	return d4xx_write(state, D4XX_MANUAL_LASER_POWER, val);
++}
++
+ /* Manual exposure in us between 1 and 166ms */
+-static int d4xx_hw_set_exposure(struct d4xx *state, u32 val)
++static int d4xx_hw_set_exposure(struct tegracam_device *tc_dev, s64 val)
+ {
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
+ 	int ret;
+ 	u16 value;
+ 
++	dev_info(&state->client->dev, "%s(): val=%llu\n", __func__, val);
++	mutex_lock(&state->dfu_dev.lock);
++
+ #ifdef _RGB_FLAYVOR 
+ 	if (val < 10)
+ 		val = 1000;
+@@ -284,6 +318,7 @@ static int d4xx_hw_set_exposure(struct d4xx *state, u32 val)
+ 	d4xx_read(state, D4XX_RGB_CONTROL_BASE | D4XX_MANUAL_EXPOSURE_MSB, &value);
+ 	d4xx_read(state, 0x401C, &value);
+ 	d4xx_read(state, 0x403C, &value);
++	mutex_unlock(&state->dfu_dev.lock);
+ 
+ 	return ret;
+ }
+@@ -296,14 +331,6 @@ static int d4xx_hw_set_exposure(struct d4xx *state, u32 val)
+ #define D4XX_CAMERA_CID_BASE	(V4L2_CTRL_CLASS_CAMERA | D4XX_DEPTH_Y_STREAMS_DT)
+ 
+ #define D4XX_CAMERA_CID_LOG			(D4XX_CAMERA_CID_BASE+0)
+-#define D4XX_CAMERA_CID_LASER_POWER		(D4XX_CAMERA_CID_BASE+1)
+-#define D4XX_CAMERA_CID_MANUAL_LASER_POWER	(D4XX_CAMERA_CID_BASE+2)
+-#define D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_GET	(D4XX_CAMERA_CID_BASE+3)
+-#define D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET	(D4XX_CAMERA_CID_BASE+4)
+-#define D4XX_CAMERA_COEFF_CALIBRATION_TABLE_GET	(D4XX_CAMERA_CID_BASE+5)
+-#define D4XX_CAMERA_COEFF_CALIBRATION_TABLE_SET	(D4XX_CAMERA_CID_BASE+6)
+-#define D4XX_CAMERA_CID_FW_VERSION		(D4XX_CAMERA_CID_BASE+7)
+-#define D4XX_CAMERA_CID_GVD			(D4XX_CAMERA_CID_BASE+8)
+ 
+ static int d4xx_set_calibration_data(struct d4xx *state, struct hwm_cmd *cmd, u16 length)
+ {
+@@ -311,11 +338,13 @@ static int d4xx_set_calibration_data(struct d4xx *state, struct hwm_cmd *cmd, u1
+ 	int i = D4XX_START_MAX_COUNT;
+ 	u16 status = 2;
+ 
++	mutex_lock(&state->dfu_dev.lock);
+ 	d4xx_raw_write_with_check(state, 0x4900, cmd, length);
+ 	d4xx_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+ 	do {
+ 		ret = d4xx_read(state, 0x5000, &status);
+ 	} while (ret && i-- && status != 1);
++	mutex_unlock(&state->dfu_dev.lock);
+ 
+ 	if (ret || status == 1) {
+ 		dev_err(state->s_data->dev, "%s(): Failed to set calibration table, error: %x\n", __func__, status);
+@@ -324,110 +353,90 @@ static int d4xx_set_calibration_data(struct d4xx *state, struct hwm_cmd *cmd, u1
+ 	return ret;
+ }
+ 
+-static int d4xx_s_ctrl(struct v4l2_ctrl *ctrl)
++static int d4xx_get_calibration_data(struct d4xx *state, enum table_id id, unsigned char *table, unsigned int length)
+ {
+-	struct d4xx *state = container_of(ctrl->handler, struct d4xx,
+-					 ctrls.handler);
+-	struct v4l2_subdev *sd = &state->mux.sd.subdev;
+-	int ret;
+-
+-	v4l2_dbg(1, 1, sd, "ctrl: %s, value: %d\n", ctrl->name, ctrl->val);
+-
+-// FIXME: Check for streaming statuus "success"
++	struct hwm_cmd *cmd;
++	int ret = 0;
++	int retries = 3;
++	u16 status = 2;
++	u16 table_length;
+ 
+ 	mutex_lock(&state->dfu_dev.lock);
++	cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + length + 4, GFP_KERNEL);
++	memcpy(cmd, &get_calib_data, sizeof(get_calib_data));
++	cmd->param1 = id;
++	ret = d4xx_raw_write(state, 0x4900, cmd, sizeof(struct hwm_cmd));
++	if (!ret)
++		d4xx_write(state, 0x490c, 0x01); /* execute cmd */
++	do {
++		if (retries != 3)
++			msleep_range(10);
++		if (!ret)
++			ret = d4xx_read(state, 0x4904, &status);
++	} while (ret && retries-- && status != 0);
+ 
+-	if (state->power == 0)
+-		goto unlock;
+-
+-	switch (ctrl->id) {
+-	case V4L2_CID_ANALOGUE_GAIN:
+-		/* FIXME: unit conversion! */
+-		d4xx_write(state, D4XX_MANUAL_GAIN, ctrl->val);
+-		break;
+-
+-	case V4L2_CID_EXPOSURE_AUTO:
+-		d4xx_hw_set_auto_exposure(state, ctrl->val);
+-		break;
+-
+-	case V4L2_CID_EXPOSURE_ABSOLUTE:
+-		d4xx_hw_set_exposure(state, ctrl->val);
+-		break;
+-	case D4XX_CAMERA_CID_LASER_POWER:
+-		d4xx_write(state, D4XX_LASER_POWER | D4XX_DEPTH_CONTROL_BASE, ctrl->val);
+-		break;
+-	case D4XX_CAMERA_CID_MANUAL_LASER_POWER:
+-		d4xx_write(state, D4XX_MANUAL_LASER_POWER, ctrl->val);
+-		break;
+-	case D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET: {
+-		struct hwm_cmd *calib_cmd;
+-
+-		dev_info(&state->client->dev, "%s(): D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET \n", __func__);
+-		dev_info(&state->client->dev, "%s(): table id: 0x%x\n", __func__, *((u8*)ctrl->p_new.p + 2));
+-		if (ctrl->p_new.p && COEF_CALIBRATION_ID == *((u8*)ctrl->p_new.p + 2)) {
+-			calib_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 256, GFP_KERNEL);
+-			memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
+-			calib_cmd->header = 276;
+-			calib_cmd->param1 = DEPTH_CALIBRATION_ID;
+-			memcpy(calib_cmd->Data, (u8*)ctrl->p_new.p , 256);
+-			ret = d4xx_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 256);
+-			devm_kfree(&state->client->dev, calib_cmd);
+-		}
+-		break;
+-		}
+-	case D4XX_CAMERA_COEFF_CALIBRATION_TABLE_SET: {
+-			struct hwm_cmd *calib_cmd;
+-
+-			dev_info(&state->client->dev, "%s(): D4XX_CAMERA_COEFF_CALIBRATION_TABLE_SET \n", __func__);
+-			dev_info(&state->client->dev, "%s(): table id %d\n", __func__, *((u8*)ctrl->p_new.p + 2));
+-			if (ctrl->p_new.p && COEF_CALIBRATION_ID == *((u8*)ctrl->p_new.p + 2)) {
+-				calib_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 512, GFP_KERNEL);
+-				memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
+-				calib_cmd->header = 532;
+-				calib_cmd->param1 = COEF_CALIBRATION_ID;
+-				memcpy(calib_cmd->Data, (u8*)ctrl->p_new.p , 512);
+-				ret = d4xx_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 512);
+-				devm_kfree(&state->client->dev, calib_cmd);
+-			}
+-
+-		}
+-		break;
++	if (ret || status != 0) {
++		mutex_unlock(&state->dfu_dev.lock);
++		dev_err(&state->client->dev, "%s(): Failed to get calibration table %d, fw error: %x\n", __func__, id, status);
++		devm_kfree(&state->client->dev, cmd);
++		return status;
+ 	}
+ 
+-unlock:
+-	ret = 0/*d4xx_clear_error(state)*/;
++	// get table length from fw
++	ret = regmap_raw_read(state->s_data->regmap, 0x4908, &table_length, sizeof(table_length));
++	// read table
++	if (ret)
++		ret = d4xx_raw_read(state, 0x4900, cmd->Data, table_length);
++
++	// first 4 bytes are opcode HWM, not part of calibration table
++	memcpy(table, cmd->Data + 4, length);
++	devm_kfree(&state->client->dev, cmd);
+ 	mutex_unlock(&state->dfu_dev.lock);
+ 
+ 	return ret;
+ }
+-static int d4xx_get_calibration_data(struct d4xx *state, enum table_id id, unsigned char *table, int length)
+-{
+-	struct hwm_cmd cmd;
+-	int ret;
+-	int i = D4XX_START_MAX_COUNT;
+-	u16 table_length = 0;
+-	u16 status = 2;
+ 
+-	memcpy(&cmd, &get_calib_data, sizeof(get_calib_data));
+-	cmd.param1 = id;
+-	d4xx_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
+-	d4xx_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+-	do {
+-		ret = d4xx_read(state, 0x5000, &status);
+-	} while (ret && i-- && status != 1);
++static int d4xx_set_coeff_calibration_table(struct tegracam_device *tc_dev, s64 *val)
++{
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	struct hwm_cmd *calib_cmd;
++	int ret = 0;
+ 
+-	if (ret || status == 1) {
+-		dev_err(state->s_data->dev, "%s(): Failed to get calibration table %d, error: %x\n", __func__, id, status);
+-		return status;
++	mutex_lock(&state->dfu_dev.lock);
++	dev_info(&state->client->dev, "%s(): DS5_CAMERA_COEFF_CALIBRATION_TABLE_SET \n", __func__);
++	dev_info(&state->client->dev, "%s(): table id %d\n", __func__, *((u8*)val + 2));
++	if (val && COEF_CALIBRATION_ID == *((u8*)val + 2)) {
++		calib_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 512, GFP_KERNEL);
++		memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
++		calib_cmd->header = 532;
++		calib_cmd->param1 = COEF_CALIBRATION_ID;
++		memcpy(calib_cmd->Data, (u8*)val , 512);
++		ret = d4xx_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 512);
++		devm_kfree(&state->client->dev, calib_cmd);
+ 	}
++	mutex_unlock(&state->dfu_dev.lock);
++	return ret;
++}
+ 
+-	d4xx_read_with_check(state, 0x4908, &table_length);
+-	if (table_length > length) {
+-		dev_err(state->s_data->dev, "%s(): Calibration buffer to big %d\n", __func__, table_length);
+-		return -EINVAL;
++static int d4xx_set_depth_calibration_table(struct tegracam_device *tc_dev, s64 *val)
++{ 
++	struct d4xx *state = tegracam_get_privdata(tc_dev);
++	struct hwm_cmd *calib_cmd;
++	int ret = 0;
++
++	mutex_lock(&state->dfu_dev.lock);
++	dev_info(&state->client->dev, "%s(): D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET \n", __func__);
++	dev_info(&state->client->dev, "%s(): table id: 0x%x\n", __func__, *((u8*)val + 2));
++	if (val && COEF_CALIBRATION_ID == *((u8*)val + 2)) {
++		calib_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 256, GFP_KERNEL);
++		memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
++		calib_cmd->header = 276;
++		calib_cmd->param1 = DEPTH_CALIBRATION_ID;
++		memcpy(calib_cmd->Data, (u8*)val , 256);
++		ret = d4xx_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 256);
++		devm_kfree(&state->client->dev, calib_cmd);
+ 	}
+-	d4xx_raw_read_with_check(state, 0x4900, table, table_length);
+-	
++	mutex_unlock(&state->dfu_dev.lock);
+ 	return ret;
+ }
+ 
+@@ -439,31 +448,36 @@ static int d4xx_gvd(struct d4xx *state, unsigned char *data)
+ 	u16 status = 2;
+ 	u8 retries = 3;
+ 
++	mutex_lock(&state->dfu_dev.lock);
+ 	memcpy(&cmd, &gvd, sizeof(gvd));
+-	d4xx_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
+-	d4xx_write_with_check(state, 0x490c, 0x01); /* execute cmd */
++	ret = d4xx_raw_write(state, 0x4900, &cmd, sizeof(cmd));
++	if (!ret)
++		ret = d4xx_write(state, 0x490c, 0x01); /* execute cmd */
+ 	do {
+ 		if (retries != 3)
+ 			msleep_range(10);
+-
+-		ret = d4xx_read(state, 0x4904, &status);
++		if (!ret)
++			ret = d4xx_read(state, 0x4904, &status);
+ 	} while (ret && retries-- && status != 0);
+ 
+ 	if (ret || status != 0) {
+ 		dev_err(&state->client->dev, "%s(): Failed to read GVD, HWM cmd status: %x\n", __func__, status);
++		mutex_unlock(&state->dfu_dev.lock);
+ 		return status;
+ 	}
+ 
+ 	ret = d4xx_raw_read(state, 0x4908, &length, sizeof(length));
+ 	d4xx_raw_read_with_check(state, 0x4900, data, length);
+-
++	mutex_unlock(&state->dfu_dev.lock);
+ 	return ret;
+ }
+ 
+ static int d4xx_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ {
+-	struct d4xx *state = container_of(ctrl->handler, struct d4xx,
+-					 ctrls.handler);
++	struct tegracam_ctrl_handler *hdl =
++		container_of(ctrl->handler,
++			struct tegracam_ctrl_handler, ctrl_handler);
++	struct d4xx *state = hdl->tc_dev->priv;
+ 	u16 log_prepare[] = {0x0014, 0xcdab, 0x000f, 0x0000, 0x0400, 0x0000,
+ 			     0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
+ 	u16 execute_cmd = 0x0001;
+@@ -471,8 +485,10 @@ static int d4xx_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 	u32 data;
+ 	int ret = 0;
+ 
++	dev_info(&state->client->dev, "%s(): id=%d\n", __func__, ctrl->id);
++
+ 	switch (ctrl->id) {
+-	case D4XX_CAMERA_CID_LOG:
++	case TEGRA_CAMERA_CID_LOG:
+ 		// TODO: wrap HWMonitor command
+ 		//       1. prepare and send command
+ 		//       2. send command
+@@ -515,29 +531,21 @@ static int d4xx_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		ret = regmap_raw_read(state->s_data->regmap, 0x4900,
+ 				      ctrl->p_new.p_u8, data);
+ 		break;
+-	case D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_GET:
++	case TEGRA_CAMERA_DEPTH_CALIBRATION_TBL_GET:
+ 
+ 		ret = d4xx_get_calibration_data(state, DEPTH_CALIBRATION_ID,ctrl->p_new.p_u8, 256);
+ 		break;
+-	case D4XX_CAMERA_DEPTH_CALIBRATION_TABLE_SET: {
+-			struct hwm_cmd *calib_cmd;
+-
+-			calib_cmd = devm_kzalloc(state->s_data->dev, sizeof(struct hwm_cmd) + 256, GFP_KERNEL);
+-			memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
+-			memcpy(calib_cmd->Data, ctrl->p_cur.p_u8 , 256);
+-			calib_cmd->param1 = DEPTH_CALIBRATION_ID;
+-
+-			ret = d4xx_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 256);
+-			devm_kfree(state->s_data->dev, calib_cmd);
+-			break;
+-		}
+-	case D4XX_CAMERA_CID_FW_VERSION:
++	case TEGRA_CAMERA_CID_FW_VERSION:
+ 		*ctrl->p_new.p_u32 = state->fw_version << 16;
+ 		*ctrl->p_new.p_u32 |= state->fw_build;
+ 		break;
+-	case D4XX_CAMERA_CID_GVD:
++	case TEGRA_CAMERA_CID_GVD:
+ 		ret = d4xx_gvd(state, ctrl->p_new.p_u8);
+ 		break;
++	case TEGRA_CAMERA_CID_FUSE_ID:
++		break;
++	default:
++		return -EINVAL;
+ 	}
+ 	return ret;
+ }
+@@ -598,7 +606,7 @@ static int d4xx_hw_init(struct i2c_client *c, struct d4xx *state)
+ 			 __func__, __LINE__, n_lanes, phy, drate_min, drate_max);
+ 
+ #ifdef CONFIG_TEGRA_CAMERA_PLATFORM
+-	n_lanes = state->mux.sd.numlanes;
++	n_lanes = 2; //state->mux.sd.numlanes;
+ #else
+ 	n_lanes = 2;
+ #error get lane information
+@@ -618,7 +626,7 @@ static int d4xx_hw_init(struct i2c_client *c, struct d4xx *state)
+ }
+ 
+ static const struct v4l2_ctrl_ops d4xx_ctrl_ops = {
+-	.s_ctrl	= d4xx_s_ctrl,
++//	.s_ctrl	= d4xx_s_ctrl,
+ 	.g_volatile_ctrl = d4xx_g_volatile_ctrl,
+ };
+ 
+@@ -633,67 +641,22 @@ static const struct v4l2_ctrl_config d4xx_ctrl_log = {
+ 	.step = 1,
+ };
+ 
+-static const struct v4l2_ctrl_config d4xx_ctrl_laser_power = {
+-	.ops = &d4xx_ctrl_ops,
+-	.id = D4XX_CAMERA_CID_LASER_POWER,
+-	.name = "Laser power on/off",
+-	.type = V4L2_CTRL_TYPE_BOOLEAN,
+-	.min = 0,
+-	.max = 1,
+-	.step = 1,
+-	.def = 0,
+-};
+-
+-static const struct v4l2_ctrl_config d4xx_ctrl_manual_laser_power = {
+-	.ops = &d4xx_ctrl_ops,
+-	.id = D4XX_CAMERA_CID_MANUAL_LASER_POWER,
+-	.name = "Manual laser power",
+-	.type = V4L2_CTRL_TYPE_INTEGER,
+-	.min = 0,
+-	.max = 360,
+-	.step = 30,
+-	.def = 240,
+-};
+-
+ static int d4xx_ctrl_init(struct d4xx *state)
+ {
+-	const struct v4l2_ctrl_ops *ops = &d4xx_ctrl_ops;
+-	struct d4xx_ctrls *ctrls = &state->ctrls;
+-	struct v4l2_ctrl_handler *hdl = &state->s_data->tegracam_ctrl_hdl->ctrl_handler;
+-	u8 max;
+-
+-	ctrls->log = v4l2_ctrl_new_custom(hdl, &d4xx_ctrl_log, NULL);
+-
+-	// TODO: wait for decision from FW if to replace with one control
+-	//       should report as cluster?
+-	ctrls->laser_power = v4l2_ctrl_new_custom(hdl, &d4xx_ctrl_laser_power, NULL);
+-	ctrls->manual_laser_power = v4l2_ctrl_new_custom(hdl, &d4xx_ctrl_manual_laser_power, NULL);
+-
+-	// TODO: remove this comment
+-	// V4L2 Doc: It is recommended to add controls in ascending control ID order:
+-	//           it will be a bit faster that way
+-
+-	/* Exposure time: x 100 us. */
+-	ctrls->exposure = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_EXPOSURE_ABSOLUTE,
+-					    10, 166 * 10, 1, 2 * 10);
+-
+-	/* Total gain */
+-	ctrls->gain = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_ANALOGUE_GAIN,
+-					16, 248, 1, 16);
+-
+-	/* Assume both shutter and aperture priorities are supported */
+-	max = /*sensor->exposure_priority ? V4L2_EXPOSURE_APERTURE_PRIORITY :*/
+-		V4L2_EXPOSURE_MANUAL;
+-	ctrls->auto_exp = v4l2_ctrl_new_std_menu(hdl, ops,
+-						 V4L2_CID_EXPOSURE_AUTO,
+-						 max, 0, V4L2_EXPOSURE_AUTO);
+-
+-	// TODO: this prevents setting of manual exposure
+-	// v4l2_ctrl_auto_cluster(3, &ctrls->auto_exp, 0, false);
+-
+-	// TODO: consider invoking v4l2_ctrl_handler_setup(hdl);
+-
+-	state->mux.sd.subdev.ctrl_handler = hdl;
++	struct v4l2_ctrl_handler *hdl = state->s_data->ctrl_handler;
++
++	v4l2_ctrl_handler_init(hdl, D4XX_N_CONTROLS);
++
++	//ctrls->log = v4l2_ctrl_new_custom(hdl, &d4xx_ctrl_log, NULL);
++	//if (ctrls->log == NULL) {
++	//	dev_err(&state->client->dev, "Failed to init ctrls\n");
++	//}
++	if (hdl->error) {
++		int err = hdl->error;
++		dev_err(&state->client->dev, "Failed to init ctrls err = %d\n", err);
++		v4l2_ctrl_handler_free(hdl);
++		return err;
++	}
+ 
+ 	return 0;
+ }
+@@ -721,10 +684,8 @@ int d4xx_v4l_init(struct tegracam_device *tc_dev)
+ 		return ret;
+ 
+ 	ret = d4xx_ctrl_init(state);
+-	if (ret < 0)
+-		return ret;
+ 
+-	return 0;
++	return ret;
+ }
+ 
+ static int d4xx_mux_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
+@@ -750,51 +711,7 @@ static int d4xx_mux_close(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
+ 	return 0;
+ };
+ 
+-static int d4xx_set_power(struct d4xx *state, int on)
+-{
+-	int ret = 0;
+-
+-	mutex_lock(&state->dfu_dev.lock);
+-
+-	if (state->power != !on) {
+-		mutex_unlock(&state->dfu_dev.lock);
+-		return 0;
+-	}
+-
+-//	gpio_set_value_cansleep(state->pwdn_gpio, on);
+-
+-	dev_info(state->s_data->dev, "%s(): power %d\n", __func__, on);
+-
+-	usleep_range(100, 200);
+-
+-	if (on) {
+-		state->power = true;
+-	} else {
+-		state->power = false;
+-	}
+-
+-	mutex_unlock(&state->dfu_dev.lock);
+-
+-	/* Restore controls when powering on */
+-	if (on)
+-		ret = v4l2_ctrl_handler_setup(&state->ctrls.handler);
+-
+-	return ret;
+-}
+-
+ /* Core ops */
+-static int d4xx_mux_set_power(struct v4l2_subdev *sd, int on)
+-{
+-	struct d4xx *state = container_of(sd, struct d4xx, mux.sd.subdev);
+-
+-	return d4xx_set_power(state, on);
+-}
+-
+-static const struct v4l2_subdev_core_ops d4xx_mux_core_ops = {
+-	.s_power = d4xx_mux_set_power,
+-//	.log_status = v4l2_ctrl_subdev_log_status,
+-};
+-
+ static const struct v4l2_subdev_internal_ops d4xx_mux_internal_ops = {
+ 	.open = d4xx_mux_open,
+ 	.close = d4xx_mux_close,
+@@ -810,19 +727,26 @@ static const struct regmap_config d4xx_regmap_config = {
+ 
+ static void d4xx_mux_remove(struct d4xx *state)
+ {
+-	camera_common_cleanup(&state->mux.sd);
+-	v4l2_async_unregister_subdev(&state->mux.sd.subdev);
+-	v4l2_ctrl_handler_free(state->mux.sd.subdev.ctrl_handler);
+-	//porting: media_entity_cleanup(&state->mux.sd.subdev.entity);
++	tegracam_v4l2subdev_unregister(state->tc_dev);
++	tegracam_device_unregister(state->tc_dev);
+ }
+ 
+ static int d4xx_power_on(struct camera_common_data *s_data)
+ {
++	struct camera_common_power_rail *pw = s_data->power;
++
++	dev_info(s_data->dev, "%s() state=%d\n", __func__, pw->state);
++	pw->state=SWITCH_ON;
++
+ 	return 0;
+ }
+ 
+ static int d4xx_power_off(struct camera_common_data *s_data)
+ {
++	struct camera_common_power_rail *pw = s_data->power;
++
++	dev_info(s_data->dev, "%s() state=%d\n", __func__, pw->state);
++	pw->state = SWITCH_OFF;
+ 	return 0;
+ }
+ 
+@@ -1065,6 +989,19 @@ static const u32 ctrl_cid_list[] = {
+ 	TEGRA_CAMERA_CID_FUSE_ID,
+ 	TEGRA_CAMERA_CID_HDR_EN,
+ 	TEGRA_CAMERA_CID_SENSOR_MODE_ID,
++	TEGRA_CAMERA_CID_GAIN,
++	TEGRA_CAMERA_CID_EXPOSURE,
++	TEGRA_CAMERA_CID_FRAME_RATE,
++	TEGRA_CAMERA_CID_SET_EXPOSURE_AUTO,
++	TEGRA_CAMERA_CID_LASER_POWER,
++	TEGRA_CAMERA_CID_MANUAL_LASER_POWER,
++	TEGRA_CAMERA_DEPTH_CALIBRATION_TBL_GET,
++	TEGRA_CAMERA_DEPTH_CALIBRATION_TBL_SET,
++	TEGRA_CAMERA_COEFF_CALIBRATION_TBL_GET,
++	TEGRA_CAMERA_COEFF_CALIBRATION_TBL_SET,
++	TEGRA_CAMERA_CID_FW_VERSION,
++	TEGRA_CAMERA_CID_GVD,
++	TEGRA_CAMERA_CID_GROUP_HOLD,
+ };
+ #define D4XX_FUSE_ID_SIZE	6
+ #define D4XX_FUSE_ID_STR_SIZE	(D4XX_FUSE_ID_SIZE * 2)
+@@ -1075,6 +1012,20 @@ static struct tegracam_ctrl_ops d4xx_tegra_ctrl_ops = {
+ 	.string_ctrl_size = {0, D4XX_FUSE_ID_STR_SIZE},
+ 	.set_group_hold = d4xx_set_group_hold,
+ 	.fill_string_ctrl = d4xx_fill_string_ctrl,
++	/* Total gain */
++	.set_gain = d4xx_hw_set_gain,
++	/* Exposure time: x 100 us. */
++	.set_exposure = d4xx_hw_set_exposure,
++	.set_exposure_short = d4xx_hw_set_exposure,
++	.set_frame_rate = d4xx_hw_set_frame_rate,
++	.set_exposure_auto = d4xx_hw_set_auto_exposure,
++	// TODO: wait for decision from FW if to replace with one control
++	//       should report as cluster?
++	.laser_power = d4xx_ctrl_laser_power,
++	.manual_laser_power = d4xx_ctrl_manual_laser_power,
++	.set_depth_calibration_table = d4xx_set_depth_calibration_table,
++	.set_camera_coeff_calibration_table = d4xx_set_coeff_calibration_table,
++	.g_volatile_ctrl = d4xx_g_volatile_ctrl,
+ };
+ 
+ 
+@@ -1130,6 +1081,7 @@ static int d4xx_probe(struct i2c_client *c, const struct i2c_device_id *id)
+ 	state->s_data = state->tc_dev->s_data;
+ 	state->dfu_dev.tc_dev = state->tc_dev;
+ 	tegracam_set_privdata(state->tc_dev, (void *)state);
++	state->subdev = &state->tc_dev->s_data->subdev;
+ 
+ 	ret = d4xx_chrdev_init(c, state);
+ 	if (ret < 0)
+@@ -1150,7 +1102,7 @@ static int d4xx_probe(struct i2c_client *c, const struct i2c_device_id *id)
+ 			&str);
+ 	ret = d4xx_v4l_init(state->tc_dev);
+ 	if (ret < 0)
+-		goto e_regulator;
++		goto e_tegracam;
+ 	/* Override I2C drvdata */
+ //	i2c_set_clientdata(c, state);
+ 
+@@ -1164,19 +1116,19 @@ static int d4xx_probe(struct i2c_client *c, const struct i2c_device_id *id)
+ */
+ 	return 0;
+ 
+- e_regulator:
+-	if (state->vcc)
+-		regulator_disable(state->vcc);
+-e_chardev:
+-	d4xx_chrdev_remove(state);
+ e_tegracam:
+ 	tegracam_device_unregister(state->tc_dev);
++e_chardev:
++	d4xx_chrdev_remove(state);
++e_regulator:
++	if (state->vcc)
++		regulator_disable(state->vcc);
+ 	return ret;
+ }
+ 
+ static int d4xx_remove(struct i2c_client *c)
+ {
+-	struct d4xx *state = container_of(i2c_get_clientdata(c), struct d4xx, mux.sd.subdev);
++	struct d4xx *state = container_of(i2c_get_clientdata(c), struct d4xx, subdev);
+ 
+ 	dev_info(&c->dev, "%s()\n", __func__);
+ 	if (state->vcc)
+diff --git a/drivers/media/i2c/d4xx/rs_d4xx.h b/drivers/media/i2c/d4xx/rs_d4xx.h
+index 8d287e2..9e42276 100644
+--- a/drivers/media/i2c/d4xx/rs_d4xx.h
++++ b/drivers/media/i2c/d4xx/rs_d4xx.h
+@@ -40,7 +40,7 @@
+ #define D4XX_START_MAX_COUNT (D4XX_START_MAX_TIME / D4XX_START_POLL_TIME)
+ 
+ struct d4xx_ctrls {
+-	struct v4l2_ctrl_handler handler;
++	struct tegracam_ctrl_handler *handler;
+ 	struct {
+ 		struct v4l2_ctrl *log;
+ 		struct v4l2_ctrl *fw_version;
+@@ -59,12 +59,8 @@ struct d4xx_ctrls {
+ };
+ 
+ struct d4xx {
+-	struct {
+-		struct camera_common_data sd;
+-	} mux;
+-	struct d4xx_ctrls ctrls;
++	struct v4l2_subdev *subdev;
+ 	struct d4xx_dfu_dev dfu_dev;
+-	bool power;
+ 	struct i2c_client *client;
+ 	/*struct d4xx_vchan virtual_channels[CSI2_MAX_VIRTUAL_CHANNELS];*/
+ 	/* All below pointers are used for writing, cannot be const */
+diff --git a/drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h b/drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h
+index 4732db9..1d5f8a8 100644
+--- a/drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h
++++ b/drivers/media/i2c/d4xx/rs_d4xx_mode_tbls.h
+@@ -27,20 +27,17 @@
+ #define D4XX_DEVICE_TYPE_D46X		4
+ #define D4XX_DEPTH_Y_STREAMS_DT		0x4000
+ #define D4XX_DEPTH_Y_STREAMS_DT_IR	0x4001
++#define D4XX_DEPTH_Y_STREAMS_DT_OVR	0x401C
+ #define D4XX_DEPTH_Y_STREAMS_MD		0x4002
+ #define D4XX_DEPTH_RES_WIDTH		0x4004
+-#define D4XX_DEPTH_RES_WIDTH_HI		0x4005
+ #define D4XX_DEPTH_RES_HEIGHT		0x4008
+-#define D4XX_DEPTH_RES_HEIGHT_HI	0x4009
+ #define D4XX_DEPTH_Y_FPS		0x400C
+ #define D4XX_Y_RES_WIDTH		0x4010
+ #define D4XX_Y_RES_HEIGHT		0x4014
+ #define D4XX_RGB_STREAM_DT		0x4020
+ #define D4XX_RGB_STREAM_MD		0x4022
+ #define D4XX_RGB_RES_WIDTH		0x4024
+-#define D4XX_RGB_RES_WIDTH_HI		0x4025
+ #define D4XX_RGB_RES_HEIGHT		0x4028
+-#define D4XX_RGB_RES_HEIGHT_HI		0x4029
+ #define D4XX_RGB_FPS			0x402C
+ 
+ #define D4XX_DEPTH_CONTROL_BASE		0x4100
+@@ -63,22 +60,20 @@
+ 
+ /* #define INIT_ET_INSETTING 1 */
+ 
+-#define d4xx_reg struct reg_8
++#define d4xx_reg struct reg_16
+ 
+ #ifdef _RGB_FLAYVOR
+ static d4xx_reg d4xx_start[] = {
+ 	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_START},
+-	{0x1000, 0x000},
+-	{0x1001, 0x02},
++	{0x1000, 0x200},
+ 	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_START*5},
+-	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_START},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ 
+ static d4xx_reg d4xx_stop[] = {
+ 	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_STOP},
+-	{0x1000, 0x00},
+-	{0x1001, 0x01},
++	{0x1000, 0x100},
++	{D4XX_DEPTH_Y_STREAMS_DT_OVR, 0x00},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ 
+@@ -87,13 +82,13 @@ static d4xx_reg d4xx_start[] = {
+ 	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_START},
+ 	{0x1000, 0x02},
+ 	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_START*5},
+-	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_START},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ 
+ static d4xx_reg d4xx_stop[] = {
+ 	{D4XX_TABLE_WAIT_MS, D4XX_WAIT_MS_STOP},
+ 	{0x1000, 0x01},
++	{D4XX_DEPTH_Y_STREAMS_DT_OVR, 0x00},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ #endif
+@@ -105,10 +100,8 @@ static  d4xx_reg d465_1920x1080_rgb[] = {
+ 	{D4XX_RGB_STREAM_DT, 0x1e},
+ 	{D4XX_RGB_STREAM_MD, 0x00},
+ 	{D4XX_RGB_FPS, 0x1e},
+-	{D4XX_RGB_RES_WIDTH, 0x80},
+-	{D4XX_RGB_RES_WIDTH_HI, 0x07},
+-	{D4XX_RGB_RES_HEIGHT, 0x38},
+-	{D4XX_RGB_RES_HEIGHT_HI, 0x04},
++	{D4XX_RGB_RES_WIDTH, 0x780},
++	{D4XX_RGB_RES_HEIGHT, 0x438},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ 
+@@ -116,10 +109,8 @@ static  d4xx_reg d465_1280x720_rgb[] = {
+ 	{D4XX_RGB_STREAM_DT, 0x1e},
+ 	{D4XX_RGB_STREAM_MD, 0x00},
+ 	{D4XX_RGB_FPS, 0x1e},
+-	{D4XX_RGB_RES_WIDTH, 0x00},
+-	{D4XX_RGB_RES_WIDTH_HI, 0x05},
+-	{D4XX_RGB_RES_HEIGHT, 0xd0 },
+-	{D4XX_RGB_RES_HEIGHT_HI, 0x02},
++	{D4XX_RGB_RES_WIDTH, 0x500},
++	{D4XX_RGB_RES_HEIGHT, 0x2d0},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ #else
+@@ -127,44 +118,40 @@ static  d4xx_reg d465_1280x720_rgb[] = {
+ static  d4xx_reg d465_1280x960_z16[] = {
+ 	{D4XX_DEPTH_Y_STREAMS_DT, 0x31},
+ 	{D4XX_DEPTH_Y_STREAMS_MD, 0x00},
++	{D4XX_DEPTH_Y_STREAMS_DT_OVR, 0x1e},
+ 	{D4XX_DEPTH_Y_FPS, 0x1e},
+-	{D4XX_DEPTH_RES_WIDTH, 0x0},
+-	{D4XX_DEPTH_RES_WIDTH_HI, 0x05},
+-	{D4XX_DEPTH_RES_HEIGHT, 0xc0},
+-	{D4XX_DEPTH_RES_HEIGHT_HI, 0x03},
++	{D4XX_DEPTH_RES_WIDTH, 0x500},
++	{D4XX_DEPTH_RES_HEIGHT, 0x3c0},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ 
+ static  d4xx_reg d465_960x720_z16[] = {
+ 	{D4XX_DEPTH_Y_STREAMS_DT, 0x31},
+ 	{D4XX_DEPTH_Y_STREAMS_MD, 0x00},
++	{D4XX_DEPTH_Y_STREAMS_DT_OVR, 0x1e},
+ 	{D4XX_DEPTH_Y_FPS, 0x1e},
+-	{D4XX_DEPTH_RES_WIDTH, 0xc0},
+-	{D4XX_DEPTH_RES_WIDTH_HI, 0x03},
+-	{D4XX_DEPTH_RES_HEIGHT, 0xd0},
+-	{D4XX_DEPTH_RES_HEIGHT_HI, 0x02},
++	{D4XX_DEPTH_RES_WIDTH, 0x3c0},
++	{D4XX_DEPTH_RES_HEIGHT, 0x2d0},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ 
+ static  d4xx_reg d465_640x480_z16[] = {
+ 	{D4XX_DEPTH_Y_STREAMS_DT, 0x31},
+ 	{D4XX_DEPTH_Y_STREAMS_MD, 0x00},
++	{D4XX_DEPTH_Y_STREAMS_DT_OVR, 0x1e},
+ 	{D4XX_DEPTH_Y_FPS, 0x1e},
+-	{D4XX_DEPTH_RES_WIDTH, 0x80},
+-	{D4XX_DEPTH_RES_WIDTH_HI, 0x02},
+-	{D4XX_DEPTH_RES_HEIGHT, 0xe0},
+-	{D4XX_DEPTH_RES_HEIGHT_HI, 0x01},
++	{D4XX_DEPTH_RES_WIDTH, 0x280},
++	{D4XX_DEPTH_RES_HEIGHT, 0x1e0},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ 
+ static  d4xx_reg d465_320x240_z16[] = {
+ 	{D4XX_DEPTH_Y_STREAMS_DT, 0x31},
+ 	{D4XX_DEPTH_Y_STREAMS_MD, 0x00},
++	{D4XX_DEPTH_Y_STREAMS_DT_OVR, 0x1e},
+ 	{D4XX_DEPTH_Y_FPS, 0x1e},
+-	{D4XX_DEPTH_RES_WIDTH, 0x40},
+-	{D4XX_DEPTH_RES_WIDTH_HI, 0x01},
++	{D4XX_DEPTH_RES_WIDTH, 0x140},
+ 	{D4XX_DEPTH_RES_HEIGHT, 0xf0},
+-	{D4XX_DEPTH_RES_HEIGHT_HI, 0x00},
+ 	{D4XX_TABLE_END, 0x00}
+ };
+ #endif
+@@ -191,15 +178,15 @@ static const int D4XX_60fps[] = {
+ 	60,
+ };
+ 
+-static const int D4XX_6_30fps[] = {
++static const int D4XX_5_30fps[] = {
+ 	5,
+ 	30,
+ };
+ 
+ static d4xx_reg *mode_table[] = {
+ #ifdef _RGB_FLAYVOR
+-	[D465_MODE_1920X1080_RGB] = d465_1920x1080_rgb,
+-	[D465_MODE_1280X720_RGB] = d465_1280x720_rgb,
++	[D465_MODE_1920X1080_RGB]	= d465_1920x1080_rgb,
++	[D465_MODE_1280X720_RGB]	= d465_1280x720_rgb,
+ #else
+ 	[D465_MODE_1280X960_Z16]	= d465_1280x960_z16,
+ 	[D465_MODE_960X720_Z16]		= d465_960x720_z16,
+@@ -216,21 +203,21 @@ static d4xx_reg *mode_table[] = {
+  */
+ #ifdef _RGB_FLAYVOR
+ static const struct camera_common_frmfmt d4xx_frmfmt[] = {
+-	{{1920, 1080}, D4XX_6_30fps, 2, 1,
++	{{1920, 1080}, D4XX_5_30fps, 2, 1,
+ 			D465_MODE_1920X1080_RGB},
+-	{{1280, 720}, D4XX_6_30fps, 2, 1,
++	{{1280, 720}, D4XX_5_30fps, 2, 1,
+ 			D465_MODE_1280X720_RGB},
+ 	/* Add modes with no device tree support after below */
+ };
+ #else
+ static const struct camera_common_frmfmt d4xx_frmfmt[] = {
+-	{{1280, 960}, D4XX_6_30fps, 2, 1,
++	{{1280, 960}, D4XX_5_30fps, 2, 1,
+ 			D465_MODE_1280X960_Z16},
+-	{{960, 720}, D4XX_6_30fps, 2, 1,
++	{{960, 720}, D4XX_5_30fps, 2, 1,
+ 			D465_MODE_960X720_Z16},
+-	{{640, 480}, D4XX_6_30fps, 2, 1,
++	{{640, 480}, D4XX_5_30fps, 2, 1,
+ 			D465_MODE_640X480_Z16},
+-	{{320, 240}, D4XX_6_30fps, 2, 1,
++	{{320, 240}, D4XX_5_30fps, 2, 1,
+ 			D465_MODE_320X240_Z16},
+ 	/* Add modes with no device tree support after below */
+ };
+-- 
+2.7.4
+
