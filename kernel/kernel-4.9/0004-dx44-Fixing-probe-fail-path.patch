@@ -1,0 +1,51 @@
+From 33d864d0e8941bc4d32a2a83ea3215ae015f4528 Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Thu, 7 Nov 2019 17:56:11 +0200
+Subject: [PATCH] dx44: Fixing probe fail path
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ drivers/media/i2c/d4xx/d4xx_rs.c | 13 +++++--------
+ 1 file changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/i2c/d4xx/d4xx_rs.c b/drivers/media/i2c/d4xx/d4xx_rs.c
+index e33627f..5bed871 100644
+--- a/drivers/media/i2c/d4xx/d4xx_rs.c
++++ b/drivers/media/i2c/d4xx/d4xx_rs.c
+@@ -701,7 +701,7 @@ int d4xx_v4l_init(struct tegracam_device *tc_dev)
+ 	return ret;
+ 
+ e_remove_subdev:
+-	tegracam_device_unregister(state->tc_dev);
++	tegracam_v4l2subdev_unregister(state->tc_dev);
+ 	return ret;
+ }
+ 
+@@ -810,9 +810,8 @@ static int d4xx_start_streaming(struct tegracam_device *tc_dev)
+ 	}
+ 	d4xx_read(state, 0x402, &rate);
+ 
+-	dev_info(s_data->dev, "%s(): streaming %x depth status 0x%04x,
+-		rgb status 0x%04x, rate %u\n", __func__,
+-		 streaming, depth_status, rgb_status, rate);
++	dev_info(s_data->dev, "%s(): streaming %x depth status 0x%04x, rgb status 0x%04x, rate %u\n",
++		__func__, streaming, depth_status, rgb_status, rate);
+ 
+ 	return ret;
+ }
+@@ -844,10 +843,8 @@ static int d4xx_stop_streaming(struct tegracam_device *tc_dev)
+ 	}
+ 
+ 	d4xx_read(state, 0x402, &rate);
+-	dev_info(&state->client->dev,
+-		"%s(): streaming %x depth status 0x%04x,
+-		rgb status 0x%04x, rate %u\n", __func__,
+-		 streaming, depth_status, rgb_status, rate);
++	dev_info(&state->client->dev, "%s(): streaming %x depth status 0x%04x, rgb status 0x%04x, rate %u\n",
++		__func__, streaming, depth_status, rgb_status, rate);
+ 
+ 	return 0;
+ }
+-- 
+2.7.4
+
