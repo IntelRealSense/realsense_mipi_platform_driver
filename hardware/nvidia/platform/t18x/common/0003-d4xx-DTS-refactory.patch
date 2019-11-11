@@ -1,0 +1,436 @@
+From 7f1b46ee48649f6df385b5ffe3ca9b80ab6cdb40 Mon Sep 17 00:00:00 2001
+From: Alex Gantman <alexander.gantman@intel.com>
+Date: Thu, 7 Nov 2019 17:57:40 +0200
+Subject: [PATCH] d4xx: DTS refactory       - RGB support
+
+Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+---
+ .../tegra186-quill-camera-ds5.dtsi                 | 287 +++++++--------------
+ 1 file changed, 98 insertions(+), 189 deletions(-)
+
+diff --git a/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi b/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+index 53dabdc..b1a5b77 100644
+--- a/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
++++ b/kernel-dts/t18x-common-platforms/tegra186-quill-camera-ds5.dtsi
+@@ -1,3 +1,7 @@
++#define X_CONCAT_2(a,b) a##b
++#define CONCAT_2(a,b) X_CONCAT_2(a,b)
++
++
+ #define CAMERA_I2C_MUX_BUS(x) (0x1E + x)
+ #define CAM2_PWDN TEGRA_MAIN_GPIO(X, 0)
+ #define CAM4_PWDN TEGRA_MAIN_GPIO(K, 0)
+@@ -13,6 +17,42 @@
+ #define CAM1_RST_L	TEGRA_MAIN_GPIO(R, 1)
+ #define CAM1_PWDN	TEGRA_MAIN_GPIO(L, 6)
+ 
++   /*D431/D451 Port0 camera*/
++#define PORT_IDX_DEPTH_0	0
++#define CSI_PORT_DEPTH_0	0
++#define PORT_IDX_RGB_0		1
++#define CSI_PORT_RGB_0		1
++
++#define D451_MODE_COMMON \
++	pixel_t = "yuv_uyvy16"; \
++	num_lanes = "2"; \
++	pix_clk_hz = "742500000"; \
++	discontinuous_clk = "yes"; \
++	dpcm_enable = "false"; \
++	cil_settletime = "0"; \
++	mclk_multiplier = "15.625"; \
++	csi_pixel_bit_depth = "12"; \
++	readout_orientation = "0"; \
++	/*serdes_pix_clk_hz = "535000000";*/ \
++	set_mode_delay_ms = "500"; \
++	gain_factor = "1000000"; \
++	min_gain_val = "0"; \
++	max_gain_val = "177"; \
++	step_gain_val = "1"; \
++	default_gain = "1"; \
++	min_hdr_ratio = "32"; \
++	max_hdr_ratio = "32"; \
++	framerate_factor = "1000000"; \
++	min_framerate = "5"; \
++	max_framerate = "30"; \
++	step_framerate = "25"; \
++	default_framerate= "30"; \
++	exposure_factor = "1000000"; \
++	min_exp_time = "859"; \
++	max_exp_time = "15649"; \
++	step_exp_time = "1"; \
++	default_exp_time = "15649";/* us */ \
++	embedded_metadata_height = "0"
+ 
+ #define PCA9532_TYPE_LED 1
+ #define PCA9532_PWM0 2
+@@ -48,12 +88,14 @@
+ 						#size-cells = <0>;
+ 
+ 						port@0 {
++							status = "ok";
+ 							reg = <0>;
+-							d4m_out0: endpoint {
++							CONCAT_2(d4m_out, PORT_IDX_DEPTH_0): endpoint {
++								status = "ok";
+ 								vc-id = <0>;
+-								port-index = <0>;
++								port-index = <CSI_PORT_DEPTH_0>;
+ 								bus-width = <2>;
+-								remote-endpoint = <&ds5_csi_in0>;
++								remote-endpoint = <&CONCAT_2(csi_in, PORT_IDX_DEPTH_0)>;
+ 								src_y0: source@0 {
+ 									data-types = <0x2a
+ 											0x1e
+@@ -67,136 +109,32 @@
+ 					};
+ 					/* mode0: Z16:1280x960, mode1: Z16:960x720 */
+ 					mode0 {
+-						pixel_t = "yuv_uyvy16";
+-						num_lanes = "2";
++						D451_MODE_COMMON;
+ 						active_w = "1280";
+ 						active_h = "960";
+ 						tegra_sinterface = "serial_a";
+-						mclk_khz = "24000";
+-						pix_clk_hz = "156750000";
+-						discontinuous_clk = "yes";
+-						dpcm_enable = "false";
+-						cil_settletime = "0";
+ 						line_length = "1280"; /* 2200 */
+-						mclk_multiplier = "15.625";
+-
+-						gain_factor = "1000000";
+-						min_gain_val = "1000000";
+-						max_gain_val = "177000000";
+-						step_gain_val = "1";
+-						default_gain = "1000000";
+-						min_hdr_ratio = "32";
+-						max_hdr_ratio = "32";
+-						framerate_factor = "1000000";
+-						min_framerate = "5000000";
+-						max_framerate = "25000000";
+-						step_framerate = "25";
+-						default_framerate= "25000000";
+-						exposure_factor = "1000000";
+-						min_exp_time = "859";
+-						max_exp_time = "15649";
+-						step_exp_time = "1";
+-						default_exp_time = "15649";/* us */
+-						embedded_metadata_height = "0";
+ 					};
+ 					mode1 {
+-						pixel_t = "yuv_uyvy16";
+-						num_lanes = "2";
++						D451_MODE_COMMON;
+ 						active_w = "960";
+ 						active_h = "720";
+ 						tegra_sinterface = "serial_a";
+-						mclk_khz = "24000";
+-						pix_clk_hz = "375000000";
+-						discontinuous_clk = "yes";
+-						dpcm_enable = "false";
+-						cil_settletime = "0";
+ 						line_length = "960"; /* 2200 */
+-						mclk_multiplier = "15.625";
+-
+-						gain_factor = "1000000";
+-						min_gain_val = "1000000";
+-						max_gain_val = "177000000";
+-						step_gain_val = "1";
+-						default_gain = "1000000";
+-						min_hdr_ratio = "32";
+-						max_hdr_ratio = "32";
+-						framerate_factor = "1000000";
+-						min_framerate = "5000000";
+-						max_framerate = "25000000";
+-						step_framerate = "25";
+-						default_framerate= "25000000";
+-						exposure_factor = "1000000";
+-						min_exp_time = "859";
+-						max_exp_time = "15649";
+-						step_exp_time = "1";
+-						default_exp_time = "15649";/* us */
+-						embedded_metadata_height = "0";
+ 					};
+ 					mode2 {
+-						pixel_t = "yuv_uyvy16";
+-						num_lanes = "2";
++						D451_MODE_COMMON;
+ 						active_w = "640";
+ 						active_h = "480";
+ 						tegra_sinterface = "serial_a";
+-						mclk_khz = "24000";
+-						pix_clk_hz = "375000000";
+-						discontinuous_clk = "yes";
+-						dpcm_enable = "false";
+-						cil_settletime = "0";
+ 						line_length = "640"; /* 2200 */
+-						mclk_multiplier = "15.625";
+-
+-						gain_factor = "1000000";
+-						min_gain_val = "1000000";
+-						max_gain_val = "177000000";
+-						step_gain_val = "1";
+-						default_gain = "1000000";
+-						min_hdr_ratio = "32";
+-						max_hdr_ratio = "32";
+-						framerate_factor = "1000000";
+-						min_framerate = "5000000";
+-						max_framerate = "25000000";
+-						step_framerate = "25";
+-						default_framerate= "25000000";
+-						exposure_factor = "1000000";
+-						min_exp_time = "859";
+-						max_exp_time = "15649";
+-						step_exp_time = "1";
+-						default_exp_time = "15649";/* us */
+-						embedded_metadata_height = "0";
+ 					};
+ 					mode3 {
+-						pixel_t = "yuv_uyvy16";
+-						num_lanes = "2";
++						D451_MODE_COMMON;
+ 						active_w = "320";
+ 						active_h = "240";
+ 						tegra_sinterface = "serial_a";
+-						mclk_khz = "24000";
+-						pix_clk_hz = "375000000";
+-						discontinuous_clk = "yes";
+-						dpcm_enable = "false";
+-						cil_settletime = "0";
+ 						line_length = "320"; /* 2200 */
+-						mclk_multiplier = "15.625";
+-
+-						gain_factor = "1000000";
+-						min_gain_val = "1000000";
+-						max_gain_val = "177000000";
+-						step_gain_val = "1";
+-						default_gain = "1000000";
+-						min_hdr_ratio = "32";
+-						max_hdr_ratio = "32";
+-						framerate_factor = "1000000";
+-						min_framerate = "5000000";
+-						max_framerate = "25000000";
+-						step_framerate = "25";
+-						default_framerate= "25000000";
+-						exposure_factor = "1000000";
+-						min_exp_time = "859";
+-						max_exp_time = "15649";
+-						step_exp_time = "1";
+-						default_exp_time = "15649";/* us */
+-						embedded_metadata_height = "0";
+ 					};
+ 				};
+ 			};
+@@ -216,61 +154,37 @@
+ 						#address-cells = <1>;
+ 						#size-cells = <0>;
+ 
+-						port@0 {
+-							reg = <0>;
+-							rgb4m_out0: endpoint {
+-								vc-id = <0>;
+-								port-index = <1>;
+-								bus-width = <2>;
+-								remote-endpoint = <&ds5_csi_in1>;
+-								src_rgb0: source@0 {
+-									data-types = <0x2a
+-											0x1e>;
+-									virt-chan = <0>;
+-								};
++					port@0 {
++						status = "ok";
++						reg = <0>;
++						CONCAT_2(d4m_out, PORT_IDX_RGB_0): endpoint {
++							status = "ok";
++							vc-id = <0>;
++							port-index = <CSI_PORT_RGB_0>;
++							bus-width = <2>;
++							remote-endpoint = <&CONCAT_2(csi_in, PORT_IDX_RGB_0)>;
++							src_rgb0: source@0 {
++								data-types = <0x2a
++									      0x1e>;
++								virt-chan = <0>;
+ 							};
+ 						};
+ 					};
++				};
+ 					/* mode0: YUV:1920x1080, mode1: YUV:1280x720 */
+ 					mode0 {
+-						pixel_t = "yuv_uyvy16";
+-						num_lanes = "2";
++						D451_MODE_COMMON;
+ 						active_w = "1920";
+ 						active_h = "1080";
+-						tegra_sinterface = "serial_a";
+-						mclk_khz = "24000";
+-						pix_clk_hz = "375000000";
+-						discontinuous_clk = "yes";
+-						dpcm_enable = "false";
+-						cil_settletime = "0";
++						tegra_sinterface = "serial_b";
+ 						line_length = "1920"; /* 2200 */
+-						mclk_multiplier = "15.625";
+-						embedded_metadata_height = "0";
+-						min_framerate = "5";
+-						max_framerate = "30";
+-						step_framerate = "25";
+-						default_framerate= "30";
+-						framerate_factor = "1";
+ 					};
+ 					mode1 {
+-						pixel_t = "yuv_uyvy16";
+-						num_lanes = "2";
++						D451_MODE_COMMON;
+ 						active_w = "1280";
+ 						active_h = "720";
+-						tegra_sinterface = "serial_a";
+-						mclk_khz = "24000";
+-						pix_clk_hz = "375000000";
+-						discontinuous_clk = "yes";
+-						dpcm_enable = "false";
+-						cil_settletime = "0";
+-						line_length = "1280"; /* 2200 */
+-						mclk_multiplier = "15.625";
+-						embedded_metadata_height = "0";
+-						min_framerate = "5";
+-						max_framerate = "30";
+-						step_framerate = "25";
+-						default_framerate= "30";
+-						framerate_factor = "1";
++						tegra_sinterface = "serial_b";
++						line_length = "1290"; /* 2200 */
+ 					};
+ 				};
+ 			};
+@@ -280,71 +194,66 @@
+ 		csi_base: nvcsi@150c0000 {
+ 			#address-cells = <0x1>;
+ 			#size-cells = <0x0>;
+-
+ 			num-channels = <2>;
+ 
+-			channel@0 {
+-				reg = <0x0>;
++			channel@PORT_IDX_DEPTH_0 {
++				reg = <PORT_IDX_DEPTH_0>;
+ 				status = "ok";
+ 
+ 				ports {
+-					#address-cells = <0x1>;
+-					#size-cells = <0x0>;
++					#address-cells = <1>;
++					#size-cells = <0>;
+ 
+ 					port@0 {
+ 						reg = <0>;
+ 						status = "ok";
+-						ds5_csi_in0: endpoint@0 {
++						CONCAT_2(csi_in, PORT_IDX_DEPTH_0): endpoint@0 {
+ 							status = "ok";
+-							port-index = <0>;
++							port-index = <CSI_PORT_DEPTH_0>;
+ 							bus-width = <2>;
+ 							vc-id = <0>;
+-							remote-endpoint = <&d4m_out0>;
++							remote-endpoint = <&CONCAT_2(d4m_out, PORT_IDX_DEPTH_0)>;
+ 						};
+ 					};
+ 					port@1 {
+-						reg = <1>;
+ 						status = "ok";
+-						csi_out0: endpoint@1 {
++						reg = <1>;
++						CONCAT_2(csi_out, PORT_IDX_DEPTH_0): endpoint@1 {
+ 							status = "ok";
+-							remote-endpoint = <&vi_in0>;
++							remote-endpoint = <&CONCAT_2(vi_in, PORT_IDX_DEPTH_0)>;
+ 						};
+ 					};
+-
+ 				};
+ 			};
+-
+-			channel@1 {
+-				reg = <0x1>;
++			channel@PORT_IDX_RGB_0 {
++				reg = <PORT_IDX_RGB_0>;
+ 				status = "ok";
+ 
+ 				ports {
+-					#address-cells = <0x1>;
+-					#size-cells = <0x0>;
++					#address-cells = <1>;
++					#size-cells = <0>;
+ 
+ 					port@0 {
+ 						reg = <0>;
+ 						status = "ok";
+-						ds5_csi_in1: endpoint@2 {
++						CONCAT_2(csi_in, PORT_IDX_RGB_0): endpoint@2 {
+ 							status = "ok";
+-							csi-port = <1>;
++							port-index = <CSI_PORT_RGB_0>;
+ 							bus-width = <2>;
+ 							vc-id = <0>;
+-							remote-endpoint = <&rgb4m_out0>;
++							remote-endpoint = <&CONCAT_2(d4m_out, PORT_IDX_RGB_0)>;
+ 						};
+ 					};
+-
+ 					port@1 {
+-						reg = <1>;
+ 						status = "ok";
+-						rgb_csi_out1: endpoint@3 {
++						reg = <1>;
++						CONCAT_2(csi_out, PORT_IDX_RGB_0): endpoint@3 {
+ 							status = "ok";
+-							remote-endpoint = <&vi_in1>;
++							remote-endpoint = <&CONCAT_2(vi_in, PORT_IDX_RGB_0)>;
+ 						};
+ 					};
+ 				};
+ 			};
+-
+ 		};
+ 
+ 		vi_base: vi@15700000 {
+@@ -354,25 +263,25 @@
+ 				#address-cells = <0x1>;
+ 				#size-cells = <0x0>;
+ 
+-				port@0 {
+-					reg = <0>;
++				port@PORT_IDX_DEPTH_0 {
+ 					status = "ok";
+-					vi_in0: endpoint {
++					reg = <PORT_IDX_DEPTH_0>;
++					CONCAT_2(vi_in, PORT_IDX_DEPTH_0): endpoint {
+ 						status = "ok";
+-						port-index = <0>;
++						port-index = <CSI_PORT_DEPTH_0>;
+ 						bus-width = <2>;
+-						remote-endpoint = <&csi_out0>;
++						remote-endpoint = <&CONCAT_2(csi_out, PORT_IDX_DEPTH_0)>;
+ 					};
+ 				};
+ 
+-				port@1 {
+-					reg = <1>;
++				port@PORT_IDX_RGB_0 {
+ 					status = "ok";
+-					vi_in1: endpoint {
++					reg = <PORT_IDX_RGB_0>;
++					CONCAT_2(vi_in, PORT_IDX_RGB_0): endpoint {
+ 						status = "ok";
+-						port-index = <1>;
++						port-index = <CSI_PORT_RGB_0>;
+ 						bus-width = <2>;
+-						remote-endpoint = <&rgb_csi_out1>;
++						remote-endpoint = <&CONCAT_2(csi_out, PORT_IDX_RGB_0)>;
+ 					};
+ 				};
+ 			};
+-- 
+2.7.4
+
