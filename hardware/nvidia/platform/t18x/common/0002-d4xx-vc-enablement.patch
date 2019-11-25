@@ -1,0 +1,132 @@
+From a0d2d9a6fcff7fec04c7aafb629273fb7c56121b Mon Sep 17 00:00:00 2001
+From: Nael Masalha <nael.masalha@intel.com>
+Date: Tue, 19 Nov 2019 16:54:29 +0200
+Subject: [PATCH] d4xx: vc enablement
+
+ - RGB on VC 0
+ - Depth on VC 1
+ - Both are on the same port, using 2 lanes
+
+Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+---
+ .../t18x-common-modules/tegra186-camera-d4xx.dtsi  | 25 +++++++++++++---------
+ 1 file changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi b/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
+index dd20b7e..f4a5227 100644
+--- a/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
++++ b/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
+@@ -40,7 +40,7 @@
+ 								remote-endpoint = <&csi_in0>;
+ 								src_depth0: source@0 {
+ 									data-types = <0x31>;
+-									virt-chan = <0>;
++									vc-id = <1>;
+ 								};
+ 								src_y0: source@1 {
+ 									data-types = < 0x2a
+@@ -48,7 +48,7 @@
+ 											0x2b
+ 											0x32
+ 											0x24>;
+-									virt-chan = <0>;
++									vc-id = <1>;
+ 								};
+ 							};
+ 						};
+@@ -72,6 +72,7 @@
+ 						embedded_metadata_height = "0";
+ 						min_framerate = "6";
+ 						max_framerate = "30";
++						vc_id = "1";
+ 					};
+ 					mode1 {
+ 						pixel_t = "grey_y16";
+@@ -114,8 +115,9 @@
+ 						port@0 {
+ 							reg = <0>;
+ 							d4m1_out: endpoint {
+-								port-index = <3>;
++								port-index = <1>;
+ 								bus-width = <2>;
++								vc-id = <0>;
+ 								remote-endpoint = <&csi_in1>;
+ 							};
+ 						};
+@@ -140,6 +142,7 @@
+ 						embedded_metadata_height = "0";
+ 						min_framerate = "6";
+ 						max_framerate = "30";
++						vc_id = "0";
+ 					};
+ 				};
+ 			};
+@@ -198,7 +201,7 @@
+ 
+ 						csi_in1: endpoint@2 {
+ 							status = "ok";
+-							port-index = <1>;
++							port-index = <0>;
+ 							bus-width = <2>;
+ 							remote-endpoint = <&d4m1_out>;
+ 						};
+@@ -347,16 +350,18 @@
+ 						status = "ok";
+ 						port-index = <0>;
+ 						bus-width = <2>;
++						vc-id = <1>;
+ 						remote-endpoint = <&csi_out0>;
+ 					};
+ 				};
+ 				port@1 {
+ 					reg = <1>;
+-					status = "disabled";
++					status = "ok";
+ 
+ 					vi_in1: endpoint {
+ 						status = "ok";
+-						port-index = <1>;
++						vc-id = <0>;
++						port-index = <0>;
+ 						bus-width = <2>;
+ 						remote-endpoint = <&csi_out1>;
+ 					};
+@@ -367,7 +372,7 @@
+ 
+ 					vi_in2: endpoint {
+ 						status = "ok";
+-						port-index = <2>;
++						port-index = <0>;
+ 						bus-width = <2>;
+ 						remote-endpoint = <&csi_out2>;
+ 					};
+@@ -378,7 +383,7 @@
+ 
+ 					vi_in3: endpoint {
+ 						status = "ok";
+-						port-index = <3>;
++						port-index = <0>;
+ 						bus-width = <2>;
+ 						remote-endpoint = <&csi_out3>;
+ 					};
+@@ -389,7 +394,7 @@
+ 
+ 					vi_in4: endpoint {
+ 						status = "ok";
+-						port-index = <4>;
++						port-index = <0>;
+ 						bus-width = <2>;
+ 						remote-endpoint = <&csi_out4>;
+ 					};
+@@ -400,7 +405,7 @@
+ 
+ 					vi_in5: endpoint {
+ 						status = "ok";
+-						port-index = <5>;
++						port-index = <0>;
+ 						bus-width = <2>;
+ 						remote-endpoint = <&csi_out5>;
+ 					};
+-- 
+2.7.4
+
