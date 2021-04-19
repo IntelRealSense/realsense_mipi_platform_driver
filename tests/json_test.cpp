@@ -72,7 +72,7 @@ using namespace std;
 #define PRESET_CFG	    0x6F
 #define PRESET_APPLY	0x70
 #define PRESET_QUERY	0x71
-#define PRESET_GET  	0x72
+#define PRESET_GET      0x72
 
 #define DS5_STREAM_CONFIG_0                  0x4000
 #define DS5_CAMERA_CID_BASE                 (V4L2_CTRL_CLASS_CAMERA | DS5_STREAM_CONFIG_0)
@@ -158,47 +158,12 @@ struct HWMC {
 };
 #pragma pack(pop)
 
-static int stream30Frames(int depth_fd, int md_fd, std::array<void*, 8> metaDataBuffers, bool lastStream)
-{
-    for (int i = 0; i < 30; ++i) {
-        struct v4l2_buffer depthV4l2Buffer {0};
-        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
-        depthV4l2Buffer.memory = V4L2_MEMORY_MMAP;
-
-        struct v4l2_buffer mdV4l2Buffer {0};
-        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE ;
-        mdV4l2Buffer.memory = V4L2_MEMORY_MMAP;
-
-        int ret = ioctl(depth_fd, VIDIOC_DQBUF, &depthV4l2Buffer);
-        ret = ioctl(md_fd, VIDIOC_DQBUF, &mdV4l2Buffer);
-        cout << "depth sequence " << depthV4l2Buffer.sequence << endl;
-        cout << "meta v4l2 sequence " << mdV4l2Buffer.sequence << endl;
-
-        STMetaDataDepthYNormalMode *ptr = static_cast<STMetaDataDepthYNormalMode*>(
-                metaDataBuffers[mdV4l2Buffer.index]);
-        cout << "meta data exposure time "<< dec << ptr->captureStats.ExposureTime << endl;
-        cout << "meta data frame counter "<< dec << ptr->intelCaptureTiming.frameCounter << endl;
-
-        ioctl(depth_fd, VIDIOC_QBUF, &depthV4l2Buffer);
-        ioctl(md_fd, VIDIOC_QBUF, &mdV4l2Buffer);
-
-	// don't queue the last buffer on last stream
-	if (lastStream && i < 29) {
-            ioctl(depth_fd, VIDIOC_QBUF, &depthV4l2Buffer);
-            ioctl(md_fd, VIDIOC_QBUF, &mdV4l2Buffer);
-        }
-    }
-
-    return 0;
-}
-
 /**
  * function that creates the hardware monitor command according to the opcode and sends it
  * fd: file descriptor
  * opcode: the opcode to the hwmc (CFG, APPLY, QUERY, GET)
  * param1: first parameter in command header (if 0 then its not needed)
 **/
-
 static int sendHwmc(int fd, uint32_t opcode, uint32_t param1)
 {
     uint8_t hwmc[1028] {0};
@@ -231,7 +196,6 @@ static int sendHwmc(int fd, uint32_t opcode, uint32_t param1)
 	input.seekg(0, input.beg);
 
 	char* buffer = new char[length];
-
 	input.read(buffer, length);
 
 	memcpy(hwmc + offset, buffer, length);
@@ -260,43 +224,61 @@ static int sendHwmc(int fd, uint32_t opcode, uint32_t param1)
     switch (opcode) {
     case PRESET_CFG:
 	{
-	cout << "sending PRESET CFG"<< endl;
 	if (0 != ioctl(fd, VIDIOC_S_EXT_CTRLS, &ext)) {
-	    cout << "VIDIOC_S_EXT_CTRLS failed!" << endl;    
+	    cout << "VIDIOC_S_EXT_CTRLS failed!" << endl;
+	    return -1;
 	}
 	
 	break;
 	}
     case PRESET_APPLY:
 	{
-	cout << "sending PRESET APPLY"<< endl;
 	if (0 != ioctl(fd, VIDIOC_S_EXT_CTRLS, &ext)) {
-	    cout << "VIDIOC_S_EXT_CTRLS failed!" << endl;    
+	    cout << "VIDIOC_S_EXT_CTRLS failed!" << endl;
+	    return -1;
 	}
 	
 	break;
 	}
     case PRESET_QUERY:
 	{
-	cout << "sending PRESET QUERY"<< endl;
-	if (0 != ioctl(fd, VIDIOC_G_EXT_CTRLS, &ext)) {
-	    cout << "VIDIOC_G_EXT_CTRLS failed!" << endl;    
-	}
+	uint8_t presets[84] {0};
 
-	auto myfile = std::fstream("query.binary", std::ios::out | std::ios::binary);
-	myfile.write((char*)ctrl.p_u8, 1028);
+	if (0 != ioctl(fd, VIDIOC_S_EXT_CTRLS, &ext)) {
+	    cout << "VIDIOC_G_EXT_CTRLS failed!" << endl;
+	    return -1;
+	}
+	memcpy(presets, hwmc + sizeof(struct HWMC) + 4, sizeof(presets));
+
+	for (int i=0; i < 64 ; i+=21) {
+	    cout << "Preset index: " << int(presets[i]) << endl;
+	    cout << "    Name: ";
+	    for (int j=0; j < 20 ; j++) {
+		cout << presets[i+j+1];
+	    }
+	    cout << endl;
+	}
 
 	break;
 	}
     case PRESET_GET:
 	{
-	cout << "sending PRESET GET"<< endl;
-	if (0 != ioctl(fd, VIDIOC_G_EXT_CTRLS, &ext)) {
-	    cout << "VIDIOC_G_EXT_CTRLS failed!" << endl;    
+	if (0 != ioctl(fd, VIDIOC_S_EXT_CTRLS, &ext)) {
+	    cout << "VIDIOC_G_EXT_CTRLS failed!" << endl;
+	    return -1;
 	}
 
-	auto myfile = std::fstream("get.binary", std::ios::out | std::ios::binary);
-	myfile.write((char*)ctrl.p_u8, 1028);
+	std::ifstream input( "/home/nvidia/tools/src/tests/AmazonExample.bin", std::ifstream::binary );
+	input.seekg(0, input.end);
+	int length = input.tellg();
+	input.seekg(0, input.beg);
+
+	char* buffer = new char[length];
+	input.read(buffer, length);
+
+	cout << "comparing returned buffer from HWMC to applied preset...";
+	memcmp(buffer, hwmc + sizeof(struct HWMC) + 4, sizeof(buffer));
+	cout << "successful" << endl; 
 
 	break;
 	}
@@ -308,9 +290,9 @@ static int sendHwmc(int fd, uint32_t opcode, uint32_t param1)
 
 /**
  * 1. configures preset at index 101 and 102
- * 2. queries all presets
- * 3. gets the buffer of preset at index 102
- * 4. applies preset at index 101
+ * 2. applies preset at index 101
+ * 3. query all presets
+ * 4. gets the buffer of preset at index 101
 **/
 
 TEST_F(V4L2StreamTest, AmazonTest) {
@@ -357,20 +339,20 @@ TEST_F(V4L2StreamTest, AmazonTest) {
     ret = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
     ASSERT_TRUE(0 == ret);
 
-    cout << endl << "configuring preset at index 101 & 102" << endl << endl;
-    sendHwmc(depth_fd, PRESET_CFG, 101);
-    sendHwmc(depth_fd, PRESET_CFG, 102);
+    cout << "configuring preset at index 101" << endl;
+    ASSERT_TRUE( 0 == sendHwmc(depth_fd, PRESET_CFG, 101)) ;
 
-    cout << endl << "quering all presets" << endl << endl;
-    sendHwmc(depth_fd, PRESET_QUERY, 0);
+    cout << "configuring preset at index 102" << endl;
+    ASSERT_TRUE( 0 == sendHwmc(depth_fd, PRESET_CFG, 102));
 
-    cout << endl << "getting buffer for preset at index 102" << endl << endl;
-    sendHwmc(depth_fd, PRESET_GET, 102);
+    cout << "applying preset at index 101" << endl;
+    ASSERT_TRUE( 0 == sendHwmc(depth_fd, PRESET_APPLY, 101));
 
-    cout << endl << "applying preset at index 101" << endl << endl;
-    sendHwmc(depth_fd, PRESET_APPLY, 101);
+    cout << "quering all presets" << endl << endl;
+    ASSERT_TRUE( 0 == sendHwmc(depth_fd, PRESET_QUERY, 0));
 
-    stream30Frames(depth_fd, md_fd, metaDataBuffers, false);
+    cout << "getting buffer for preset at index 101" << endl;
+    ASSERT_TRUE( 0 == sendHwmc(depth_fd, PRESET_GET, 101));
 
     // VIDIOC_STREAMOFF
     ret = ioctl(md_fd, VIDIOC_STREAMOFF, &mdType);
