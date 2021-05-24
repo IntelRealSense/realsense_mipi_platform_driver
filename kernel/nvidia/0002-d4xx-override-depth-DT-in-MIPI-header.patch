@@ -1,21 +1,21 @@
-From 9de576806443497fed0ec564b3a2206eeea4f98d Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Mon, 18 Nov 2019 20:09:14 +0200
-Subject: [PATCH] d4xx: override depth DT in MIPI header
+From 3f25837bef5364ee239822ca1016df164208a01c Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 10 May 2021 15:33:58 +0300
+Subject: [PATCH 02/11] d4xx: override depth DT in MIPI header
 
- - Custom DT 0x31 is not supported in Jetson TX2 kernel,
-   thus we override the DT in MIPI header to 0x1E
+- Custom DT 0x31 is not supported in Jetson TX2 kernel,
+  thus we override the DT in MIPI header to 0x1E
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
  drivers/media/i2c/d4xx.c | 8 ++++++++
  1 file changed, 8 insertions(+)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index b624671..e20bd87 100644
+index 485295db4..fc960620d 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
-@@ -879,6 +879,14 @@ static int ds5_configure(struct ds5 *state)
+@@ -880,6 +880,14 @@ static int ds5_configure(struct ds5 *state)
  		return ret;
  
  	if (depth->streaming) {
@@ -31,5 +31,5 @@ index b624671..e20bd87 100644
  		if (ret < 0)
  			return ret;
 -- 
-2.7.4
+2.17.1
 

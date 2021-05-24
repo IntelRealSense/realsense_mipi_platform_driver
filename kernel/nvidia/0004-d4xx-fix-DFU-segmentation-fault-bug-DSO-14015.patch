@@ -1,18 +1,18 @@
-From 219f1eebaec114e3f5c255642580f499d143ba8b Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Tue, 26 Nov 2019 07:55:42 +0200
-Subject: [PATCH] d4xx: fix DFU segmentation fault, bug DSO-14015
+From 024cc75accbd28cde3e81b3a7be869e32cc1133e Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 10 May 2021 15:40:34 +0300
+Subject: [PATCH 04/11] d4xx: fix DFU segmentation fault, bug DSO-14015
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
  drivers/media/i2c/d4xx.c | 8 ++++----
  1 file changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index a1d2e30..24b9a65 100644
+index 6912c7c8b..a3cb1d0ff 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
-@@ -2707,7 +2707,7 @@ static int ds5_dfu_detach(struct ds5 *state)
+@@ -2708,7 +2708,7 @@ static int ds5_dfu_detach(struct ds5 *state)
  };
  
  /* When a process reads from our device, this gets called. */
@@ -21,7 +21,7 @@ index a1d2e30..24b9a65 100644
  {
  	struct ds5 *state = flip->private_data;
  	u16 fw_ver;
-@@ -2732,7 +2732,7 @@ e_dfu_read_failed:
+@@ -2733,7 +2733,7 @@ e_dfu_read_failed:
  	return ret;
  };
  
@@ -30,7 +30,7 @@ index a1d2e30..24b9a65 100644
  {
  	struct ds5 *state = flip->private_data;
  	int ret = 0;
-@@ -2767,7 +2767,7 @@ static ssize_t device_write(struct file *flip, const char *buffer, size_t len, l
+@@ -2768,7 +2768,7 @@ static ssize_t device_write(struct file *flip, const char *buffer, size_t len, l
  				ret = -EFAULT;
  				goto dfu_write_error;
  			}
@@ -39,7 +39,7 @@ index a1d2e30..24b9a65 100644
  			if (ret < 0)
  				goto dfu_write_error;
  			ret = ds5_dfu_wait_for_get_dfu_status (state, dfuDNLOAD_IDLE);
-@@ -2780,7 +2780,7 @@ static ssize_t device_write(struct file *flip, const char *buffer, size_t len, l
+@@ -2781,7 +2781,7 @@ static ssize_t device_write(struct file *flip, const char *buffer, size_t len, l
  				goto dfu_write_error;
  		}
  		if (dfu_part_blocks) {
@@ -49,5 +49,5 @@ index a1d2e30..24b9a65 100644
  				ret = ds5_dfu_wait_for_get_dfu_status (state, dfuDNLOAD_IDLE);
  			}
 -- 
-2.7.4
+2.17.1
 

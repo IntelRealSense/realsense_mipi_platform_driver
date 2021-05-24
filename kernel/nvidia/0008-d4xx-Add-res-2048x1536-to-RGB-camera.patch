@@ -1,32 +1,34 @@
-From 40872202cf1348d5e819b6a03557d67c3adacea8 Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Thu, 19 Dec 2019 14:20:02 +0200
-Subject: [PATCH] d4xx: Add res 2048x1536 to RGB camera
+From 05f3aad680f3ba33ee1eb36896683f7af63ff834 Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 10 May 2021 16:05:37 +0300
+Subject: [PATCH 08/11] d4xx: Add res 2048x1536 to RGB camera
 
  - This resolution replaces 2000x1500, wich had line interlacing artifacts.
    We suspect Jetson does not support width that not aligned to 64.
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
- drivers/media/i2c/d4xx.c | 5 +++++
- 1 file changed, 5 insertions(+)
+ drivers/media/i2c/d4xx.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 78b3941..2156d8e 100644
+index 11dbffb56..3c6062f05 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
-@@ -483,6 +483,11 @@ static const struct ds5_resolution ds5_rgb_sizes[] = {
+@@ -484,7 +484,12 @@ static const struct ds5_resolution ds5_rgb_sizes[] = {
  		.height = 1080,
  		.framerates = ds5_framerates,
  		.n_framerates = ARRAY_SIZE(ds5_framerates),
+-	},
 +	}, {
 +		.width = 2048,
 +		.height = 1536,
 +		.framerates = ds5_framerates,
 +		.n_framerates = ARRAY_SIZE(ds5_framerates),
- 	},
++    },
  };
  
+ static const struct ds5_resolution ds5_size_w10 = {
 -- 
-2.7.4
+2.17.1
 

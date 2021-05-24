@@ -1,23 +1,23 @@
-From d22b82c6591188ca477cc4456e6617699c916012 Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Sun, 8 Dec 2019 16:30:09 +0200
-Subject: [PATCH] d4xx: driver cleanup
+From 24cbe0383378f72151c8efd5792317fcccfe1882 Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 10 May 2021 15:52:04 +0300
+Subject: [PATCH 05/11] d4xx: driver cleanup
 
  - Depth node exposes only Z16
  - RGB node exposes only YUYV
  - VC switch to meet FW defaults, Depth on VC 0 and RGB on VC 1
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
- drivers/media/i2c/d4xx.c                           | 46 ++++++++++++++++++----
- .../media/platform/tegra/camera/vi/vi4_formats.h   |  8 ++--
+ drivers/media/i2c/d4xx.c                      | 46 +++++++++++++++----
+ .../platform/tegra/camera/vi/vi4_formats.h    |  8 ++--
  2 files changed, 42 insertions(+), 12 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 24b9a65..990bce5 100644
+index a3cb1d0ff..becc43311 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
-@@ -595,7 +595,7 @@ static const struct ds5_format ds5_y_formats_awg[] = {
+@@ -596,7 +596,7 @@ static const struct ds5_format ds5_y_formats_awg[] = {
  
  static const struct ds5_format ds5_rgb_format = {
  	.data_type = 0x1e,	/* UYVY */
@@ -26,7 +26,7 @@ index 24b9a65..990bce5 100644
  	.n_resolutions = ARRAY_SIZE(ds5_rgb_sizes),
  	.resolutions = ds5_rgb_sizes,
  };
-@@ -680,10 +680,10 @@ static int ds5_sensor_enum_frame_size(struct v4l2_subdev *sd,
+@@ -681,10 +681,10 @@ static int ds5_sensor_enum_frame_size(struct v4l2_subdev *sd,
  	const struct ds5_format *fmt;
  	unsigned int i;
  
@@ -40,7 +40,7 @@ index 24b9a65..990bce5 100644
  
  	// TODO: workaround for RGB enum framesizes, due to double instances of
  	//       the driver, should be removed in 4.9.
-@@ -716,8 +716,8 @@ static int ds5_sensor_enum_frame_interval(struct v4l2_subdev *sd,
+@@ -717,8 +717,8 @@ static int ds5_sensor_enum_frame_interval(struct v4l2_subdev *sd,
  	const struct ds5_resolution *res;
  	unsigned int i;
  
@@ -51,7 +51,7 @@ index 24b9a65..990bce5 100644
  
  	for (i = 0, fmt = sensor->formats; i < sensor->n_formats; i++, fmt++)
  		if (fie->code == fmt->mbus_code)
-@@ -921,7 +921,9 @@ static int ds5_configure(struct ds5 *state)
+@@ -922,7 +922,9 @@ static int ds5_configure(struct ds5 *state)
  		if (ret < 0)
  			return ret;
  
@@ -62,31 +62,31 @@ index 24b9a65..990bce5 100644
  		if (ret < 0)
  			return ret;
  
-@@ -1130,6 +1132,10 @@ static int ds5_send_hwmc(struct ds5 *state, u16 cmdLen, struct hwm_cmd *cmd,
+@@ -1131,6 +1133,10 @@ static int ds5_send_hwmc(struct ds5 *state, u16 cmdLen, struct hwm_cmd *cmd,
  					__func__, *dataLen);
  		// First 4 bytes of cmd->Data after read will include opcode
  		ds5_raw_read_with_check(state, 0x4900, cmd->Data, *dataLen);
 +
-+		/*This is neede for libreealsense, to align there code with UVC*/
++        /*This is neede for libreealsense, to align there code with UVC*/
 +		cmd->Data[1000] = (unsigned char)((*dataLen) & 0x00FF);
 +		cmd->Data[1001] = (unsigned char)(((*dataLen) & 0xFF00) >> 8);
  	}
  
  	return 0;
-@@ -1936,6 +1942,8 @@ static int ds5_mux_enum_mbus_code(struct v4l2_subdev *sd,
+@@ -1937,6 +1943,8 @@ static int ds5_mux_enum_mbus_code(struct v4l2_subdev *sd,
  	tmp.pad = 0;
  	if (state->is_rgb)
  		remote_sd = &state->rgb.sensor.sd;
-+	else
-+		remote_sd = &state->depth.sensor.sd;
++    else
++        remote_sd = &state->depth.sensor.sd;
  
  	/* Locks internally */
  	ret = ds5_sensor_enum_mbus_code(remote_sd, cfg, &tmp);
-@@ -1958,6 +1966,11 @@ static int ds5_mux_enum_frame_size(struct v4l2_subdev *sd,
+@@ -1959,6 +1967,11 @@ static int ds5_mux_enum_frame_size(struct v4l2_subdev *sd,
  
  	tmp.pad = 0;
  
-+	if (state->is_rgb)
++    if (state->is_rgb)
 +		pad = DS5_MUX_PAD_RGB;
 +	else
 +		pad = DS5_MUX_PAD_DEPTH;
@@ -94,22 +94,22 @@ index 24b9a65..990bce5 100644
  	switch (pad) {
  	case DS5_MUX_PAD_MOTION_T:
  		remote_sd = &state->motion_t.sensor.sd;
-@@ -1987,6 +2000,10 @@ static int ds5_mux_enum_frame_size(struct v4l2_subdev *sd,
+@@ -1988,6 +2001,10 @@ static int ds5_mux_enum_frame_size(struct v4l2_subdev *sd,
  		return -EINVAL;
  	}
  
-+	if (state->is_rgb)
++    if (state->is_rgb)
 +		remote_sd = &state->rgb.sensor.sd;
 +	else
 +		remote_sd = &state->depth.sensor.sd;
  	/* Locks internally */
  	ret = ds5_sensor_enum_frame_size(remote_sd, NULL, &tmp);
  	if (!ret) {
-@@ -2010,6 +2027,13 @@ static int ds5_mux_enum_frame_interval(struct v4l2_subdev *sd,
+@@ -2011,6 +2028,13 @@ static int ds5_mux_enum_frame_interval(struct v4l2_subdev *sd,
  
  	tmp.pad = 0;
  
-+	dev_err(state->depth.sensor.sd.dev, "%s(): pad %d code %x width %d height %d\n", __func__,
++    dev_err(state->depth.sensor.sd.dev, "%s(): pad %d code %x width %d height %d\n", __func__,
 +				pad, tmp.code, tmp.width, tmp.height);
 +	if (state->is_rgb)
 +		pad = DS5_MUX_PAD_RGB;
@@ -119,11 +119,11 @@ index 24b9a65..990bce5 100644
  	switch (pad) {
  	case DS5_MUX_PAD_MOTION_T:
  		remote_sd = &state->motion_t.sensor.sd;
-@@ -2039,6 +2063,11 @@ static int ds5_mux_enum_frame_interval(struct v4l2_subdev *sd,
+@@ -2040,6 +2064,11 @@ static int ds5_mux_enum_frame_interval(struct v4l2_subdev *sd,
  		return -EINVAL;
  	}
  
-+	if (state->is_rgb)
++    if (state->is_rgb)
 +		remote_sd = &state->rgb.sensor.sd;
 +	else
 +		remote_sd = &state->depth.sensor.sd;
@@ -131,7 +131,7 @@ index 24b9a65..990bce5 100644
  	/* Locks internally */
  	ret = ds5_sensor_enum_frame_interval(remote_sd, NULL, &tmp);
  	if (!ret) {
-@@ -3088,6 +3117,7 @@ static struct i2c_driver ds5_i2c_driver = {
+@@ -3089,6 +3118,7 @@ static struct i2c_driver ds5_i2c_driver = {
  
  module_i2c_driver(ds5_i2c_driver);
  
@@ -141,7 +141,7 @@ index 24b9a65..990bce5 100644
  MODULE_LICENSE("GPL v2");
 +MODULE_VERSION("0.49.4.0");
 diff --git a/drivers/media/platform/tegra/camera/vi/vi4_formats.h b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
-index 0d05a7e..ab90aae 100644
+index c47b76abb..b1ca0f285 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 @@ -126,16 +126,16 @@ static const struct tegra_video_format vi4_video_formats[] = {
@@ -166,5 +166,5 @@ index 0d05a7e..ab90aae 100644
  				YUV422_8, UYVY, "YUV 4:2:2 UYVY"),
  	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_2X8, 2, 1, T_V8_Y8__U8_Y8,
 -- 
-2.7.4
+2.17.1
 

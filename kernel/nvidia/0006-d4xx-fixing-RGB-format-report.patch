@@ -1,22 +1,22 @@
-From 7fbb9b73c8ffc91a9da8d066664e948bff3b7153 Mon Sep 17 00:00:00 2001
-From: Alex Gantman <alexander.gantman@intel.com>
-Date: Tue, 10 Dec 2019 14:19:31 +0200
-Subject: [PATCH] d4xx: fixing RGB format report
+From 08d19ed89261bf00e3ec1e0b47d88ae83eb9bd03 Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 10 May 2021 15:54:41 +0300
+Subject: [PATCH 06/11] d4xx: fixing RGB format report
 
-Signed-off-by: Alex Gantman <alexander.gantman@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
  drivers/media/i2c/d4xx.c | 10 +++++++++-
  1 file changed, 9 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 24b9a65..0773c8e 100644
+index becc43311..9ec09b023 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
-@@ -2114,6 +2114,12 @@ static int ds5_mux_get_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config
+@@ -2100,6 +2100,12 @@ static int ds5_mux_set_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config
+ 	dev_info(sd->dev, "%s(): pad: %x %x: %ux%u\n", __func__, pad, fmt->format.code,
+ 		 fmt->format.width, fmt->format.height);
  
- 	dev_info(sd->dev, "%s(): %u %p\n", __func__, pad, state->mux.last_set);
- 
-+	if (state->is_rgb) {
++    if (state->is_rgb) {
 +		tmp.pad = DS5_MUX_PAD_RGB;
 +		pad = DS5_MUX_PAD_RGB;
 +	} else
@@ -25,11 +25,11 @@ index 24b9a65..0773c8e 100644
  	switch (pad) {
  	case DS5_MUX_PAD_MOTION_T:
  		remote_sd = &state->motion_t.sensor.sd;
-@@ -2124,11 +2130,13 @@ static int ds5_mux_get_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config
+@@ -2154,11 +2160,13 @@ static int ds5_mux_get_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config
  	case DS5_MUX_PAD_EXTERNAL:
  		remote_sd = &state->mux.last_set->sd;
  		break;
-+	case DS5_MUX_PAD_RGB:
++    case DS5_MUX_PAD_RGB:
 +		remote_sd = &state->rgb.sensor.sd;
 +		break;
  	default:
@@ -41,5 +41,5 @@ index 24b9a65..0773c8e 100644
  	/* Locks internally */
  	ret = ds5_sensor_get_fmt(remote_sd, cfg, &tmp);
 -- 
-2.7.4
+2.17.1
 

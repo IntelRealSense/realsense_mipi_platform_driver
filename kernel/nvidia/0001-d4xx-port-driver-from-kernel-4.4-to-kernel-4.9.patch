@@ -1,28 +1,27 @@
-From c56ea6f231e0f747b2d0adcb75530de26bdd5fe3 Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Sun, 10 Nov 2019 12:25:17 +0200
-Subject: [PATCH] d4xx: enablement of old driver on kernel 4.9
+From 27abf749e62e06432efdeec631c3c74f49a7d997 Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 3 May 2021 15:26:49 +0300
+Subject: [PATCH 01/11] d4xx: port driver from kernel-4.4 to kernel-4.9
 
- - merge relevant kernel patches
- - all old features, except Y12I support
+- all features are enabled, except Y8 and Y12I
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
- drivers/media/i2c/Kconfig                          |   10 +
- drivers/media/i2c/Makefile                         |    1 +
- drivers/media/i2c/d4xx.c                           | 3085 ++++++++++++++++++++
- .../media/platform/tegra/camera/sensor_common.c    |    4 +
- drivers/media/platform/tegra/camera/vi/channel.c   |   70 +-
- .../media/platform/tegra/camera/vi/vi4_formats.h   |   14 +
- include/media/tegra_camera_core.h                  |    8 +
- 7 files changed, 3189 insertions(+), 3 deletions(-)
+ drivers/media/i2c/Kconfig                     |   10 +
+ drivers/media/i2c/Makefile                    |    1 +
+ drivers/media/i2c/d4xx.c                      | 3086 +++++++++++++++++
+ .../platform/tegra/camera/sensor_common.c     |    4 +
+ .../media/platform/tegra/camera/vi/channel.c  |   62 +-
+ .../platform/tegra/camera/vi/vi4_formats.h    |   13 +
+ include/media/tegra_camera_core.h             |    7 +
+ 7 files changed, 3182 insertions(+), 1 deletion(-)
  create mode 100644 drivers/media/i2c/d4xx.c
 
 diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
-index abfb5f5..4ae61b5 100644
+index 326dbb096..deca1409c 100644
 --- a/drivers/media/i2c/Kconfig
 +++ b/drivers/media/i2c/Kconfig
-@@ -147,6 +147,16 @@ config VIDEO_IMX390
+@@ -165,6 +165,16 @@ config VIDEO_IMX390
  	  To compile this driver as a module, choose M here: the module
  	  will be called imx390.
  
@@ -40,20 +39,21 @@ index abfb5f5..4ae61b5 100644
  
  endif
 diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
-index 3e808e1..48413e3 100644
+index c6d34e807..cf69c218d 100644
 --- a/drivers/media/i2c/Makefile
 +++ b/drivers/media/i2c/Makefile
-@@ -19,3 +19,4 @@ obj-$(CONFIG_VIDEO_TC358840) += tc358840.o
+@@ -21,3 +21,4 @@ obj-$(CONFIG_VIDEO_LT6911UXC) +=lt6911uxc.o
  obj-$(CONFIG_I2C_IOEXPANDER_SER_MAX9295) += max9295.o
  obj-$(CONFIG_I2C_IOEXPANDER_DESER_MAX9296) += max9296.o
  obj-$(CONFIG_VIDEO_IMX390) += imx390.o
 +obj-$(CONFIG_VIDEO_D4XX) += d4xx.o
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
 new file mode 100644
-index 0000000..b624671
+index 000000000..485295db4
 --- /dev/null
 +++ b/drivers/media/i2c/d4xx.c
-@@ -0,0 +1,3085 @@
+@@ -0,0 +1,3086 @@
++
 +/*
 + * ds5.c - Intel(R) RealSense(TM) D4XX camera driver
 + *
@@ -3140,10 +3140,10 @@ index 0000000..b624671
 +MODULE_AUTHOR("Guennadi Liakhovetski (guennadi.liakhovetski@intel.com)");
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/media/platform/tegra/camera/sensor_common.c b/drivers/media/platform/tegra/camera/sensor_common.c
-index 75a3af2..c4f9023 100644
+index 32f7c417a..f0169b95a 100644
 --- a/drivers/media/platform/tegra/camera/sensor_common.c
 +++ b/drivers/media/platform/tegra/camera/sensor_common.c
-@@ -222,6 +222,10 @@ static int extract_pixel_format(
+@@ -227,6 +227,10 @@ static int extract_pixel_format(
  		*format = V4L2_PIX_FMT_UYVY;
  	else if (strncmp(pixel_t, "yuv_vyuy16", size) == 0)
  		*format = V4L2_PIX_FMT_VYUY;
@@ -3155,10 +3155,10 @@ index 75a3af2..c4f9023 100644
  		pr_err("%s: Need to extend format%s\n", __func__, pixel_t);
  		return -EINVAL;
 diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
-index 940b6ba..f056482 100644
+index 5de404504..d34b1551a 100644
 --- a/drivers/media/platform/tegra/camera/vi/channel.c
 +++ b/drivers/media/platform/tegra/camera/vi/channel.c
-@@ -262,7 +262,9 @@ static void tegra_channel_fmts_bitmap_init(struct tegra_channel *chan)
+@@ -282,7 +282,9 @@ static void tegra_channel_fmts_bitmap_init(struct tegra_channel *chan)
  {
  	int ret, pixel_format_index = 0, init_code = 0;
  	struct v4l2_subdev *subdev = chan->subdev_on_csi;
@@ -3169,32 +3169,7 @@ index 940b6ba..f056482 100644
  	struct v4l2_subdev_mbus_code_enum code = {
  		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
  	};
-@@ -1541,6 +1543,7 @@ static int tegra_channel_connect_sensor(
- 	struct device_node *sensor_of_node;
- 	struct tegra_csi_device *csi_device;
- 	struct device_node *ep_node;
-+	bool found = false;
- 
- 	if (!chan)
- 		return -EINVAL;
-@@ -1569,12 +1572,14 @@ static int tegra_channel_connect_sensor(
- 			of_graph_get_remote_port_parent(ep_node);
- 
- 		list_for_each_entry(csi_chan, &csi_device->csi_chans, list)
--			if (csi_chan->of_node == csi_chan_of_node)
-+			if (csi_chan->of_node == csi_chan_of_node) {
-+				found = true;
- 				break;
-+			}
- 
- 		of_node_put(csi_chan_of_node);
- 
--		if (!csi_chan)
-+		if (!found)
- 			continue;
- 
- 		csi_chan->s_data =
-@@ -2010,6 +2015,62 @@ static long tegra_channel_default_ioctl(struct file *file, void *fh,
+@@ -2065,6 +2067,62 @@ static long tegra_channel_default_ioctl(struct file *file, void *fh,
  	return ret;
  }
  
@@ -3257,18 +3232,17 @@ index 940b6ba..f056482 100644
  #ifdef CONFIG_COMPAT
  static long tegra_channel_compat_ioctl(struct file *filp,
  	       unsigned int cmd, unsigned long arg)
-@@ -2064,6 +2125,9 @@ static const struct v4l2_ioctl_ops tegra_channel_ioctl_ops = {
+@@ -2119,6 +2177,8 @@ static const struct v4l2_ioctl_ops tegra_channel_ioctl_ops = {
  	.vidioc_s_input			= tegra_channel_s_input,
  	.vidioc_log_status		= tegra_channel_log_status,
  	.vidioc_default			= tegra_channel_default_ioctl,
 +	.vidioc_g_parm                  = tegra_channel_get_parm,
 +	.vidioc_s_parm                  = tegra_channel_set_parm,
-+
  };
  
  static int tegra_channel_close(struct file *fp);
 diff --git a/drivers/media/platform/tegra/camera/vi/vi4_formats.h b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
-index de33c42..0d05a7e 100644
+index de33c42fb..c47b76abb 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 @@ -87,6 +87,9 @@ static const struct tegra_video_format vi4_video_formats[] = {
@@ -3281,7 +3255,7 @@ index de33c42..0d05a7e 100644
  	TEGRA_VIDEO_FORMAT(RAW8, 8, SRGGB8_1X8, 1, 1, T_L8,
  				RAW8, SRGGB8, "RGRG.. GBGB.."),
  	TEGRA_VIDEO_FORMAT(RAW8, 8, SGRBG8_1X8, 1, 1, T_L8,
-@@ -141,6 +144,17 @@ static const struct tegra_video_format vi4_video_formats[] = {
+@@ -141,6 +144,16 @@ static const struct tegra_video_format vi4_video_formats[] = {
  				YUV422_8, YUYV, "YUV 4:2:2 YUYV"),
  	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_2X8, 2, 1, T_Y8_V8__Y8_U8,
  				YUV422_8, YVYU, "YUV 4:2:2 YVYU"),
@@ -3295,12 +3269,11 @@ index de33c42..0d05a7e 100644
 +	// R[7:3]R[3:0] | L[3:0]R[11:8] | L[11:8]L[7:4] | ALIGN[7:0]
 +	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
 +				RGB888, Y12I, "Y12I 24"),
-+
  };
  
  #endif
 diff --git a/include/media/tegra_camera_core.h b/include/media/tegra_camera_core.h
-index 788cf77..421c224 100644
+index 788cf77dc..7109c6ad0 100644
 --- a/include/media/tegra_camera_core.h
 +++ b/include/media/tegra_camera_core.h
 @@ -37,6 +37,8 @@
@@ -3312,7 +3285,7 @@ index 788cf77..421c224 100644
  	TEGRA_IMAGE_DT_YUV420_8 = 24,
  	TEGRA_IMAGE_DT_YUV420_10,
  
-@@ -56,6 +58,12 @@ enum tegra_image_dt {
+@@ -56,6 +58,11 @@ enum tegra_image_dt {
  	TEGRA_IMAGE_DT_RAW10,
  	TEGRA_IMAGE_DT_RAW12,
  	TEGRA_IMAGE_DT_RAW14,
@@ -3321,10 +3294,9 @@ index 788cf77..421c224 100644
 +	TEGRA_IMAGE_DT_USER_2,
 +	TEGRA_IMAGE_DT_USER_3,
 +	TEGRA_IMAGE_DT_USER_4,
-+
  };
  
  /* Supported CSI to VI Data Formats */
 -- 
-2.7.4
+2.17.1
 

@@ -1,22 +1,22 @@
-From 9daa2d13ddc895df8f697037a8ec9a0d56a826c6 Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Tue, 17 Dec 2019 19:46:30 +0200
-Subject: [PATCH] d4xx: Add support of Y8 and Y12I formats
+From e3b0522b6e51351939813168dc73866f59af6a0f Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 10 May 2021 16:04:05 +0300
+Subject: [PATCH 07/11] d4xx: Add support of Y8 and Y12I formats
 
  - Y8 and Y12I are exposed on the same node of Z16
  - Remove res 2000x1500 from YUYV format
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
- drivers/media/i2c/d4xx.c                           | 100 ++++++++-------------
- .../media/platform/tegra/camera/vi/vi4_formats.h   |   4 +-
- 2 files changed, 39 insertions(+), 65 deletions(-)
+ drivers/media/i2c/d4xx.c                      | 101 +++++++-----------
+ .../platform/tegra/camera/vi/vi4_formats.h    |   4 +-
+ 2 files changed, 39 insertions(+), 66 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index ebf983c..78b3941 100644
+index 9ec09b023..11dbffb56 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
-@@ -483,11 +483,6 @@ static const struct ds5_resolution ds5_rgb_sizes[] = {
+@@ -484,11 +484,6 @@ static const struct ds5_resolution ds5_rgb_sizes[] = {
  		.height = 1080,
  		.framerates = ds5_framerates,
  		.n_framerates = ARRAY_SIZE(ds5_framerates),
@@ -28,7 +28,7 @@ index ebf983c..78b3941 100644
  	},
  };
  
-@@ -504,12 +499,6 @@ static const struct ds5_resolution d43x_calibration_sizes[] = {
+@@ -505,12 +500,6 @@ static const struct ds5_resolution d43x_calibration_sizes[] = {
  		.height = 800,
  		.framerates = ds5_framerate_15_30,
  		.n_framerates = ARRAY_SIZE(ds5_framerate_15_30),
@@ -41,7 +41,7 @@ index ebf983c..78b3941 100644
  	},
  };
  
-@@ -522,13 +511,6 @@ static const struct ds5_resolution d46x_calibration_sizes[] = {
+@@ -523,13 +512,6 @@ static const struct ds5_resolution d46x_calibration_sizes[] = {
  	},
  };
  
@@ -55,10 +55,11 @@ index ebf983c..78b3941 100644
  static const struct ds5_format ds5_depth_formats_d43x[] = {
  	{
  		// TODO: 0x31 is replaced with 0x1e since it caused low FPS in Jetson.
-@@ -536,6 +518,16 @@ static const struct ds5_format ds5_depth_formats_d43x[] = {
+@@ -537,7 +519,17 @@ static const struct ds5_format ds5_depth_formats_d43x[] = {
  		.mbus_code = MEDIA_BUS_FMT_UYVY8_1X16,
  		.n_resolutions = ARRAY_SIZE(d43x_depth_sizes),
  		.resolutions = d43x_depth_sizes,
+-	},
 +	}, {
 +		.data_type = 0x2a,	/* Y8 */
 +		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
@@ -69,13 +70,15 @@ index ebf983c..78b3941 100644
 +		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
 +		.n_resolutions = ARRAY_SIZE(d43x_calibration_sizes),
 +		.resolutions = d43x_calibration_sizes,
- 	},
++    },
  };
  
-@@ -546,50 +538,34 @@ static const struct ds5_format ds5_depth_formats_d46x[] = {
+ static const struct ds5_format ds5_depth_formats_d46x[] = {
+@@ -547,50 +539,33 @@ static const struct ds5_format ds5_depth_formats_d46x[] = {
  		.mbus_code = MEDIA_BUS_FMT_UYVY8_1X16,
  		.n_resolutions = ARRAY_SIZE(d46x_depth_sizes),
  		.resolutions = d46x_depth_sizes,
+-	},
 +	}, {
 +		/* First format: default */
 +		.data_type = 0x2a,	/* Y8 */
@@ -87,7 +90,7 @@ index ebf983c..78b3941 100644
 +		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
 +		.n_resolutions = ARRAY_SIZE(d46x_calibration_sizes),
 +		.resolutions = d46x_calibration_sizes,
- 	},
++    },
  };
  
  #define DS5_DEPTH_N_FORMATS 1
@@ -117,7 +120,6 @@ index ebf983c..78b3941 100644
 -		.n_resolutions = ARRAY_SIZE(ds5_sizes),
 -		.resolutions = ds5_sizes,
 -	}, {
-+		/* First format: default */
  		.data_type = 0x2a,	/* Y8 */
  		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
  		.n_resolutions = ARRAY_SIZE(ds5_sizes),
@@ -132,14 +134,14 @@ index ebf983c..78b3941 100644
 -		.mbus_code = MEDIA_BUS_FMT_UYVY8_1X16,
 -		.n_resolutions = ARRAY_SIZE(ds5_sizes),
 -		.resolutions = ds5_sizes,
-+		.data_type = 0x24,	/* 24-bit Calibration */
++        .data_type = 0x24,	/* 24-bit Calibration */
 +		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
 +		.n_resolutions = ARRAY_SIZE(d46x_calibration_sizes),
 +		.resolutions = d46x_calibration_sizes,
  	},
  };
  
-@@ -606,14 +582,6 @@ static const struct ds5_variant ds5_variants[] = {
+@@ -607,14 +582,6 @@ static const struct ds5_variant ds5_variants[] = {
  		.formats = ds5_y_formats_ds5u,
  		.n_formats = ARRAY_SIZE(ds5_y_formats_ds5u),
  	},
@@ -154,14 +156,14 @@ index ebf983c..78b3941 100644
  };
  
  static const struct v4l2_mbus_framefmt ds5_mbus_framefmt_template = {
-@@ -883,9 +851,15 @@ static int ds5_configure(struct ds5 *state)
+@@ -884,9 +851,15 @@ static int ds5_configure(struct ds5 *state)
  		//       this will configure FW to override DT in mipi header to
  		//       0x1E for depth, since DT 0x31 is not supported
  		//       in Jetson
 -		ret = ds5_write(state, 0x401C, 0x1E);
 -		if (ret < 0)
 -			return ret;
-+		if (dfmt) {
++        if (dfmt) {
 +			ret = ds5_write(state, 0x401C, 0x1E);
 +			if (ret < 0)
 +				return ret;
@@ -173,7 +175,7 @@ index ebf983c..78b3941 100644
  
  		ret = ds5_write(state, DS5_DEPTH_Y_FPS, depth->config.framerate);
  		if (ret < 0)
-@@ -2529,7 +2503,7 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
+@@ -2530,7 +2503,7 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
  	default:
  		sensor->formats = ds5_depth_formats_d46x;
  	}
@@ -182,14 +184,8 @@ index ebf983c..78b3941 100644
  	sensor->mux_pad = DS5_MUX_PAD_DEPTH;
  
  	sensor = &state->motion_t.sensor;
-@@ -3128,4 +3102,4 @@ module_i2c_driver(ds5_i2c_driver);
- MODULE_DESCRIPTION("Intel D4XX camera driver");
- MODULE_AUTHOR("Guennadi Liakhovetski (guennadi.liakhovetski@intel.com)");
- MODULE_LICENSE("GPL v2");
--MODULE_VERSION("0.49.4.0");
-+MODULE_VERSION("0.51.1.0");
 diff --git a/drivers/media/platform/tegra/camera/vi/vi4_formats.h b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
-index ab90aae..6f8b1fa 100644
+index b1ca0f285..a74f76bf5 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 @@ -120,8 +120,8 @@ static const struct tegra_video_format vi4_video_formats[] = {
@@ -204,5 +200,5 @@ index ab90aae..6f8b1fa 100644
  				RGB888, RGB32, "RGB-8-8-8-8"),
  
 -- 
-2.7.4
+2.17.1
 

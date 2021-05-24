@@ -1,18 +1,18 @@
-From cccae4c2c9317449525b88a9469ebd2f19de4d9f Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Sun, 8 Dec 2019 14:16:48 +0200
-Subject: [PATCH] d4xx: use default VC's as defined in FW
+From 1b67a70171d79749f115959779f08d3fc6cbb509 Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Thu, 20 May 2021 14:32:48 +0300
+Subject: [PATCH 3/4] d4xx: use default VC's as defined in FW
 
  - Depth VC is 0.
  - RGB VC is 1.
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
- kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi | 14 +++++++-------
- 1 file changed, 7 insertions(+), 7 deletions(-)
+ .../t18x-common-modules/tegra186-camera-d4xx.dtsi    | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
 
 diff --git a/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi b/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
-index f4a5227..df7567e 100644
+index 173c780..6a070fb 100644
 --- a/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
 +++ b/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
 @@ -40,7 +40,7 @@
@@ -37,26 +37,17 @@ index f4a5227..df7567e 100644
  						embedded_metadata_height = "0";
  						min_framerate = "6";
  						max_framerate = "30";
--						vc_id = "1";
-+						vc_id = "0";
+-                        vc_id = "1";
++                        vc_id = "0";
  					};
  					mode1 {
  						pixel_t = "grey_y16";
-@@ -117,7 +117,7 @@
- 							d4m1_out: endpoint {
- 								port-index = <1>;
- 								bus-width = <2>;
--								vc-id = <0>;
-+								vc-id = <1>;
- 								remote-endpoint = <&csi_in1>;
- 							};
- 						};
 @@ -142,7 +142,7 @@
  						embedded_metadata_height = "0";
  						min_framerate = "6";
  						max_framerate = "30";
--						vc_id = "0";
-+						vc_id = "1";
+-                        vc_id = "0";
++                        vc_id = "1";
  					};
  				};
  			};
@@ -64,8 +55,8 @@ index f4a5227..df7567e 100644
  						status = "ok";
  						port-index = <0>;
  						bus-width = <2>;
--						vc-id = <1>;
-+						vc-id = <0>;
+-                        vc-id = <1>;
++                        vc-id = <0>;
  						remote-endpoint = <&csi_out0>;
  					};
  				};
@@ -73,11 +64,11 @@ index f4a5227..df7567e 100644
  
  					vi_in1: endpoint {
  						status = "ok";
--						vc-id = <0>;
-+						vc-id = <1>;
- 						port-index = <0>;
+-                        vc-id = <0>;
++                        vc-id = <1>;
+                         port-index = <0>;
  						bus-width = <2>;
  						remote-endpoint = <&csi_out1>;
 -- 
-2.7.4
+2.17.1
 

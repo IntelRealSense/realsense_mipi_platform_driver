@@ -1,15 +1,15 @@
-From 0cf3f4afb77def086d821d791e4db74237ffe844 Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Fri, 24 Jan 2020 10:12:25 +0200
-Subject: [PATCH] d4xx: set AE default to true
+From cebf4aa7ac4b4c6469163b90b99da35b8cea546d Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 10 May 2021 16:07:39 +0300
+Subject: [PATCH 09/11] d4xx: set AE default to true
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
  drivers/media/i2c/d4xx.c | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 2156d8e..1939326 100644
+index 3c6062f05..587bd77cb 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -1521,7 +1521,7 @@ static const struct v4l2_ctrl_config ds5_ctrl_laser_power = {
@@ -31,5 +31,5 @@ index 2156d8e..1939326 100644
  	// TODO: this prevents setting of manual exposure
  	// v4l2_ctrl_auto_cluster(3, &ctrls->auto_exp, 0, false);
 -- 
-2.7.4
+2.17.1
 

@@ -1,9 +1,9 @@
-From 2a4234b5827640db75c25c130573c61fa4f740d7 Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Mon, 18 Nov 2019 11:57:19 +0200
+From 5b265984e7a565d99e9c5f351f3ff12d1c5508fb Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Mon, 10 May 2021 16:14:18 +0300
 Subject: [PATCH] d4xx: old driver enablement
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
  arch/arm64/configs/tegra_defconfig   | 1 +
  drivers/media/v4l2-core/v4l2-ioctl.c | 3 +++
@@ -11,40 +11,40 @@ Signed-off-by: Nael Masalha <nael.masalha@intel.com>
  3 files changed, 5 insertions(+)
 
 diff --git a/arch/arm64/configs/tegra_defconfig b/arch/arm64/configs/tegra_defconfig
-index 2a68133..c65d24f 100644
+index 2f4cc8b9ad2e..6a72eafd6f51 100644
 --- a/arch/arm64/configs/tegra_defconfig
 +++ b/arch/arm64/configs/tegra_defconfig
-@@ -762,6 +762,7 @@ CONFIG_I2C_IOEXPANDER_SER_MAX9295=y
+@@ -795,6 +795,7 @@ CONFIG_I2C_IOEXPANDER_SER_MAX9295=y
  CONFIG_I2C_IOEXPANDER_DESER_MAX9296=y
  CONFIG_VIDEO_IMX390=y
  CONFIG_VIDEO_IMX204=y
 +CONFIG_VIDEO_D4XX=m
  # CONFIG_VGA_ARB is not set
  CONFIG_DRM=y
- CONFIG_FB=y
+ CONFIG_DRM_TEGRA_UDRM=m
 diff --git a/drivers/media/v4l2-core/v4l2-ioctl.c b/drivers/media/v4l2-core/v4l2-ioctl.c
-index f7a7f97..42ea3a9 100644
+index 222b270fe7fc..d97cb3c14fcf 100644
 --- a/drivers/media/v4l2-core/v4l2-ioctl.c
 +++ b/drivers/media/v4l2-core/v4l2-ioctl.c
 @@ -1169,6 +1169,7 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
  	case V4L2_PIX_FMT_GREY:		descr = "8-bit Greyscale"; break;
  	case V4L2_PIX_FMT_Y4:		descr = "4-bit Greyscale"; break;
  	case V4L2_PIX_FMT_Y6:		descr = "6-bit Greyscale"; break;
-+	case V4L2_PIX_FMT_Y8:		descr = "Y8-bit Greyscale"; break;
++    case V4L2_PIX_FMT_Y8:		descr = "Y8-bit Greyscale"; break;
  	case V4L2_PIX_FMT_Y10:		descr = "10-bit Greyscale"; break;
  	case V4L2_PIX_FMT_Y12:		descr = "12-bit Greyscale"; break;
  	case V4L2_PIX_FMT_Y16:		descr = "16-bit Greyscale"; break;
-@@ -1262,6 +1263,8 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
+@@ -1265,6 +1266,8 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
  	case V4L2_TCH_FMT_DELTA_TD08:	descr = "8-bit signed deltas"; break;
  	case V4L2_TCH_FMT_TU16:		descr = "16-bit unsigned touch data"; break;
  	case V4L2_TCH_FMT_TU08:		descr = "8-bit unsigned touch data"; break;
-+	case V4L2_PIX_FMT_Z16:		descr = "16-bit Depth"; break;
++    case V4L2_PIX_FMT_Z16:		descr = "16-bit Depth"; break;
 +	case V4L2_PIX_FMT_Y12I:		descr = "24-bit Interleaved L/R"; break;
- 
- 	default:
- 		/* Compressed formats */
+ 	case V4L2_PIX_FMT_RW16:
+ 		descr = "16-bit Raw data"; break;
+ 	case V4L2_PIX_FMT_INZI:
 diff --git a/include/uapi/linux/videodev2.h b/include/uapi/linux/videodev2.h
-index f4adb1c..ccdd0ff 100644
+index ae04e9e06600..14b77a221d66 100644
 --- a/include/uapi/linux/videodev2.h
 +++ b/include/uapi/linux/videodev2.h
 @@ -638,6 +638,7 @@ struct v4l2_pix_format {
@@ -56,5 +56,5 @@ index f4adb1c..ccdd0ff 100644
  #define V4L2_PIX_FMT_Y12I     v4l2_fourcc('Y', '1', '2', 'I') /* Greyscale 12-bit L/R interleaved */
  #define V4L2_PIX_FMT_Z16      v4l2_fourcc('Z', '1', '6', ' ') /* Depth data 16-bit */
 -- 
-2.7.4
+2.17.1
 

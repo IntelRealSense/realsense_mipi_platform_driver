@@ -1,15 +1,15 @@
-From 45a49a39d8e200c957548fbec543bd171b4828fa Mon Sep 17 00:00:00 2001
-From: Nael Masalha <nael.masalha@intel.com>
-Date: Fri, 24 Jan 2020 09:13:11 +0200
-Subject: [PATCH] d4xx: set i2c to 400KHZ
+From f5d41ad46ecb4a0558c6e7a325ad4d5309b03e69 Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Thu, 20 May 2021 14:34:06 +0300
+Subject: [PATCH 4/4] d4xx: set i2c to 400KHZ
 
-Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
  kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi b/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
-index df7567e..8a79526 100644
+index 6a070fb..5b9e10d 100644
 --- a/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
 +++ b/kernel-dts/t18x-common-modules/tegra186-camera-d4xx.dtsi
 @@ -5,7 +5,7 @@
@@ -22,5 +22,5 @@ index df7567e..8a79526 100644
  			reg = <0x72>;
  			compatible = "nxp,pca9548";
 -- 
-2.7.4
+2.17.1
 
