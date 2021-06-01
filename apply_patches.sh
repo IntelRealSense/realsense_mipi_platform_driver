@@ -8,6 +8,4 @@ apply_external_patches() {
 
 apply_external_patches kernel/nvidia
 apply_external_patches kernel/kernel-4.9
-apply_external_patches hardware/nvidia/platform/t18x/common
-apply_external_patches hardware/nvidia/platform/t18x/quill
-
+apply_external_patches hardware/nvidia/platform/t19x/galen/kernel-dts

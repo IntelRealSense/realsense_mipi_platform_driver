@@ -1,7 +1,7 @@
-From 2a4234b5827640db75c25c130573c61fa4f740d7 Mon Sep 17 00:00:00 2001
+From 1837dd336c8466b524123195ce5eda5f847f6e30 Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Mon, 18 Nov 2019 11:57:19 +0200
-Subject: [PATCH] d4xx: old driver enablement
+Subject: [PATCH 1/2] d4xx: old driver enablement
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
@@ -11,7 +11,7 @@ Signed-off-by: Nael Masalha <nael.masalha@intel.com>
  3 files changed, 5 insertions(+)
 
 diff --git a/arch/arm64/configs/tegra_defconfig b/arch/arm64/configs/tegra_defconfig
-index 2a68133..c65d24f 100644
+index 2a6813362c6d..c65d24f29242 100644
 --- a/arch/arm64/configs/tegra_defconfig
 +++ b/arch/arm64/configs/tegra_defconfig
 @@ -762,6 +762,7 @@ CONFIG_I2C_IOEXPANDER_SER_MAX9295=y
@@ -23,7 +23,7 @@ index 2a68133..c65d24f 100644
  CONFIG_DRM=y
  CONFIG_FB=y
 diff --git a/drivers/media/v4l2-core/v4l2-ioctl.c b/drivers/media/v4l2-core/v4l2-ioctl.c
-index f7a7f97..42ea3a9 100644
+index f7a7f9787366..42ea3a90eac2 100644
 --- a/drivers/media/v4l2-core/v4l2-ioctl.c
 +++ b/drivers/media/v4l2-core/v4l2-ioctl.c
 @@ -1169,6 +1169,7 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
@@ -44,7 +44,7 @@ index f7a7f97..42ea3a9 100644
  	default:
  		/* Compressed formats */
 diff --git a/include/uapi/linux/videodev2.h b/include/uapi/linux/videodev2.h
-index f4adb1c..ccdd0ff 100644
+index f4adb1ca1e1d..ccdd0ff58f94 100644
 --- a/include/uapi/linux/videodev2.h
 +++ b/include/uapi/linux/videodev2.h
 @@ -638,6 +638,7 @@ struct v4l2_pix_format {
@@ -56,5 +56,5 @@ index f4adb1c..ccdd0ff 100644
  #define V4L2_PIX_FMT_Y12I     v4l2_fourcc('Y', '1', '2', 'I') /* Greyscale 12-bit L/R interleaved */
  #define V4L2_PIX_FMT_Z16      v4l2_fourcc('Z', '1', '6', ' ') /* Depth data 16-bit */
 -- 
-2.7.4
+2.17.1
 
