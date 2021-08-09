@@ -713,7 +713,7 @@ TEST_F(V4L2BasicTest, SetGetManualLaserPower) {
     manualLaserCtrl.size = 0;
 
     const int manualLaserPowerMin = 0;
-    const int manualLaserPowerMax = 240;
+    const int manualLaserPowerMax = 360;
     const int manualLaserPowerStep = 30;
 
     for (manualLaserCtrl.value = manualLaserPowerMin;
