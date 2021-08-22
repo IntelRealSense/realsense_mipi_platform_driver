@@ -66,12 +66,12 @@ sudo i2cset -f -y 2 0x48 0x04 0x01D2 w #
 sudo i2cset -f -y 2 0x48 0x04 0x15ED w #Map to PHY1 (master for port A)
 
 ### HW-SYNC  ###
-# SerDes Depth Trigger Path MFP7 > MFP8 
+# SerDes Depth Trigger Path MFP7 > MFP1 
 sudo i2cset -f -y 2 0x48 0x02 0x82c5 w #MFP7
 sudo i2cset -f -y 2 0x48 0x02 0x1fc6 w
-sudo i2cset -f -y 2 0x40 0x02 0x84d6 w #MFP8
-sudo i2cset -f -y 2 0x40 0x02 0x60d7 w #OUT_TYPE bit to 1
-sudo i2cset -f -y 2 0x40 0x02 0x1fd8 w
+sudo i2cset -f -y 2 0x40 0x02 0x84c1 w #MFP1
+sudo i2cset -f -y 2 0x40 0x02 0x60c2 w #OUT_TYPE bit to 1
+sudo i2cset -f -y 2 0x40 0x02 0x1fc3 w
 
 # SerDes RGB Trigger Path MFP9 > MFP0
 sudo i2cset -f -y 2 0x48 0x02 0x82cb w #MFP9
