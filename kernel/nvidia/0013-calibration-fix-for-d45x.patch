@@ -1,15 +1,15 @@
-From 72025e954f4f646279d3d2cf3ea4050f93c93da8 Mon Sep 17 00:00:00 2001
+From e8ea3ca289725f3d9142dccb17d56ef63f393171 Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Wed, 18 Aug 2021 13:25:35 +0300
 Subject: [PATCH] calibration fix for d45x
 
 Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
- drivers/media/i2c/d4xx.c | 27 ++++++++++++++-------------
- 1 file changed, 14 insertions(+), 13 deletions(-)
+ drivers/media/i2c/d4xx.c | 32 +++++++++++++++-----------------
+ 1 file changed, 15 insertions(+), 17 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 16f3de7c7..1dac97419 100644
+index 16f3de7c7..df56e3d26 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -45,9 +45,9 @@
@@ -43,7 +43,28 @@ index 16f3de7c7..1dac97419 100644
  	.mbus_code = MEDIA_BUS_FMT_YUYV8_1X16,
  	.n_resolutions = ARRAY_SIZE(ds5_rlt_rgb_sizes),
  	.resolutions = ds5_rlt_rgb_sizes,
-@@ -2599,7 +2599,7 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
+@@ -1824,7 +1824,6 @@ static int ds5_ctrl_init(struct ds5 *state)
+ 	struct ds5_ctrls *ctrls = &state->ctrls;
+ 	struct v4l2_ctrl_handler *hdl = &ctrls->handler;
+ 	struct v4l2_subdev *sd = &state->mux.sd.subdev;
+-	u8 max;
+ 	int ret;
+ 
+ 	ret = v4l2_ctrl_handler_init(hdl, DS5_N_CONTROLS);
+@@ -1866,11 +1865,9 @@ static int ds5_ctrl_init(struct ds5 *state)
+ 					16, 248, 1, 16);
+ 
+ 	/* Assume both shutter and aperture priorities are supported */
+-	max = /*sensor->exposure_priority ? V4L2_EXPOSURE_APERTURE_PRIORITY :*/
+-		V4L2_EXPOSURE_MANUAL;
+ 	ctrls->auto_exp = v4l2_ctrl_new_std_menu(hdl, ops,
+ 						 V4L2_CID_EXPOSURE_AUTO,
+-						 max, 0, 1);
++						 V4L2_EXPOSURE_MANUAL, 0, (u8)V4L2_CID_EXPOSURE_AUTO);
+ 
+ 	// TODO: this prevents setting of manual exposure
+ 	// v4l2_ctrl_auto_cluster(3, &ctrls->auto_exp, 0, false);
+@@ -2599,7 +2596,7 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
  	sensor = &state->depth.sensor;
  	switch (dev_type) {
  	case DS5_DEVICE_TYPE_D43X:
@@ -52,7 +73,7 @@ index 16f3de7c7..1dac97419 100644
  		sensor->formats = ds5_depth_formats_d43x;
  		break;
  	case DS5_DEVICE_TYPE_D46X:
-@@ -2616,6 +2616,7 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
+@@ -2616,6 +2613,7 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
  	sensor->n_formats = state->variant->n_formats;
  	sensor->mux_pad = DS5_MUX_PAD_MOTION_T;
  	switch (dev_type) {
@@ -60,7 +81,7 @@ index 16f3de7c7..1dac97419 100644
  	case DS5_DEVICE_TYPE_D43X: {
  		unsigned int *calib_resolutions_size = (unsigned int *)&(sensor->formats[ARRAY_SIZE(ds5_y_formats_ds5u)-1].n_resolutions);
  		const struct ds5_resolution** calib_resolutions = (const struct ds5_resolution**)
-@@ -2636,21 +2637,21 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
+@@ -2636,21 +2634,21 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
  	}
  
  	sensor = &state->rgb.sensor;
@@ -88,7 +109,7 @@ index 16f3de7c7..1dac97419 100644
  
  	/*sensor->formats = &ds5_onsemi_rgb_format;
  	sensor->n_formats = DS5_RGB_N_FORMATS;
-@@ -3119,7 +3120,7 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
+@@ -3119,7 +3117,7 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
  
  
  	state->client = c;
