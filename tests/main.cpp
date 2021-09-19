@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "V4L2ControlsTest.cpp"
 
 int main(int argc, char **argv)
 {
