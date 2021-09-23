@@ -1,0 +1,43 @@
+From 7880f65db18d2ab955eb648b0a01a4d93f310040 Mon Sep 17 00:00:00 2001
+From: Nael Masalha <nael.masalha@intel.com>
+Date: Thu, 23 Sep 2021 13:47:22 +0300
+Subject: [PATCH] Update I2C read values to be 8-bit aligned.
+
+ - The old, 16-bit aligned configuration, prevented driver to read buffers with odd size.
+
+Signed-off-by: Nael Masalha <nael.masalha@intel.com>
+---
+ drivers/media/i2c/d4xx.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
+index df56e3d..7ac7d40 100644
+--- a/drivers/media/i2c/d4xx.c
++++ b/drivers/media/i2c/d4xx.c
+@@ -361,7 +361,13 @@ struct ds5_counters {
+ 
+ static int ds5_write(struct ds5 *state, u16 reg, u16 val)
+ {
+-	int ret = regmap_write(state->regmap, reg, val);
++	int ret;
++	u8 value[2];
++
++	value[1] = val >> 8;
++	value[0] = val & 0x00FF;
++
++	ret = regmap_raw_write(state->regmap, reg, value, sizeof(value));
+ 	if (ret < 0)
+ 		dev_err(&state->client->dev, "%s(): i2c write failed %d, 0x%04x = 0x%x\n",
+ 			__func__, ret, reg, val);
+@@ -2717,7 +2723,7 @@ static void ds5_mux_remove(struct ds5 *state)
+ 
+ static const struct regmap_config ds5_regmap_config = {
+ 	.reg_bits = 16,
+-	.val_bits = 16,
++	.val_bits = 8,
+ 	.reg_format_endian = REGMAP_ENDIAN_NATIVE,
+ 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ };
+-- 
+2.7.4
+
