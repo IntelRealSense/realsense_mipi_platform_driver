@@ -114,8 +114,6 @@ static const uint32_t crc_32_tab[] __attribute__((section(".rodata"))) = { /* CR
 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
 
-
-
 uint32_t crc32buf(uint8_t *buf, int len)
 {
     uint32_t oldcrc32 = 0xFFFFFFFF;
@@ -144,7 +142,6 @@ uint32_t crc32complete(void)
 {
     return ~s_crcval;
 }
-
 
 #define DS5_STREAM_CONFIG_0                  0x4000
 #define DS5_CAMERA_CID_BASE                 (V4L2_CTRL_CLASS_CAMERA | DS5_STREAM_CONFIG_0)
@@ -382,7 +379,7 @@ TEST_F(V4L2StreamTest, StreamDepth_640x480_5FPS_MetaData) {
     ret = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
     ASSERT_TRUE(0 == ret);
 
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 20; ++i) {
         struct v4l2_buffer depthV4l2Buffer {0};
         depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
         depthV4l2Buffer.memory = V4L2_MEMORY_MMAP;
@@ -413,7 +410,7 @@ TEST_F(V4L2StreamTest, StreamDepth_640x480_5FPS_MetaData) {
         uint32_t crc = crc32buf(static_cast<uint8_t*>(metaDataBuffers[mdV4l2Buffer.index]), sizeof(STMetaDataDepthYNormalMode) - 4);
         //ASSERT_TRUE(crc == ptr->crc32);
 
-        if (i < 99) {
+        if (i < 19) {
             ioctl(depth_fd, VIDIOC_QBUF, &depthV4l2Buffer);
             ioctl(md_fd, VIDIOC_QBUF, &mdV4l2Buffer);
         }
@@ -651,8 +648,6 @@ static int setHDR(int fd, uint32_t *expValues, uint8_t numOfExposures)
 	this will be fixed in the driver later.
     */
     setSubPreset.header += offset - sizeof(struct HWMC);
-    if (setSubPreset.header%2 != 0)
-	setSubPreset.header++;
 
     setSubPreset.params[0] = offset - sizeof(struct HWMC);
     memcpy(hwmc, &setSubPreset, sizeof(struct HWMC));
@@ -738,6 +733,168 @@ TEST_F(V4L2StreamTest, StreamDepth_1280x720_30FPS_HDR_HMC) {
     setHDR(depth_fd, sixExpValues, 6);
 
     stream30Frames(depth_fd, md_fd, metaDataBuffers, true);
+
+    cout << endl << "HMC with 6 values finished, now trying with 5 values: 70, 150, 1540, 1560, 1580" << endl;
+    cout << "note, it takes about 3 frames to start the new HMC with the new values" << endl << endl;
+
+    uint32_t fiveExpValues[5]= {70, 150, 1540, 1560, 1580};
+    setHDR(depth_fd, sixExpValues, 5);
+
+    stream30Frames(depth_fd, md_fd, metaDataBuffers, true);
+
+    // VIDIOC_STREAMOFF
+    ret = ioctl(md_fd, VIDIOC_STREAMOFF, &mdType);
+    ret = ioctl(depth_fd, VIDIOC_STREAMOFF, &vType);
+
+    close(md_fd);
+    close(depth_fd);
+}
+
+TEST_F(V4L2StreamTest, StreamDepth_640x480_30FPS_Projector_On_Off) {
+    string mdVideoNode = {"/dev/video0"};
+    int depth_fd = open(mdVideoNode.c_str(), O_RDWR);
+    ASSERT_TRUE(0 < depth_fd);
+    mdVideoNode = "/dev/video1";
+    int md_fd = open(mdVideoNode.c_str(), O_RDWR);
+    ASSERT_TRUE(0 < md_fd);
+
+    // set format
+    uint32_t width = 640;
+    uint32_t height = 480;
+    setFmt(depth_fd, V4L2_PIX_FMT_Z16, width, height);
+
+    // set FPS
+    setFPS(depth_fd, 30);
+
+    // request buffers
+    requestBuffers(depth_fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP, 8);
+    requestBuffers(md_fd, V4L2_BUF_TYPE_META_CAPTURE, V4L2_MEMORY_MMAP, 8);
+
+    std::array<void*, 8> depthBuffers {};
+    std::array<void*, 8> metaDataBuffers {};
+    for (int i = 0; i < depthBuffers.size(); ++i) {
+        depthBuffers[i] = queryMapQueueBuf(depth_fd,
+                                           V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                                           V4L2_MEMORY_MMAP,
+                                           i,
+                                           2 * width * height);
+        metaDataBuffers[i] = queryMapQueueBuf(md_fd,
+                                              V4L2_BUF_TYPE_META_CAPTURE,
+                                              V4L2_MEMORY_MMAP,
+                                              i,
+                                              4096);
+        ASSERT_TRUE(nullptr != depthBuffers[i]);
+        ASSERT_TRUE(nullptr != metaDataBuffers[i]);
+    }
+
+    // turn off auto exposure
+    struct v4l2_ext_control aeModeCtrl {0};
+    aeModeCtrl.id = V4L2_CID_EXPOSURE_AUTO;
+    aeModeCtrl.size = 0;
+    aeModeCtrl.value = 0;
+
+    // set auto exposure mode off
+    struct v4l2_ext_controls ext {0};
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.controls = &aeModeCtrl;
+    ext.count = 1;
+    int ret = ioctl(depth_fd, VIDIOC_S_EXT_CTRLS, &ext);
+
+    uint8_t hwmc[1028] {0};
+
+    struct v4l2_ext_control ctrl {0};
+    ctrl.id = DS5_CAMERA_CID_HWMC;
+    ctrl.size = sizeof(hwmc);
+    ctrl.p_u8 = hwmc;
+
+    //struct v4l2_ext_controls ext {0};
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.controls = &ctrl;
+    ext.count = 1;
+
+    // Set SETSUBPRESET HWMC
+    HWMC setSubPreset {0};
+    setSubPreset.header = 0x14;
+    setSubPreset.magic_word = 0xCDAB;
+    setSubPreset.opcode = 0x7B; // SETSUBPRESET opcode
+
+    struct SubPresetControl HDRs[10];
+
+    // 1 off, 1 on
+    HDRs[0].controlId = 0;
+    HDRs[0].controlValue = 0;
+    HDRs[1].controlId = 0;
+    HDRs[1].controlValue = 1;
+
+    struct SubPresetItemHeader itemHeader = {
+            .headerSize = 0x4,
+            .iterations = 0x1,
+            .numOfControls = 0x1
+    };
+
+    struct SubPresetHeader subPresetHeader = {
+            .headerSize = 0x5,
+            .id = 0x2,
+            .iterations = 0x0, // infinite loop
+            .numOfItems = 2
+    };
+
+    size_t offset = 0;
+    offset += sizeof(struct HWMC);
+
+    memcpy(hwmc + offset, &subPresetHeader, sizeof(struct SubPresetHeader));
+    offset += sizeof(struct SubPresetHeader);
+
+    for (int i = 0; i < 2; i++) {
+        memcpy(hwmc + offset, &itemHeader, sizeof(struct SubPresetItemHeader));
+        offset += sizeof(struct SubPresetItemHeader);
+        memcpy(hwmc + offset, &HDRs[i], sizeof(struct SubPresetControl));
+        offset += sizeof(struct SubPresetControl);
+    }
+
+    setSubPreset.header += offset - sizeof(struct HWMC);
+    if (setSubPreset.header%2 != 0)
+        setSubPreset.header++;
+
+    setSubPreset.params[0] = offset - sizeof(struct HWMC);
+    memcpy(hwmc, &setSubPreset, sizeof(struct HWMC));
+
+    if (0 != ioctl(depth_fd, VIDIOC_S_EXT_CTRLS, &ext)) {
+        cout << "VIDIOC_S_EXT_CTRLS failed!" << endl;
+    }
+
+    // VIDIOC_STREAMON
+    enum v4l2_buf_type vType = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
+    enum v4l2_buf_type mdType = V4L2_BUF_TYPE_META_CAPTURE ;
+    ret = ioctl(md_fd, VIDIOC_STREAMON, &mdType);
+    ret = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
+    ASSERT_TRUE(0 == ret);
+
+    for (int i = 0; i < 20; ++i) {
+        struct v4l2_buffer depthV4l2Buffer {0};
+        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
+        depthV4l2Buffer.memory = V4L2_MEMORY_MMAP;
+
+        struct v4l2_buffer mdV4l2Buffer {0};
+        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE ;
+        mdV4l2Buffer.memory = V4L2_MEMORY_MMAP;
+
+        int ret = ioctl(depth_fd, VIDIOC_DQBUF, &depthV4l2Buffer);
+        ret = ioctl(md_fd, VIDIOC_DQBUF, &mdV4l2Buffer);
+        STMetaDataDepthYNormalMode *ptr = static_cast<STMetaDataDepthYNormalMode*>(
+                metaDataBuffers[mdV4l2Buffer.index]);
+        cout << "meta data projector mode "<< dec << (uint16_t)ptr->intelDepthControl.projectorMode << endl;
+        if (i%2) {
+            ASSERT_TRUE(ptr->intelDepthControl.projectorMode == 0);
+        } else {
+            ASSERT_TRUE(ptr->intelDepthControl.projectorMode == 1);
+        }
+
+        if (i < 19) {
+            ioctl(depth_fd, VIDIOC_QBUF, &depthV4l2Buffer);
+            ioctl(md_fd, VIDIOC_QBUF, &mdV4l2Buffer);
+        }
+    }
 
     // VIDIOC_STREAMOFF
     ret = ioctl(md_fd, VIDIOC_STREAMOFF, &mdType);
