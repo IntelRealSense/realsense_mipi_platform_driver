@@ -35,7 +35,7 @@ static std::string videoNodePathPrefix {"/dev/video"};
 
 ScopedFileDescriptor::ScopedFileDescriptor(unsigned nodeNum) {
 
-    RS_AUTOLOG();
+    //RS_AUTOLOG();
 
     string videoNode(utils::videoNodePathPrefix);
     videoNode += to_string(nodeNum);
@@ -48,28 +48,28 @@ ScopedFileDescriptor::ScopedFileDescriptor(unsigned nodeNum) {
 
 ScopedFileDescriptor::~ScopedFileDescriptor() {
 
-    RS_AUTOLOG();
+    //RS_AUTOLOG();
 
     if(mScopedFileDescriptor != -1) {
         int res = close(mScopedFileDescriptor);
         if (res != 0) {
             RS_LOGE("Failed closing %d, errno = ", mScopedFileDescriptor, errno);
         } else {
-            RS_LOGV("%d closed", mScopedFileDescriptor);
+            //RS_LOGV("%d closed", mScopedFileDescriptor);
         }
     }
 }
 
 int ScopedFileDescriptor::get() const {
 
-    RS_AUTOLOG();
+    //RS_AUTOLOG();
 
     return mScopedFileDescriptor;
 }
 
 ScopedFileDescriptor::operator bool() const {
 
-    RS_AUTOLOG();
+    //RS_AUTOLOG();
 
     return (mScopedFileDescriptor > 0);
 }
