@@ -45,7 +45,7 @@ static void usage(const char *argv0)
     cout << "Usage: " << argv0 << " [options] device" << endl;
     cout << "Supported options:\n" << endl;
     cout << "-t, --stream-type        stream type \"depth\", \"rgb\"" << endl;
-    cout << "-h, --help           Show this help screen" << endl;
+    cout << "--help           Show this help screen" << endl;
 }
 
 static struct option opts[] = {
@@ -54,6 +54,7 @@ static struct option opts[] = {
     {"fps", 1, 0, 'f'},
     {"width", 1, 0, 'w'},
     {"height", 1, 0, 'h'},
+    {"slave-mode", 1, 0, 's'},
     {0, 0, 0, 0}
 };
 
@@ -66,9 +67,10 @@ int main(int argc, char **argv)
     uint32_t fps {30};
     uint32_t width{1280};
     uint32_t height{720};
+    bool slaveMode{false};
     opterr = 0;
 
-    while ((c = getopt_long(argc, argv, "d:t:f:r:w:h:", opts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "d:t:f:r:w:h:s:", opts, NULL)) != -1) {
         switch (c) {
         case 'd':
             nodeNumber = static_cast<uint8_t>(*optarg) - '0';
@@ -99,9 +101,14 @@ int main(int argc, char **argv)
             height = std::stoi(sOptArg);
             cout << "height " << height << endl;
             break;
-        //case 'h':
-        //    usage(argv[0]);
-        //    return 0;
+        case 's':
+            sOptArg = string(optarg);
+            if ("on" == sOptArg)
+                slaveMode = true;
+            if ("off" == sOptArg)
+                slaveMode = false;
+            cout << "slave mode " << slaveMode << endl;
+            break;
         default:
             cout << "Invalid option -" << c << endl;
             cout << "Run " << argv[0] << " -h for help" << endl;
@@ -116,6 +123,7 @@ int main(int argc, char **argv)
     streamView = new StreamView {nodeNumber, *stream, streamType};
     streamView->setFPS(fps);
     streamView->setResolution(width, height);
+    streamView->setSlaveMode(slaveMode);
     streamView->draw();
 
 

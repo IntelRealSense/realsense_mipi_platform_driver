@@ -15,7 +15,7 @@ include_directories(camera_sub_system/include
                     utils/include
                    /usr/local/include/opencv4)
 set_property(TARGET rs_viewer PROPERTY CXX_STANDARD 14)
-target_link_libraries(rs_viewer pthread opencv_core opencv_core opencv_imgproc opencv_highgui)
+target_link_libraries(rs_viewer pthread opencv_core opencv_imgproc opencv_highgui)
 
 # ds5_fw_logger app
 add_executable(rs_fw_logger ds5_fw_logger.cpp)

@@ -65,14 +65,42 @@ void StreamView::draw()
     case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
     case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
-        createTrackbar("ae", vn.c_str(), nullptr, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
-        createTrackbar("exposure", vn.c_str(), nullptr, 1650, StreamView::exposureTrackbarCB, static_cast<void*>(this));
-        createTrackbar("laser power mode", vn.c_str(), nullptr, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
-        createTrackbar("laser power value", vn.c_str(), nullptr, 360, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
+        {
+            // Get current values of ctrls
+            bool laserMode;
+            mStream.getLaserMode(&laserMode);
+
+            bool ae;
+            mStream.getAE(&ae);
+
+            int exp;
+            mStream.getExposure(&exp);
+            RS_LOGI("exposure %d ++++++++++++++++++++++++++++++", exp);
+
+            int val;
+            val = static_cast<int>(ae);
+            createTrackbar("ae", vn.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
+            createTrackbar("exposure", vn.c_str(), &exp, 1660, StreamView::exposureTrackbarCB, static_cast<void*>(this));
+            val = static_cast<int>(laserMode);
+            createTrackbar("laser power mode", vn.c_str(), &val, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
+            createTrackbar("laser power value", vn.c_str(), nullptr, 10, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
+        }
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
-        createTrackbar("ae", vn.c_str(), nullptr, 8, StreamView::aETrackbarCB, static_cast<void*>(this));
-        createTrackbar("exposure", vn.c_str(), nullptr, 1000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
+        {
+            // Get current values of ctrls
+            bool ae;
+            mStream.getAE(&ae);
+
+            int exp;
+            mStream.getExposure(&exp);
+            RS_LOGI("exposure %d ++++++++++++++++++++++++++++++", exp);
+
+            int val;
+            val = static_cast<int>(ae ? 8 : 0);
+            createTrackbar("ae", vn.c_str(), &val, 8, StreamView::aETrackbarCB, static_cast<void*>(this));
+            createTrackbar("exposure", vn.c_str(), &exp, 1000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
+        }
         break;
     }
 
@@ -130,6 +158,12 @@ void StreamView::fpsTrackbarCB (int pos, void *userData) {
     sv->setFPS(pos);
 }
 
+void StreamView::slaveModeTrackbarCB (int pos, void *userData) {
+    RS_LOGI("pos %d, userdata %p", pos, userData);
+    StreamView* sv = static_cast<StreamView*>(userData);
+    sv->setSlaveMode(pos);
+}
+
 void StreamView::start(uint32_t memoryType) {
     RS_AUTOLOG();
 
@@ -157,6 +191,8 @@ void StreamView::start(uint32_t memoryType) {
     default:
         break;
     }
+
+    mStream.setSlaveMode(mSlaveMode);
 
     if (mStream.configure(mFormat) < 0)
         RS_LOGE("Configure failed");
@@ -322,6 +358,12 @@ int StreamView::setResolution(uint32_t width, uint32_t height)
     mFormat.width = width;
     mFormat.height = height;
 }
+
+int StreamView::setSlaveMode(bool value){
+    // New slave mode will take effect in the next stream start
+    mSlaveMode = value;
+}
+
 
 } // namespace camera_viewer
 } // namespace realsense
