@@ -49,6 +49,7 @@ namespace camera_sub_system {
 #define DS5_CAMERA_CID_BASE                 (V4L2_CTRL_CLASS_CAMERA | DS5_STREAM_CONFIG_0)
 #define DS5_CAMERA_CID_LASER_POWER          (DS5_CAMERA_CID_BASE+1)
 #define DS5_CAMERA_CID_MANUAL_LASER_POWER   (DS5_CAMERA_CID_BASE+2)
+#define DS5_CAMERA_CID_HWMC                 (DS5_CAMERA_CID_BASE+15)
 
 Stream::Stream(uint8_t nodeNumber) : mNodeNumber{nodeNumber}
 {
@@ -520,6 +521,32 @@ int Stream::setAE (bool value)
     return 0;
 }
 
+int Stream::getAE (bool* value)
+{
+    struct v4l2_ext_control aeModeCtrl {0};
+    aeModeCtrl.id = V4L2_CID_EXPOSURE_AUTO;
+    aeModeCtrl.size = 0;
+
+    // get auto exposure mode
+    struct v4l2_ext_controls ext {0};
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.controls = &aeModeCtrl;
+    ext.count = 1;
+
+    ScopedFileDescriptor fd(mNodeNumber);
+    if (!fd)
+       return -1;
+
+    if (ioctl(fd.get(), VIDIOC_G_EXT_CTRLS, &ext) < 0) {
+        RS_LOGE("VIDIOC_G_EXT_CTRLS AE failed with %d", errno);
+        return -1;
+    }
+
+    *value = static_cast<bool>(aeModeCtrl.value);
+
+    return 0;
+}
+
 int Stream::setExposure (int value) {
     // set auto exposure mode off
     struct v4l2_ext_control aeModeCtrl {0};
@@ -544,7 +571,7 @@ int Stream::setExposure (int value) {
     struct v4l2_ext_control expCtrl {0};
     expCtrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
     expCtrl.size = 0;
-    expCtrl.value = value + 10;
+    expCtrl.value = value;
 
     ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
     ext.count = 1;
@@ -552,6 +579,32 @@ int Stream::setExposure (int value) {
     ret = ioctl(fd.get(), VIDIOC_S_EXT_CTRLS, &ext);
     if (ret < 0)
         RS_LOGE("VIDIOC_S_EXT_CTRLS exposure failed with %d", errno);
+
+    return ret;
+}
+
+int Stream::getExposure (int* value) {
+    struct v4l2_ext_controls ext {0};
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.count = 1;
+
+    ScopedFileDescriptor fd(mNodeNumber);
+    if (!fd)
+       return -1;
+
+    // get exposure
+    struct v4l2_ext_control expCtrl {0};
+    expCtrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
+    expCtrl.size = 0;
+
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.count = 1;
+    ext.controls = &expCtrl;
+    int ret = ioctl(fd.get(), VIDIOC_G_EXT_CTRLS, &ext);
+    if (ret < 0)
+        RS_LOGE("VIDIOC_G_EXT_CTRLS exposure failed with %d", errno);
+
+    *value = expCtrl.value;
 
     return ret;
 }
@@ -579,6 +632,35 @@ int Stream::setLaserMode (bool value)
 
     return ret;
 }
+
+int Stream::getLaserMode (bool* value)
+{
+    if (nullptr == value)
+        return -1;
+
+    struct v4l2_ext_control laserCtrl {0};
+    laserCtrl.id = DS5_CAMERA_CID_LASER_POWER;
+    laserCtrl.size = 0;
+
+    // get laser power
+    struct v4l2_ext_controls ext {0};
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.controls = &laserCtrl;
+    ext.count = 1;
+
+    ScopedFileDescriptor fd(mNodeNumber);
+    if (!fd)
+       return -1;
+
+    int ret = ioctl(fd.get(), VIDIOC_G_EXT_CTRLS, &ext);
+    if (ret < 0)
+        RS_LOGE("VIDIOC_G_EXT_CTRLS laser mode failed with %d", errno);
+
+    *value = static_cast<bool>(laserCtrl.value);
+
+    return ret;
+}
+
 
 int Stream::setLaserValue (int value)
 {
@@ -614,6 +696,50 @@ int Stream::setLaserValue (int value)
     RS_LOGE("VIDIOC_G_EXT_CTRLS laser value failed with %d", errno);
 
 	return ret;
+}
+
+struct HWMC {
+    uint16_t header;
+    uint16_t magic_word;
+    uint32_t opcode;
+    uint32_t params[4];
+};
+
+int Stream::setSlaveMode (bool value)
+{
+    uint8_t hwmc[1028] {0};
+
+    struct v4l2_ext_control ctrl {0};
+    ctrl.id = DS5_CAMERA_CID_HWMC;
+    ctrl.size = sizeof(hwmc);
+    ctrl.p_u8 = hwmc;
+
+    struct v4l2_ext_controls ext {0};
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.controls = &ctrl;
+    ext.count = 1;
+
+    // Get org depth calibration table
+    HWMC slaveMode {0};
+    slaveMode.header = 0x14;
+    slaveMode.magic_word = 0xCDAB;
+    slaveMode.opcode = 0x69;
+    if (value)
+        slaveMode.params[0] = 3;
+    else
+        slaveMode.params[0] = 0;
+
+    memcpy(hwmc, &slaveMode, sizeof(struct HWMC));
+
+    ScopedFileDescriptor fd(mNodeNumber);
+    if (!fd)
+       return -1;
+
+    int ret = ioctl(fd.get(), VIDIOC_S_EXT_CTRLS, &ext);
+    if (ret < 0)
+        RS_LOGE("VIDIOC_S_EXT_CTRLS slave mode failed with %d", errno);
+
+    return ret;
 }
 
 int Stream::initMmap(vector<RsBuffer*> rsBuffers)

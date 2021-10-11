@@ -74,6 +74,11 @@ public:
      */
     int setResolution(uint32_t width, uint32_t height);
 
+    /**
+     *
+    */
+    int setSlaveMode(bool value);
+
     // Callback functions to handle GUI events
     // TODO: Consider interface
     static void startStopTrackbarCB (int pos, void *userData);
@@ -82,6 +87,7 @@ public:
     static void laserModeTrackbarCB (int pos, void *userData);
     static void laserValueTrackbarCB (int pos, void *userData);
     static void fpsTrackbarCB (int pos, void *userData);
+    static void slaveModeTrackbarCB (int pos, void *userData);
 
 private:
 
@@ -95,9 +101,10 @@ private:
 
     realsense::camera_sub_system::Stream &mStream;
     realsense::camera_sub_system::Format mFormat;
+    bool mSlaveMode;
 
     // Number of buffers for streaming
-    const std::uint8_t mBuffersCount {1};
+    const std::uint8_t mBuffersCount {4};
     uint32_t mMemoryType;
 
     std::vector<realsense::camera_sub_system::RsBuffer> mRsBuffers;

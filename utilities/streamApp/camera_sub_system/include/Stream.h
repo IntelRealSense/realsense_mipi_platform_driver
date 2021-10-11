@@ -88,9 +88,14 @@ public:
      *
      */
     int setAE(bool value);
+    int getAE(bool* value);
     int setExposure (int value);
+    int getExposure (int* value);
     int setLaserMode (bool value);
+    int getLaserMode (bool* value);
     int setLaserValue (int value);
+    int getLaserValue (bool* value);
+    int setSlaveMode (bool value);
 
 private:
     // The number X of /dev/videoX node that this stream is associated with.
