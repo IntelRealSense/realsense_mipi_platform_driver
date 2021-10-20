@@ -80,7 +80,7 @@ void StreamView::draw()
             int val;
             val = static_cast<int>(ae);
             createTrackbar("ae", vn.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
-            createTrackbar("exposure", vn.c_str(), &exp, 1660, StreamView::exposureTrackbarCB, static_cast<void*>(this));
+            createTrackbar("exposure", vn.c_str(), &exp, 2000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
             val = static_cast<int>(laserMode);
             createTrackbar("laser power mode", vn.c_str(), &val, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
             createTrackbar("laser power value", vn.c_str(), nullptr, 10, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
