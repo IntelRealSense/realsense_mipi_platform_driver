@@ -126,4 +126,78 @@ typedef struct
     uint32_t crc32;
 }__attribute__((packed))STMetaDataDepthYNormalMode;
 
+////////////////////////////
+//       SUB preset       //
+////////////////////////////
+typedef union STSubPresetInfo
+{
+    uint32_t value;
+    struct
+    {
+	uint32_t  id		:4;	// -
+	uint32_t  numOfItems	:8;	// - according to SubPresetTool ver 2.0.0
+	uint32_t  itemIndex	:8;	// -
+	uint32_t  iteration	:6;	// - for debug purposes
+	uint32_t  itemIteration	:6;	// - for debug purposes
+    };
+}STSubPresetInfo;
+
+
+////////////////////////////
+//    NEW DEPTH STRUCT    //
+////////////////////////////
+typedef struct
+{
+    STMetaDataIdHeader  metaDataIdHeader;
+    uint8_t    version;
+    uint8_t reserved[3];
+    uint32_t    flags;
+    uint32_t    opticalTimestamp;   // In millisecond unit
+    uint32_t    hwTimestamp;
+    uint32_t    exposureTime;       //The exposure time in microsecond second unit
+    uint32_t    manualExposure;
+    uint16_t	laserPower;	    // Laser power value
+    STTriggerMode trigger; 	    /* Byte <0> - 0 free-running
+						  1 in sync
+						  2 external trigger (depth only)*/
+    uint8_t	projectorMode;
+    uint8_t	preset;
+    uint8_t	manualGain;
+    uint8_t	autoExposureMode;
+    uint16_t	inputWidth;
+    uint16_t	inputHeight;
+    STSubPresetInfo subpresetInfo;
+    uint32_t	crc32;
+} __attribute__((packed))STMetaDataExtMipiDepthIR;
+
+////////////////////////////
+//     NEW RGB STRUCT     //
+////////////////////////////
+typedef struct
+{
+    STMetaDataIdHeader  metaDataIdHeader;
+    uint8_t    	version;
+    uint8_t 	reserved[3];
+    uint32_t    flags;
+    uint32_t    hwTimestamp;
+    uint8_t    	brightness;
+    uint8_t    	contrast;
+    uint8_t    	saturation;
+    uint8_t    	sharpness;
+    uint16_t    auto_WB_Temp;
+    uint16_t    gamma;
+    uint16_t    manual_Exp;
+    uint16_t    manual_WB;
+    uint8_t    	auto_Exp_Mode;
+    uint8_t    	gain;
+    uint8_t    	backlight_Comp;
+    uint8_t    	hue;
+    uint8_t    	powerLineFrequency;
+    uint8_t    	low_Light_comp;
+    uint16_t    inputWidth;
+    uint16_t    inputHeight;
+    uint8_t 	reserved1[6];
+    uint32_t	crc32;
+} __attribute__((packed))STMetaDataExtMipiRgb;
+
 #endif // _METADATA_
