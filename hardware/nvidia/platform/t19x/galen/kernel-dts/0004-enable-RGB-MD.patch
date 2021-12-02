@@ -1,0 +1,28 @@
+From 7f9e212a00e4e9534b9a80d839e7837ecf3a951e Mon Sep 17 00:00:00 2001
+From: Emil Jahshan <emil.jahshan@intel.com>
+Date: Thu, 2 Dec 2021 14:33:12 +0200
+Subject: [PATCH] enable RGB MD
+
+ - enable RGB MD in dts
+
+Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
+---
+ common/tegra194-camera-d4xx.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/common/tegra194-camera-d4xx.dtsi b/common/tegra194-camera-d4xx.dtsi
+index c394d6f..09edc49 100644
+--- a/common/tegra194-camera-d4xx.dtsi
++++ b/common/tegra194-camera-d4xx.dtsi
+@@ -119,7 +119,7 @@
+ 						cil_settletime = "0";
+ 						line_length = "1280"; /* 2200 */
+ 						mclk_multiplier = "15.625";
+-						embedded_metadata_height = "0";
++						embedded_metadata_height = "1";
+ 						min_framerate = "5";
+ 						max_framerate = "30";
+ 						default_framerate = "5";
+-- 
+2.17.1
+

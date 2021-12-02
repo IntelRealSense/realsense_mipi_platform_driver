@@ -321,7 +321,7 @@ TEST_F(V4L2StreamTest, StreamDepth_640x480_5FPS) {
 }
 
 TEST_F(V4L2StreamTest, StreamDepth_640x480_5FPS_MetaData) {
-    string mdVideoNode = { "/dev/video0" };
+    string mdVideoNode = {"/dev/video0"};
     int depth_fd = open(mdVideoNode.c_str(), O_RDWR);
     ASSERT_TRUE(0 < depth_fd);
     mdVideoNode = "/dev/video1";
@@ -337,70 +337,83 @@ TEST_F(V4L2StreamTest, StreamDepth_640x480_5FPS_MetaData) {
     setFPS(depth_fd, 5);
 
     // request buffers
-    const int numberOfBuffers = 8;
-    requestBuffers(depth_fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP, numberOfBuffers);
-    requestBuffers(md_fd, V4L2_BUF_TYPE_META_CAPTURE, V4L2_MEMORY_MMAP, numberOfBuffers);
+    requestBuffers(depth_fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP, 8);
+    requestBuffers(md_fd, V4L2_BUF_TYPE_META_CAPTURE, V4L2_MEMORY_MMAP, 8);
 
-    std::array<void*, numberOfBuffers> depthBuffers{};
-    std::array<void*, numberOfBuffers> metaDataBuffers{};
+    std::array<void*, 8> depthBuffers {};
+    std::array<void*, 8> metaDataBuffers {};
     for (int i = 0; i < depthBuffers.size(); ++i) {
         depthBuffers[i] = queryMapQueueBuf(depth_fd,
-            V4L2_BUF_TYPE_VIDEO_CAPTURE,
-            V4L2_MEMORY_MMAP,
-            i,
-            2 * width * height);
+                                           V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                                           V4L2_MEMORY_MMAP,
+                                           i,
+                                           2 * width * height);
         metaDataBuffers[i] = queryMapQueueBuf(md_fd,
-            V4L2_BUF_TYPE_META_CAPTURE,
-            V4L2_MEMORY_MMAP,
-            i,
-            4096);
+                                              V4L2_BUF_TYPE_META_CAPTURE,
+                                              V4L2_MEMORY_MMAP,
+                                              i,
+                                              4096);
         ASSERT_TRUE(nullptr != depthBuffers[i]);
         ASSERT_TRUE(nullptr != metaDataBuffers[i]);
     }
 
     // VIDIOC_STREAMON
-    enum v4l2_buf_type vType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    enum v4l2_buf_type mdType = V4L2_BUF_TYPE_META_CAPTURE;
+    enum v4l2_buf_type vType = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
+    enum v4l2_buf_type mdType = V4L2_BUF_TYPE_META_CAPTURE ;
+
     int ret = ioctl(md_fd, VIDIOC_STREAMON, &mdType);
-    ret = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
     ASSERT_TRUE(0 == ret);
 
-    const int framesToGet = 15;
-    for (int i = 0; i < framesToGet; ++i) {
-        struct v4l2_buffer depthV4l2Buffer { 0 };
-        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    int ret2 = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
+    ASSERT_TRUE(0 == ret);
+
+    for (int i = 0; i < 2; ++i) {
+        struct v4l2_buffer depthV4l2Buffer {0};
+        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
         depthV4l2Buffer.memory = V4L2_MEMORY_MMAP;
 
-        struct v4l2_buffer mdV4l2Buffer { 0 };
-        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE;
+        struct v4l2_buffer mdV4l2Buffer {0};
+        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE ;
         mdV4l2Buffer.memory = V4L2_MEMORY_MMAP;
 
         int ret = ioctl(depth_fd, VIDIOC_DQBUF, &depthV4l2Buffer);
         ret = ioctl(md_fd, VIDIOC_DQBUF, &mdV4l2Buffer);
+
+	for (int j = 0; j < 20; j++) {
+		printf("%.8x ", static_cast<uint32_t*>(metaDataBuffers[mdV4l2Buffer.index])[j] );
+		if (0 == (j + 1) % 4 )
+		{
+		   cout << endl;
+		}
+	}
+
         cout << "depth bytes used " << depthV4l2Buffer.bytesused << endl;
         cout << "depth sequence " << depthV4l2Buffer.sequence << endl;
         cout << "depth v4l2 ts " << depthV4l2Buffer.timestamp.tv_sec << "." <<
-            depthV4l2Buffer.timestamp.tv_usec << endl;
+                depthV4l2Buffer.timestamp.tv_usec << endl;
         cout << "meta v4l2 bytes used " << mdV4l2Buffer.bytesused << endl;
         cout << "meta v4l2 sequence " << mdV4l2Buffer.sequence << endl;
         cout << "meta v4l2 ts " << mdV4l2Buffer.timestamp.tv_sec << "." <<
-            mdV4l2Buffer.timestamp.tv_usec << endl;
-        STMetaDataDepthYNormalMode* ptr = static_cast<STMetaDataDepthYNormalMode*>(
-            metaDataBuffers[mdV4l2Buffer.index]);
-        cout << "meta data hw ts " << dec << ptr->captureStats.hwTimestamp << endl;
-        cout << "meta data exposure time " << dec << ptr->captureStats.ExposureTime << endl;
-        cout << "meta data gain " << dec << ptr->intelDepthControl.manualGain << endl;
-        cout << "meta data projector mode " << dec << (uint16_t)ptr->intelDepthControl.projectorMode << endl;
-        cout << "meta data projector value " << dec << ptr->intelDepthControl.laserPower << endl;
-        cout << "meta data frame counter " << dec << ptr->intelCaptureTiming.frameCounter << endl;
-        cout << "meta data crc32 " << dec << ptr->crc32 << endl;
-        uint32_t crc = crc32buf(static_cast<uint8_t*>(metaDataBuffers[mdV4l2Buffer.index]), sizeof(STMetaDataDepthYNormalMode) - 4);
-        //ASSERT_TRUE(crc == ptr->crc32);
+                mdV4l2Buffer.timestamp.tv_usec << endl;
 
-        if (i < framesToGet - 1) {
-            ioctl(depth_fd, VIDIOC_QBUF, &depthV4l2Buffer);
-            ioctl(md_fd, VIDIOC_QBUF, &mdV4l2Buffer);
-        }
+        STMetaDataExtMipiDepthIR *ptr = static_cast<STMetaDataExtMipiDepthIR*>(metaDataBuffers[mdV4l2Buffer.index] + 16);
+
+        cout << "metaDataID "<< std::hex << ptr->metaDataIdHeader.metaDataID << endl;
+        cout << "meta data opticalTimestamp " << ptr->opticalTimestamp << endl;
+	cout << "meta data hwTimestamp " << dec << ptr->hwTimestamp << endl;
+	cout << "meta data exposureTime " << dec << ptr->exposureTime << endl;
+	cout << "meta data manualExposure " << dec << ptr->manualExposure << endl;
+	cout << "meta data laserPower " << dec << ptr->laserPower << endl;
+	cout << "meta data projectorMode " << dec << (uint16_t)ptr->projectorMode << endl;
+	cout << "meta data preset " << dec << (uint16_t)ptr->preset << endl;
+	cout << "meta data manualGain " << dec << (uint16_t)ptr->manualGain << endl;
+	cout << "meta data autoExposureMode " << dec << (uint16_t)ptr->autoExposureMode << endl;
+	cout << "meta data inputWidth " << dec << ptr->inputWidth << endl;
+	cout << "meta data inputHeight " << dec << ptr->inputHeight << endl;
+        cout << "meta data crc32 "<< dec << ptr->crc32 << endl;
+	
+        uint32_t crc = crc32buf(static_cast<uint8_t*>(metaDataBuffers[mdV4l2Buffer.index] + 16), sizeof(STMetaDataExtMipiDepthIR) - 4);
+        ASSERT_TRUE(crc == ptr->crc32);
     }
 
     //Unmap the buffers 
@@ -411,7 +424,6 @@ TEST_F(V4L2StreamTest, StreamDepth_640x480_5FPS_MetaData) {
     }
 
     // VIDIOC_STREAMOFF
-    cout << "Stopping Streaming" << endl;
     ret = ioctl(md_fd, VIDIOC_STREAMOFF, &mdType);
     ret = ioctl(depth_fd, VIDIOC_STREAMOFF, &vType);
 
@@ -521,6 +533,122 @@ TEST_F(V4L2StreamTest, StreamRGB_1280x720_5FPS) {
 
 //======================= 30 fps Tests ====================================
 
+TEST_F(V4L2StreamTest, StreamRGB_640x480_30FPS_MetaData) {
+    string mdVideoNode = {"/dev/video2"};
+    int rgb_fd = open(mdVideoNode.c_str(), O_RDWR);
+    ASSERT_TRUE(0 < rgb_fd);
+    mdVideoNode = "/dev/video3";
+    int md_fd = open(mdVideoNode.c_str(), O_RDWR);
+    ASSERT_TRUE(0 < md_fd);
+
+    // set format
+    uint32_t width = 640;
+    uint32_t height = 480;
+    setFmt(rgb_fd, V4L2_PIX_FMT_YUYV, width, height);
+
+    // set FPS
+    setFPS(rgb_fd, 60);
+
+    // request buffers
+    requestBuffers(rgb_fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP, 8);
+    requestBuffers(md_fd, V4L2_BUF_TYPE_META_CAPTURE, V4L2_MEMORY_MMAP, 8);
+
+    std::array<void*, 8> rgbBuffers {};
+    std::array<void*, 8> metaDataBuffers {};
+    for (int i = 0; i < rgbBuffers.size(); ++i) {
+        rgbBuffers[i] = queryMapQueueBuf(rgb_fd,
+                                           V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                                           V4L2_MEMORY_MMAP,
+                                           i,
+                                           2 * width * height);
+        metaDataBuffers[i] = queryMapQueueBuf(md_fd,
+                                              V4L2_BUF_TYPE_META_CAPTURE,
+                                              V4L2_MEMORY_MMAP,
+                                              i,
+                                              4096);
+        ASSERT_TRUE(nullptr != rgbBuffers[i]);
+        ASSERT_TRUE(nullptr != metaDataBuffers[i]);
+    }
+
+    // VIDIOC_STREAMON
+    enum v4l2_buf_type vType = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
+    enum v4l2_buf_type mdType = V4L2_BUF_TYPE_META_CAPTURE ;
+
+    int ret = ioctl(md_fd, VIDIOC_STREAMON, &mdType);
+    ASSERT_TRUE(0 == ret);
+
+    int ret2 = ioctl(rgb_fd, VIDIOC_STREAMON, &vType);
+    ASSERT_TRUE(0 == ret);
+
+    for (int i = 0; i < 2; ++i) {
+        struct v4l2_buffer depthV4l2Buffer {0};
+        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
+        depthV4l2Buffer.memory = V4L2_MEMORY_MMAP;
+
+        struct v4l2_buffer mdV4l2Buffer {0};
+        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE ;
+        mdV4l2Buffer.memory = V4L2_MEMORY_MMAP;
+
+        int ret = ioctl(rgb_fd, VIDIOC_DQBUF, &depthV4l2Buffer);
+        ret = ioctl(md_fd, VIDIOC_DQBUF, &mdV4l2Buffer);
+
+	for (int j = 0; j < 20; j++) {
+		printf("%.8x ", static_cast<uint32_t*>(metaDataBuffers[mdV4l2Buffer.index])[j] );
+		if (0 == (j + 1) % 4 )
+		{
+		   cout << endl;
+		}
+	}
+
+        cout << "depth bytes used " << depthV4l2Buffer.bytesused << endl;
+        cout << "depth sequence " << depthV4l2Buffer.sequence << endl;
+        cout << "depth v4l2 ts " << depthV4l2Buffer.timestamp.tv_sec << "." <<
+                depthV4l2Buffer.timestamp.tv_usec << endl;
+        cout << "meta v4l2 bytes used " << mdV4l2Buffer.bytesused << endl;
+        cout << "meta v4l2 sequence " << mdV4l2Buffer.sequence << endl;
+        cout << "meta v4l2 ts " << mdV4l2Buffer.timestamp.tv_sec << "." <<
+                mdV4l2Buffer.timestamp.tv_usec << endl;
+
+        STMetaDataExtMipiRgb *ptr = static_cast<STMetaDataExtMipiRgb*>(metaDataBuffers[mdV4l2Buffer.index] + 16);
+
+        cout << "metaDataID "<< std::hex << ptr->metaDataIdHeader.metaDataID << endl;
+        cout << "meta data hw ts " << ptr->hwTimestamp << endl;
+	cout << "meta data brightness " << dec << (uint16_t)ptr->brightness << endl;
+	cout << "meta data contrast " << dec << (uint16_t)ptr->contrast << endl;
+	cout << "meta data saturation " << dec << (uint16_t)ptr->saturation << endl;
+	cout << "meta data sharpness " << dec << (uint16_t)ptr->sharpness << endl;
+	cout << "meta data auto_WB_Temp " << dec << ptr->auto_WB_Temp << endl;
+	cout << "meta data gamma " << dec << ptr->gamma << endl;
+	cout << "meta data manual_Exp " << dec << ptr->manual_Exp << endl;
+	cout << "meta data manual_WB " << dec << ptr->manual_WB << endl;
+	cout << "meta data auto_Exp_Mode " << dec << (uint16_t)ptr->auto_Exp_Mode << endl;
+	cout << "meta data gain " << dec << (uint16_t)ptr->gain << endl;
+	cout << "meta data backlight_Comp " << dec << (uint16_t)ptr->backlight_Comp << endl;
+	cout << "meta data hue " << dec << (uint16_t)ptr->hue << endl;
+	cout << "meta data powerLineFrequency " << dec << (uint16_t)ptr->powerLineFrequency << endl;
+	cout << "meta data low_Light_comp " << dec << (uint16_t)ptr->low_Light_comp << endl;
+	cout << "meta data inputWidth " << dec << ptr->inputWidth << endl;
+	cout << "meta data inputHeight " << dec << ptr->inputHeight << endl;
+        cout << "meta data crc32 "<< dec << ptr->crc32 << endl;
+	
+        uint32_t crc = crc32buf(static_cast<uint8_t*>(metaDataBuffers[mdV4l2Buffer.index] + 16), sizeof(STMetaDataExtMipiRgb) - 4);
+        ASSERT_TRUE(crc == ptr->crc32);
+    }
+
+    //Unmap the buffers 
+    for (int i = 0; i < rgbBuffers.size(); i++) {
+        munmap(rgbBuffers[i], 2 * width * height);
+        munmap(metaDataBuffers[i], 4096);
+    }
+
+    // VIDIOC_STREAMOFF
+    ret = ioctl(md_fd, VIDIOC_STREAMOFF, &mdType);
+    ret = ioctl(rgb_fd, VIDIOC_STREAMOFF, &vType);
+
+    close(md_fd);
+    close(rgb_fd);
+}
+
 TEST_F(V4L2StreamTest, StreamDepth_640x480_30FPS) {
     string mdVideoNode = { "/dev/video0" };
     int depth_fd = open(mdVideoNode.c_str(), O_RDWR);
@@ -587,7 +715,7 @@ TEST_F(V4L2StreamTest, StreamDepth_640x480_30FPS) {
 }
 
 TEST_F(V4L2StreamTest, StreamDepth_640x480_30FPS_MetaData) {
-    string mdVideoNode = { "/dev/video0" };
+    string mdVideoNode = {"/dev/video0"};
     int depth_fd = open(mdVideoNode.c_str(), O_RDWR);
     ASSERT_TRUE(0 < depth_fd);
     mdVideoNode = "/dev/video1";
@@ -606,66 +734,80 @@ TEST_F(V4L2StreamTest, StreamDepth_640x480_30FPS_MetaData) {
     requestBuffers(depth_fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP, 8);
     requestBuffers(md_fd, V4L2_BUF_TYPE_META_CAPTURE, V4L2_MEMORY_MMAP, 8);
 
-    std::array<void*, 8> depthBuffers{};
-    std::array<void*, 8> metaDataBuffers{};
+    std::array<void*, 8> depthBuffers {};
+    std::array<void*, 8> metaDataBuffers {};
     for (int i = 0; i < depthBuffers.size(); ++i) {
         depthBuffers[i] = queryMapQueueBuf(depth_fd,
-            V4L2_BUF_TYPE_VIDEO_CAPTURE,
-            V4L2_MEMORY_MMAP,
-            i,
-            2 * width * height);
+                                           V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                                           V4L2_MEMORY_MMAP,
+                                           i,
+                                           2 * width * height);
         metaDataBuffers[i] = queryMapQueueBuf(md_fd,
-            V4L2_BUF_TYPE_META_CAPTURE,
-            V4L2_MEMORY_MMAP,
-            i,
-            4096);
+                                              V4L2_BUF_TYPE_META_CAPTURE,
+                                              V4L2_MEMORY_MMAP,
+                                              i,
+                                              4096);
         ASSERT_TRUE(nullptr != depthBuffers[i]);
         ASSERT_TRUE(nullptr != metaDataBuffers[i]);
     }
 
     // VIDIOC_STREAMON
-    enum v4l2_buf_type vType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    enum v4l2_buf_type mdType = V4L2_BUF_TYPE_META_CAPTURE;
+    enum v4l2_buf_type vType = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
+    enum v4l2_buf_type mdType = V4L2_BUF_TYPE_META_CAPTURE ;
+
     int ret = ioctl(md_fd, VIDIOC_STREAMON, &mdType);
-    ret = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
     ASSERT_TRUE(0 == ret);
 
-    const int framesToGet = 15;
-    for (int i = 0; i < framesToGet; ++i) {
-        struct v4l2_buffer depthV4l2Buffer { 0 };
-        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    int ret2 = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
+    ASSERT_TRUE(0 == ret);
+
+    for (int i = 0; i < 2; ++i) {
+        struct v4l2_buffer depthV4l2Buffer {0};
+        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
         depthV4l2Buffer.memory = V4L2_MEMORY_MMAP;
 
-        struct v4l2_buffer mdV4l2Buffer { 0 };
-        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE;
+        struct v4l2_buffer mdV4l2Buffer {0};
+        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE ;
         mdV4l2Buffer.memory = V4L2_MEMORY_MMAP;
 
         int ret = ioctl(depth_fd, VIDIOC_DQBUF, &depthV4l2Buffer);
         ret = ioctl(md_fd, VIDIOC_DQBUF, &mdV4l2Buffer);
+
+	for (int j = 0; j < 20; j++) {
+		printf("%.8x ", static_cast<uint32_t*>(metaDataBuffers[mdV4l2Buffer.index])[j] );
+		if (0 == (j + 1) % 4 )
+		{
+		   cout << endl;
+		}
+	}
+
         cout << "depth bytes used " << depthV4l2Buffer.bytesused << endl;
         cout << "depth sequence " << depthV4l2Buffer.sequence << endl;
         cout << "depth v4l2 ts " << depthV4l2Buffer.timestamp.tv_sec << "." <<
-            depthV4l2Buffer.timestamp.tv_usec << endl;
+                depthV4l2Buffer.timestamp.tv_usec << endl;
         cout << "meta v4l2 bytes used " << mdV4l2Buffer.bytesused << endl;
         cout << "meta v4l2 sequence " << mdV4l2Buffer.sequence << endl;
         cout << "meta v4l2 ts " << mdV4l2Buffer.timestamp.tv_sec << "." <<
-            mdV4l2Buffer.timestamp.tv_usec << endl;
-        STMetaDataDepthYNormalMode* ptr = static_cast<STMetaDataDepthYNormalMode*>(
-            metaDataBuffers[mdV4l2Buffer.index]);
-        cout << "meta data hw ts " << dec << ptr->captureStats.hwTimestamp << endl;
-        cout << "meta data exposure time " << dec << ptr->captureStats.ExposureTime << endl;
-        cout << "meta data gain " << dec << ptr->intelDepthControl.manualGain << endl;
-        cout << "meta data projector mode " << dec << (uint16_t)ptr->intelDepthControl.projectorMode << endl;
-        cout << "meta data projector value " << dec << ptr->intelDepthControl.laserPower << endl;
-        cout << "meta data frame counter " << dec << ptr->intelCaptureTiming.frameCounter << endl;
-        cout << "meta data crc32 " << dec << ptr->crc32 << endl;
-        uint32_t crc = crc32buf(static_cast<uint8_t*>(metaDataBuffers[mdV4l2Buffer.index]), sizeof(STMetaDataDepthYNormalMode) - 4);
-        ASSERT_TRUE(crc == ptr->crc32);
+                mdV4l2Buffer.timestamp.tv_usec << endl;
 
-        if (i < framesToGet - depthBuffers.size()) {
-            ioctl(depth_fd, VIDIOC_QBUF, &depthV4l2Buffer);
-            ioctl(md_fd, VIDIOC_QBUF, &mdV4l2Buffer);
-        }
+        STMetaDataExtMipiDepthIR *ptr = static_cast<STMetaDataExtMipiDepthIR*>(metaDataBuffers[mdV4l2Buffer.index] + 16);
+
+        cout << "metaDataID "<< std::hex << ptr->metaDataIdHeader.metaDataID << endl;
+        cout << "meta data opticalTimestamp " << ptr->opticalTimestamp << endl;
+	cout << "meta data hwTimestamp " << dec << ptr->hwTimestamp << endl;
+	cout << "meta data exposureTime " << dec << ptr->exposureTime << endl;
+	cout << "meta data manualExposure " << dec << ptr->manualExposure << endl;
+	cout << "meta data laserPower " << dec << ptr->laserPower << endl;
+	cout << "meta data projectorMode " << dec << (uint16_t)ptr->projectorMode << endl;
+	cout << "meta data preset " << dec << (uint16_t)ptr->preset << endl;
+	cout << "meta data manualGain " << dec << (uint16_t)ptr->manualGain << endl;
+	cout << "meta data autoExposureMode " << dec << (uint16_t)ptr->autoExposureMode << endl;
+	cout << "meta data inputWidth " << dec << ptr->inputWidth << endl;
+	cout << "meta data inputHeight " << dec << ptr->inputHeight << endl;
+        cout << "meta data crc32 "<< dec << ptr->crc32 << endl;
+	
+        uint32_t crc = crc32buf(static_cast<uint8_t*>(metaDataBuffers[mdV4l2Buffer.index] + 16), sizeof(STMetaDataExtMipiDepthIR) - 4);
+        ASSERT_TRUE(crc == ptr->crc32);
     }
 
     //Unmap the buffers 
@@ -683,7 +825,7 @@ TEST_F(V4L2StreamTest, StreamDepth_640x480_30FPS_MetaData) {
 }
 
 TEST_F(V4L2StreamTest, StreamDepth_1280x720_30FPS_MetaData) {
-    string mdVideoNode = { "/dev/video0" };
+    string mdVideoNode = {"/dev/video0"};
     int depth_fd = open(mdVideoNode.c_str(), O_RDWR);
     ASSERT_TRUE(0 < depth_fd);
     mdVideoNode = "/dev/video1";
@@ -702,66 +844,80 @@ TEST_F(V4L2StreamTest, StreamDepth_1280x720_30FPS_MetaData) {
     requestBuffers(depth_fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP, 8);
     requestBuffers(md_fd, V4L2_BUF_TYPE_META_CAPTURE, V4L2_MEMORY_MMAP, 8);
 
-    std::array<void*, 8> depthBuffers{};
-    std::array<void*, 8> metaDataBuffers{};
+    std::array<void*, 8> depthBuffers {};
+    std::array<void*, 8> metaDataBuffers {};
     for (int i = 0; i < depthBuffers.size(); ++i) {
         depthBuffers[i] = queryMapQueueBuf(depth_fd,
-            V4L2_BUF_TYPE_VIDEO_CAPTURE,
-            V4L2_MEMORY_MMAP,
-            i,
-            2 * width * height);
+                                           V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                                           V4L2_MEMORY_MMAP,
+                                           i,
+                                           2 * width * height);
         metaDataBuffers[i] = queryMapQueueBuf(md_fd,
-            V4L2_BUF_TYPE_META_CAPTURE,
-            V4L2_MEMORY_MMAP,
-            i,
-            4096);
+                                              V4L2_BUF_TYPE_META_CAPTURE,
+                                              V4L2_MEMORY_MMAP,
+                                              i,
+                                              4096);
         ASSERT_TRUE(nullptr != depthBuffers[i]);
         ASSERT_TRUE(nullptr != metaDataBuffers[i]);
     }
 
     // VIDIOC_STREAMON
-    enum v4l2_buf_type vType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    enum v4l2_buf_type mdType = V4L2_BUF_TYPE_META_CAPTURE;
+    enum v4l2_buf_type vType = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
+    enum v4l2_buf_type mdType = V4L2_BUF_TYPE_META_CAPTURE ;
+
     int ret = ioctl(md_fd, VIDIOC_STREAMON, &mdType);
-    ret = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
     ASSERT_TRUE(0 == ret);
 
-    const int framesToGet = 300;
-    for (int i = 0; i < framesToGet; ++i) {
-        struct v4l2_buffer depthV4l2Buffer { 0 };
-        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    int ret2 = ioctl(depth_fd, VIDIOC_STREAMON, &vType);
+    ASSERT_TRUE(0 == ret);
+
+    for (int i = 0; i < 2; ++i) {
+        struct v4l2_buffer depthV4l2Buffer {0};
+        depthV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE ;
         depthV4l2Buffer.memory = V4L2_MEMORY_MMAP;
 
-        struct v4l2_buffer mdV4l2Buffer { 0 };
-        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE;
+        struct v4l2_buffer mdV4l2Buffer {0};
+        mdV4l2Buffer.type = V4L2_BUF_TYPE_META_CAPTURE ;
         mdV4l2Buffer.memory = V4L2_MEMORY_MMAP;
 
         int ret = ioctl(depth_fd, VIDIOC_DQBUF, &depthV4l2Buffer);
         ret = ioctl(md_fd, VIDIOC_DQBUF, &mdV4l2Buffer);
+
+	for (int j = 0; j < 20; j++) {
+		printf("%.8x ", static_cast<uint32_t*>(metaDataBuffers[mdV4l2Buffer.index])[j] );
+		if (0 == (j + 1) % 4 )
+		{
+		   cout << endl;
+		}
+	}
+
         cout << "depth bytes used " << depthV4l2Buffer.bytesused << endl;
         cout << "depth sequence " << depthV4l2Buffer.sequence << endl;
         cout << "depth v4l2 ts " << depthV4l2Buffer.timestamp.tv_sec << "." <<
-            depthV4l2Buffer.timestamp.tv_usec << endl;
+                depthV4l2Buffer.timestamp.tv_usec << endl;
         cout << "meta v4l2 bytes used " << mdV4l2Buffer.bytesused << endl;
         cout << "meta v4l2 sequence " << mdV4l2Buffer.sequence << endl;
         cout << "meta v4l2 ts " << mdV4l2Buffer.timestamp.tv_sec << "." <<
-            mdV4l2Buffer.timestamp.tv_usec << endl;
-        STMetaDataDepthYNormalMode* ptr = static_cast<STMetaDataDepthYNormalMode*>(
-            metaDataBuffers[mdV4l2Buffer.index]);
-        cout << "meta data hw ts " << dec << ptr->captureStats.hwTimestamp << endl;
-        cout << "meta data exposure time " << dec << ptr->captureStats.ExposureTime << endl;
-        cout << "meta data gain " << dec << ptr->intelDepthControl.manualGain << endl;
-        cout << "meta data projector mode " << dec << (uint16_t)ptr->intelDepthControl.projectorMode << endl;
-        cout << "meta data projector value " << dec << ptr->intelDepthControl.laserPower << endl;
-        cout << "meta data frame counter " << dec << ptr->intelCaptureTiming.frameCounter << endl;
-        cout << "meta data crc32 " << dec << ptr->crc32 << endl;
-        uint32_t crc = crc32buf(static_cast<uint8_t*>(metaDataBuffers[mdV4l2Buffer.index]), sizeof(STMetaDataDepthYNormalMode) - 4);
-        ASSERT_TRUE(crc == ptr->crc32);
+                mdV4l2Buffer.timestamp.tv_usec << endl;
 
-        if (i < framesToGet - depthBuffers.size()) {
-            ioctl(depth_fd, VIDIOC_QBUF, &depthV4l2Buffer);
-            ioctl(md_fd, VIDIOC_QBUF, &mdV4l2Buffer);
-        }
+        STMetaDataExtMipiDepthIR *ptr = static_cast<STMetaDataExtMipiDepthIR*>(metaDataBuffers[mdV4l2Buffer.index] + 16);
+
+        cout << "metaDataID "<< std::hex << ptr->metaDataIdHeader.metaDataID << endl;
+        cout << "meta data opticalTimestamp " << ptr->opticalTimestamp << endl;
+	cout << "meta data hwTimestamp " << dec << ptr->hwTimestamp << endl;
+	cout << "meta data exposureTime " << dec << ptr->exposureTime << endl;
+	cout << "meta data manualExposure " << dec << ptr->manualExposure << endl;
+	cout << "meta data laserPower " << dec << ptr->laserPower << endl;
+	cout << "meta data projectorMode " << dec << (uint16_t)ptr->projectorMode << endl;
+	cout << "meta data preset " << dec << (uint16_t)ptr->preset << endl;
+	cout << "meta data manualGain " << dec << (uint16_t)ptr->manualGain << endl;
+	cout << "meta data autoExposureMode " << dec << (uint16_t)ptr->autoExposureMode << endl;
+	cout << "meta data inputWidth " << dec << ptr->inputWidth << endl;
+	cout << "meta data inputHeight " << dec << ptr->inputHeight << endl;
+        cout << "meta data crc32 "<< dec << ptr->crc32 << endl;
+	
+        uint32_t crc = crc32buf(static_cast<uint8_t*>(metaDataBuffers[mdV4l2Buffer.index] + 16), sizeof(STMetaDataExtMipiDepthIR) - 4);
+        ASSERT_TRUE(crc == ptr->crc32);
     }
 
     //Unmap the buffers 
