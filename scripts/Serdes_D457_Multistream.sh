@@ -1,5 +1,8 @@
 #D457 SerDes script: 
 # D457_MAX9295A_MAX9296A_Intel.cpp
+# Version: 1.0.0.1
+# Compatible Driver Version: 1.0.0.6
+# Compatible FW Version: 5.13.0.100
 
 # Written by Oliver Jakobi, Edited by Eddie De Reza
 # Analog Devices
