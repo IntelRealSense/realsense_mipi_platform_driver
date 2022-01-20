@@ -1,0 +1,291 @@
+From 1aec451e94760ef62f470c877e939fc019f057df Mon Sep 17 00:00:00 2001
+From: Qingwu Zhang <qingwu.zhang@intel.com>
+Date: Fri, 18 Feb 2022 11:10:39 +0800
+Subject: [PATCH] SerDes: Initialize SerDes registers after probe
+
+The register lists is the version 1.0.0.6 of SerDes script.
+
+Signed-off-by: Qingwu Zhang <qingwu.zhang@intel.com>
+---
+ drivers/media/i2c/max9295.c | 105 ++++++++++++++++++++++++++++
+ drivers/media/i2c/max9296.c | 134 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 239 insertions(+)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index 895601a15..a9725a658 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -455,6 +455,106 @@ error:
+ }
+ EXPORT_SYMBOL(max9295_sdev_unpair);
+ 
++struct reg_pair {
++	u16 addr;
++	u8 val;
++};
++
++#define MAX9295_CMU_REGULATORI_ADDR 0x0302
++#define MAX9295_CMU_REGULATOR 0x10
++
++static int max9295_increase_regulator(struct device *dev)
++{
++	max9295_write_reg(dev,
++		MAX9295_CMU_REGULATORI_ADDR, MAX9295_CMU_REGULATOR);
++
++	return 0;
++}
++
++static int max9295_setup_d4xx_control(struct device *dev)
++{
++	u32 j = 0;
++	struct reg_pair map_pipe_control[] = {
++		/* addr, val */
++		{0x0002, 0xF3},
++
++		{0x0331, 0x11},
++		{0x0308, 0x6F},
++		{0x0311, 0xF0},
++
++		{0x0314, 0x5E},
++		{0x0315, 0x52},
++		{0x0309, 0x01},
++		{0x030A, 0x00},
++
++		{0x0312, 0x07},
++		{0x031C, 0x30},
++
++		{0x0316, 0x5E},
++		{0x0317, 0x52},
++		{0x030B, 0x02},
++		{0x030C, 0x00},
++		{0x031D, 0x30},
++
++		{0x0318, 0x6A},
++		{0x0319, 0x72},
++		{0x030D, 0x04},
++		{0x030E, 0x00},
++		{0x031E, 0x30},
++
++		{0x031A, 0x64},
++		{0x030F, 0x04},
++		{0x0310, 0x00},
++		{0x0315, 0xD2},
++
++		{0x0102, 0x0E},
++		{0x010A, 0x0E},
++		{0x0112, 0x0E},
++		{0x011A, 0x0E},
++	};
++
++	for (j = 0; j < ARRAY_SIZE(map_pipe_control); j++) {
++		max9295_write_reg(dev,
++			map_pipe_control[j].addr, map_pipe_control[j].val);
++	}
++
++	return 0;
++}
++
++static int max9295_depth_trigger(struct device *dev)
++{
++	u32 j = 0;
++	struct reg_pair map_depth_trigger[] = {
++		{0x02D6, 0x84},
++		{0x02D7, 0x60},
++		{0x02D8, 0x1F},
++	};
++
++	for (j = 0; j < ARRAY_SIZE(map_depth_trigger); j++) {
++		max9295_write_reg(dev,
++			map_depth_trigger[j].addr, map_depth_trigger[j].val);
++	}
++
++	return 0;
++}
++
++static int max9295_rgb_trigger(struct device *dev)
++{
++	u32 j = 0;
++	struct reg_pair map_rgb_trigger[] = {
++		{0x02BE, 0x84},
++		{0x02BF, 0x60},
++		{0x02C0, 0x1B},
++	};
++
++	for (j = 0; j < ARRAY_SIZE(map_rgb_trigger); j++) {
++		max9295_write_reg(dev,
++			map_rgb_trigger[j].addr, map_rgb_trigger[j].val);
++	}
++
++	return 0;
++}
++
+ static  struct regmap_config max9295_regmap_config = {
+ 	.reg_bits = 16,
+ 	.val_bits = 8,
+@@ -500,6 +600,11 @@ static int max9295_probe(struct i2c_client *client,
+ 
+ 	dev_set_drvdata(&client->dev, priv);
+ 
++	max9295_increase_regulator(&client->dev);
++	max9295_setup_d4xx_control(&client->dev);
++	max9295_depth_trigger(&client->dev);
++	max9295_rgb_trigger(&client->dev);
++
+ 	dev_info(&client->dev, "%s:  success\n", __func__);
+ 
+ 	return err;
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 88fc03b07..40e867268 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -740,6 +740,134 @@ ret:
+ }
+ EXPORT_SYMBOL(max9296_setup_streaming);
+ 
++#define MAX9296_CMU_REGULATORI_ADDR 0x0302
++#define MAX9296_CMU_REGULATOR 0x10
++
++static int max9296_increase_regulator(struct device *dev)
++{
++	max9296_write_reg(dev,
++		MAX9296_CMU_REGULATORI_ADDR, MAX9296_CMU_REGULATOR);
++
++	return 0;
++}
++
++static int max9296_phy_optimization(struct device *dev)
++{
++	u32 j = 0;
++	struct reg_pair map_phy_opt[] = {
++		{0x1458, 0x28},
++		{0x1459, 0x68},
++		{0x1558, 0x28},
++		{0x1559, 0x68},
++		{0x0010, 0x31},
++	};
++
++	for (j = 0; j < ARRAY_SIZE(map_phy_opt); j++) {
++		max9296_write_reg(dev,
++			map_phy_opt[j].addr, map_phy_opt[j].val);
++	}
++
++	return 0;
++}
++
++static int max9296_setup_d4xx_control(struct device *dev)
++{
++	u32 j = 0;
++
++	struct reg_pair map_pipe_control[] = {
++		/* addr, val */
++		{0x044A, 0x50},
++		{0x0320, 0x2F},
++		{0x031C, 0x00},
++		{0x031F, 0x00},
++		{0x0473, 0x10},
++
++		{0x0239, 0x39},
++
++		{0x040B, 0x0F},
++		{0x040D, 0x1E},
++		{0x040E, 0x1E},
++		{0x040F, 0x00},
++		{0x0410, 0x00},
++		{0x0411, 0x01},
++		{0x0412, 0x01},
++		{0x0413, 0x12},
++		{0x0414, 0x12},
++		{0x042D, 0x55},
++
++		{0x044B, 0x0F},
++		{0x044D, 0x5E},
++		{0x044E, 0x5E},
++		{0x044F, 0x40},
++		{0x0450, 0x40},
++		{0x0451, 0x41},
++		{0x0452, 0x41},
++		{0x0453, 0x52},
++		{0x0454, 0x52},
++		{0x046D, 0x55},
++
++		{0x048B, 0x0F},
++		{0x048D, 0xAA},
++		{0x048E, 0xAA},
++		{0x048F, 0x80},
++		{0x0490, 0x80},
++		{0x0491, 0x81},
++		{0x0492, 0x81},
++		{0x0493, 0xB2},
++		{0x0494, 0xB2},
++		{0x04AD, 0x55},
++
++		{0x04CB, 0x01},
++		{0x04CD, 0xA4},
++		{0x04CE, 0xA4},
++		{0x04ED, 0x01},
++
++		{0x0100, 0x23},
++		{0x0112, 0x23},
++		{0x0124, 0x23},
++		{0x0136, 0x23},
++	};
++
++	for (j = 0; j < ARRAY_SIZE(map_pipe_control); j++) {
++		max9296_write_reg(dev,
++			map_pipe_control[j].addr, map_pipe_control[j].val);
++	}
++
++	return 0;
++}
++
++static int max9296_depth_trigger(struct device *dev)
++{
++	u32 j = 0;
++	struct reg_pair map_depth_trigger[] = {
++		{0x02C5, 0x82},
++		{0x02C6, 0x1F},
++	};
++
++	for (j = 0; j < ARRAY_SIZE(map_depth_trigger); j++) {
++		max9296_write_reg(dev,
++			map_depth_trigger[j].addr, map_depth_trigger[j].val);
++	}
++
++	return 0;
++}
++
++static int max9296_rgb_trigger(struct device *dev)
++{
++	u32 j = 0;
++	struct reg_pair map_rgb_trigger[] = {
++		{0x02CB, 0x82},
++		{0x02CC, 0x1B},
++	};
++
++	for (j = 0; j < ARRAY_SIZE(map_rgb_trigger); j++) {
++		max9296_write_reg(dev,
++			map_rgb_trigger[j].addr, map_rgb_trigger[j].val);
++	}
++
++	return 0;
++}
++
+ const struct of_device_id max9296_of_match[] = {
+ 	{ .compatible = "nvidia,max9296", },
+ 	{ },
+@@ -859,6 +987,12 @@ static int max9296_probe(struct i2c_client *client,
+ 
+ 	dev_set_drvdata(&client->dev, priv);
+ 
++	max9296_increase_regulator(&client->dev);
++	max9296_phy_optimization(&client->dev);
++	max9296_setup_d4xx_control(&client->dev);
++	max9296_depth_trigger(&client->dev);
++	max9296_rgb_trigger(&client->dev);
++
+ 	dev_info(&client->dev, "%s:  success\n", __func__);
+ 
+ 	return err;
+-- 
+2.17.1
+

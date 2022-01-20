@@ -1,0 +1,53 @@
+From b2af1f8babb71414bf52567cdc7b99a28725f4b4 Mon Sep 17 00:00:00 2001
+From: Qingwu Zhang <qingwu.zhang@intel.com>
+Date: Fri, 21 Jan 2022 10:37:44 +0800
+Subject: [PATCH] DesSer: Add DesSer configuration under I2C MUX
+
+Signed-off-by: Qingwu Zhang <qingwu.zhang@intel.com>
+---
+ common/tegra194-camera-d4xx.dtsi | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/common/tegra194-camera-d4xx.dtsi b/common/tegra194-camera-d4xx.dtsi
+index 500101d..a3b9a87 100644
+--- a/common/tegra194-camera-d4xx.dtsi
++++ b/common/tegra194-camera-d4xx.dtsi
+@@ -25,6 +25,35 @@
+ 				i2c-mux,deselect-on-exit;
+ 				#size-cells = <0x0>;
+ 
++				dser: max9296@48 {
++					status = "ok";
++					reg = <0x48>;
++					compatible = "nvidia,max9296";
++					#address-cells = <1>;
++					#size-cells = <0>;
++					skip_mux_detect = "yes";
++					vcc-supply = <&p2822_vdd_1v8_cvb>;
++					/*vcc-pullup-supply = <&battery_reg>;*/
++					force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
++					vcc_lp = "vcc";
++					csi-mode = "2x4";
++					max-src = <1>;
++				};
++
++				ser_prim: max9295_prim@40 {
++					status = "ok";
++					reg = <0x40>;
++					compatible = "nvidia,max9295";
++					#address-cells = <1>;
++					#size-cells = <0>;
++					skip_mux_detect = "yes";
++					vcc-supply = <&p2822_vdd_1v8_cvb>;
++					/*vcc-pullup-supply = <&battery_reg>;*/
++					force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
++					vcc_lp = "vcc";
++					is-prim-ser;
++				};
++
+ 				d4m0: d4m@10 {
+ 					status = "ok";
+ 					reg = <0x10>;
+-- 
+2.17.1
+
