@@ -266,12 +266,14 @@ int Stream::configure(realsense::camera_sub_system::Format format)
     mFormat.width = format.width;
     mFormat.height = format.height;
     mFormat.fps = format.fps;
+    mFormat.bytesperline = format.bytesperline;
 
     struct v4l2_format v4l2Format;
     v4l2Format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     v4l2Format.fmt.pix.pixelformat = mFormat.v4l2Format;
     v4l2Format.fmt.pix.width = mFormat.width;
     v4l2Format.fmt.pix.height = mFormat.height;
+    v4l2Format.fmt.pix.bytesperline = mFormat.bytesperline;
     int ret = ioctl(fd.get(), VIDIOC_S_FMT, &v4l2Format);
     if (ret < 0) {
         RS_LOGE("VIDIOC_S_FMT failed, errno %d", errno);
@@ -300,6 +302,15 @@ int Stream::configure(realsense::camera_sub_system::Format format)
         RS_LOGE("VIDIOC_S_PARM failed, errno %d", errno);
     } else
         RS_LOGI("FPS set to to %d ", mFormat.fps);
+
+    struct v4l2_control setStride {0};
+    setStride.id = 0x9a206e; // the value of TEGRA_CAMERA_CID_VI_PREFERRED_STRIDE, not available in user space header
+    setStride.value = mFormat.bytesperline;
+    ret = ioctl(fd.get(), VIDIOC_S_CTRL, &setStride);
+    if (ret < 0) {
+        RS_LOGE("VIDIOC_S_CTRL failed, errno %d", errno);
+    } else
+        RS_LOGI("preferred_stride set to to %d ", setStride.value);
 
     return ret;
 }
@@ -758,7 +769,7 @@ int Stream::initMmap(vector<RsBuffer*> rsBuffers)
         }
 
         rsBuffer->buffer = (struct buffer*)mmap(nullptr,
-                                                rsBuffer->length,
+                                                mV4l2Buffer.length,
                                                 PROT_READ | PROT_WRITE,
                                                 MAP_SHARED,
                                                 mFileDescriptor,
