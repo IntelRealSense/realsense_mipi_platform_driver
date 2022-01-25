@@ -57,10 +57,9 @@ void StreamView::draw()
     RS_AUTOLOG();
 
     namedWindow(mNodeStr.c_str(), WINDOW_FREERATIO);
-    string vn {mNodeStr};
-    vn += {" control"};
-    namedWindow(vn.c_str(), WINDOW_NORMAL);
-    createTrackbar("stream on/off", vn.c_str(), &mStartStopTBVlaue, 1, StreamView::startStopTrackbarCB, static_cast<void*>(this));
+    mCtrlWinName = mNodeStr + " control";
+    namedWindow(mCtrlWinName.c_str(), WINDOW_NORMAL);
+    createTrackbar("stream on/off", mCtrlWinName.c_str(), &mStartStopTBVlaue, 1, StreamView::startStopTrackbarCB, static_cast<void*>(this));
     switch(mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
@@ -79,11 +78,11 @@ void StreamView::draw()
 
             int val;
             val = static_cast<int>(ae);
-            createTrackbar("ae", vn.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
-            createTrackbar("exposure", vn.c_str(), &exp, 2000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
+            createTrackbar("ae", mCtrlWinName.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
+            createTrackbar("exposure", mCtrlWinName.c_str(), &exp, 2000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
             val = static_cast<int>(laserMode);
-            createTrackbar("laser power mode", vn.c_str(), &val, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
-            createTrackbar("laser power value", vn.c_str(), nullptr, 10, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
+            createTrackbar("laser power mode", mCtrlWinName.c_str(), &val, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
+            createTrackbar("laser power value", mCtrlWinName.c_str(), nullptr, 10, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
         }
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
@@ -97,9 +96,9 @@ void StreamView::draw()
             RS_LOGI("exposure %d ++++++++++++++++++++++++++++++", exp);
 
             int val;
-            val = static_cast<int>(ae ? 8 : 0);
-            createTrackbar("ae", vn.c_str(), &val, 8, StreamView::aETrackbarCB, static_cast<void*>(this));
-            createTrackbar("exposure", vn.c_str(), &exp, 1000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
+            val = static_cast<int>(ae);
+            createTrackbar("ae", mCtrlWinName.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
+            createTrackbar("exposure", mCtrlWinName.c_str(), &exp, 10000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
         }
         break;
     }
@@ -131,13 +130,17 @@ void StreamView::aETrackbarCB (int pos, void *userData) {
     RS_LOGI("pos %d, userdata %p", pos, userData);
     StreamView* sv = static_cast<StreamView*>(userData);
     sv->setAE(pos);
+    if (!pos)
+        sv->setExposure(getTrackbarPos("exposure", sv->mCtrlWinName.c_str()));
 }
 
 void StreamView::exposureTrackbarCB (int pos, void *userData) {
     RS_LOGI("pos %d, userdata %p", pos, userData);
     StreamView* sv = static_cast<StreamView*>(userData);
-    sv->setExposure(pos);
-    // TODO: update ae bar
+    if (getTrackbarPos("ae", sv->mCtrlWinName.c_str()))
+        setTrackbarPos("ae", sv->mCtrlWinName.c_str(), 0);
+    else
+        sv->setExposure(pos);
 }
 
 void StreamView::laserModeTrackbarCB (int pos, void *userData) {

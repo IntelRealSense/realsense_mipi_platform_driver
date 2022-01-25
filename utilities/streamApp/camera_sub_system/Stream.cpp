@@ -512,7 +512,7 @@ int Stream::setAE (bool value)
     struct v4l2_ext_control aeModeCtrl {0};
     aeModeCtrl.id = V4L2_CID_EXPOSURE_AUTO;
     aeModeCtrl.size = 0;
-    aeModeCtrl.value = value;
+    aeModeCtrl.value = value ? V4L2_EXPOSURE_APERTURE_PRIORITY : V4L2_EXPOSURE_MANUAL;
 
     // set auto exposure mode
     struct v4l2_ext_controls ext {0};
@@ -553,7 +553,7 @@ int Stream::getAE (bool* value)
         return -1;
     }
 
-    *value = static_cast<bool>(aeModeCtrl.value);
+    *value = (aeModeCtrl.value != V4L2_EXPOSURE_MANUAL) ? true : false;
 
     return 0;
 }
@@ -563,7 +563,7 @@ int Stream::setExposure (int value) {
     struct v4l2_ext_control aeModeCtrl {0};
     aeModeCtrl.id = V4L2_CID_EXPOSURE_AUTO;
     aeModeCtrl.size = 0;
-    aeModeCtrl.value = 0;
+    aeModeCtrl.value = V4L2_EXPOSURE_MANUAL;
 
     struct v4l2_ext_controls ext {0};
     ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
