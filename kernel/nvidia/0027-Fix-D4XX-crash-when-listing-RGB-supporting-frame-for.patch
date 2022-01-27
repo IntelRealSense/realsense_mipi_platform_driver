@@ -1,0 +1,54 @@
+From 2661e202756181f79bbe772a999914acdf4bf5a0 Mon Sep 17 00:00:00 2001
+From: Xin Zhang <xin.x.zhang@intel.com>
+Date: Thu, 27 Jan 2022 16:18:49 +0800
+Subject: [PATCH] Fix D4XX crash when listing RGB supporting frame formats
+
+The right ds5 struct should be found for further processing. The
+previous code only worked for depth stream.
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+---
+ drivers/media/i2c/d4xx.c | 18 +-----------------
+ 1 file changed, 1 insertion(+), 17 deletions(-)
+
+diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
+index 11f35d4da..54f7e4b5d 100644
+--- a/drivers/media/i2c/d4xx.c
++++ b/drivers/media/i2c/d4xx.c
+@@ -814,32 +814,16 @@ static int ds5_sensor_enum_frame_size(struct v4l2_subdev *sd,
+ 				      struct v4l2_subdev_frame_size_enum *fse)
+ {
+ 	struct ds5_sensor *sensor = container_of(sd, struct ds5_sensor, sd);
+-	struct ds5 *state = NULL;
++	struct ds5 *state = v4l2_get_subdevdata(sd);
+ 	const struct ds5_format *fmt;
+ 	unsigned int i;
+ 
+ 	dev_info(sensor->sd.dev, "%s(): sensor %s \n", __func__, sensor->sd.name);
+-
+-	//if (fse->pad)
+-	//	return -EINVAL;
+-
+-	// TODO: workaround for RGB enum framesizes, due to double instances of
+-	//       the driver, should be removed in 4.9.
+-	state = container_of(sd, struct ds5, depth.sensor.sd);
+ 	dev_info(sensor->sd.dev, "%s(): state->is_rgb %d\n", __func__, state->is_rgb);
+ 	dev_info(sensor->sd.dev, "%s(): state->is_depth %d\n", __func__, state->is_depth);
+ 	dev_info(sensor->sd.dev, "%s(): state->is_y8 %d\n", __func__, state->is_y8);
+ 	dev_info(sensor->sd.dev, "%s(): state->is_imu %d\n", __func__, state->is_imu);
+ 
+-	if (state->is_rgb)
+-		sensor = &state->rgb.sensor;
+-	if (state->is_depth)
+-		sensor = &state->depth.sensor;
+-	if (state->is_y8)
+-		sensor = &state->motion_t.sensor;
+-	if (state->is_imu)
+-		sensor = &state->imu.sensor;
+-
+ 	for (i = 0, fmt = sensor->formats; i < sensor->n_formats; i++, fmt++)
+ 		if (fse->code == fmt->mbus_code)
+ 			break;
+-- 
+2.17.1
+
