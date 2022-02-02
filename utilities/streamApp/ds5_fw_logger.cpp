@@ -76,10 +76,14 @@ int main(int argc, char *argv[])
 		return errno;
 	}
 
+	uint16_t last_seq = -1;
+	auto t_last = std::chrono::system_clock::now().time_since_epoch().count();
 	while (1) {
-		this_thread::sleep_for(100ms);
+		this_thread::sleep_for(50ms);
 
+		auto t1 = std::chrono::system_clock::now().time_since_epoch().count();
 		ret = ioctl(fd, VIDIOC_G_EXT_CTRLS, &ext);
+		auto t2 = std::chrono::system_clock::now().time_since_epoch().count();
 		if (ret < 0) {
 			printf("ioctl failed, errno %d\n", errno);
 		}
@@ -90,11 +94,22 @@ int main(int argc, char *argv[])
 		for (int j = 0; size > sizeof(*msg); j++, msg++, size -= sizeof(*msg)) {
 			if (msg->magic != 0xa0)
 				continue;
+			cout << "FW_Log_Data:";
 			for (i = 4; i < sizeof(ds5_fw_log_msg) + HEADER_SIZE; i++) {
 				cout << uppercase << std::setfill ('0') << setw(2) << std::hex << (int)log[j*sizeof(ds5_fw_log_msg)+i] << " ";
 			}
-		cout << endl;
+			cout << endl;
+			if ((last_seq + 1)%16 != msg->seq_id%16) {
+				cout << endl << "MISSED SEQ_ID!! last:" << last_seq << " new:" << msg->seq_id;
+				cout << endl << "Tioctl:" << std::dec << (t2 - t1)/1000000 << " Tinterval:" << std::dec << (t2 - t_last)/1000000;
+				cout << endl;
+
+			}
+			last_seq = msg->seq_id;
 		}
+
+		t_last = t2;
+
 
 		/*for (i = 0; size > sizeof(*msg); i++, msg++, size -= sizeof(*msg)) {
 			if (msg->magic != 0xa0)
