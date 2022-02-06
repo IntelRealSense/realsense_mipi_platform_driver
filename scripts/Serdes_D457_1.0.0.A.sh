@@ -1,12 +1,16 @@
 #D457 SerDes script: 
 # D457_MAX9295A_MAX9296A_Intel.cpp
-# Version: 1.0.0.1
-# Compatible Driver Version: 1.0.0.6
-# Compatible FW Version: 5.13.0.100
+# Version: 1.0.0.A
+# Compatible Driver Version: 1.0.1.0
+# Compatible FW Version: 5.13.0.150
+# The script shall be used for the following configuration: 
+#       Depth + Metadata  +   RGB +  Metadata
+#D457 SerDes script: 
+# D457_MAX9295A_MAX9296A_Intel.cpp
 
 # Written by Oliver Jakobi, Edited by Eddie De Reza
 # Analog Devices
-# December 13, 2021
+# Feb 1, 2022
 
 # This script sets up MAX9295A and MAX9296A.
 # EMB8 will be carried with Depth, RGB , Y8 (Not Y12I)
@@ -83,7 +87,7 @@ sudo i2cset -f -y 2 0x40 0x03 0x5215 w # Pipe X pulls EMB8 (DT 0x12)
 sudo i2cset -f -y 2 0x40 0x03 0x0109 w # Pipe X pulls VC0
 sudo i2cset -f -y 2 0x40 0x03 0x000A w
 
-sudo i2cset -f -y 2 0x40 0x03 0x0712 w # Double 8-bit data on pipe X, Y & Z 
+sudo i2cset -f -y 2 0x40 0x03 0x0312 w # Double 8-bit data on pipe X, Y  
 sudo i2cset -f -y 2 0x40 0x03 0x301C w # BPP = 16 in pipe X 
                                 
 sudo i2cset -f -y 2 0x40 0x03 0x5E16 w # Pipe Y pulls RGB (DT 0x1E)
@@ -96,8 +100,7 @@ sudo i2cset -f -y 2 0x40 0x03 0x6A18 w # Pipe Z pulls Y8 (DT 0x2A) -- reg 0x0318
 sudo i2cset -f -y 2 0x40 0x03 0x5219 w # Pipe Z pulls EMB8 (DT 0x12) -- reg 0x0319 data - 0x52
 sudo i2cset -f -y 2 0x40 0x03 0x040D w # Pipe Z pulls VC2
 sudo i2cset -f -y 2 0x40 0x03 0x000E w
-
-sudo i2cset -f -y 2 0x40 0x03 0x301E w # BPP = 16 in pipe Z -- reg 0x031E data - 0x30
+# sudo i2cset -f -y 2 0x40 0x03 0x301E w # BPP = 16 in pipe Z -- reg 0x031E data - 0x30
                                 
 sudo i2cset -f -y 2 0x40 0x03 0x641A w # Pipe U pulls Y12I (DT 0x24)
 sudo i2cset -f -y 2 0x40 0x03 0x040F w # Pipe U pulls VC2
@@ -118,9 +121,9 @@ sudo i2cset -f -y 2 0x48 0x04 0x504A w # 4 lanes on port A // Write 0x50 for 2 l
                                 
 sudo i2cset -f -y 2 0x48 0x03 0x2F20 w # 1500Mbps/lane on port A
                                 
-sudo i2cset -f -y 2 0x48 0x03 0x701C w # Un-double 8-bit data in pipe X,Y & Z
-sudo i2cset -f -y 2 0x48 0x03 0x701F w
-sudo i2cset -f -y 2 0x48 0x04 0x0273 w
+sudo i2cset -f -y 2 0x48 0x03 0x001C w # Un-double 8-bit data in , do not un-double 8bpp
+sudo i2cset -f -y 2 0x48 0x03 0x001F w # Un-double 8-bit data in , do not un-double 8bpp
+sudo i2cset -f -y 2 0x48 0x04 0x1073 w # Un-double 8-bit data, No:ALT_MEM_MAP8 & Yes:ALT2_MEM_MAP8
                                 						    
 sudo i2cset -f -y 2 0x48 0x02 0x3939 w # Force VS low in pipe U (VC2 VS will come from pipe Z, not needed for pipe U)
 
