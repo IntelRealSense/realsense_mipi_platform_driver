@@ -297,23 +297,8 @@ void StreamView::proccesCaptureResult(uint8_t index)
         cv::imshow(mNodeStr.c_str(), map);
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
-        if (mFormat.width == 2000) {
-            // TODO: this res is corrupted
-            map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer, mFormat.bytesperline);
-        } else {
-            // TODO: this is a workaround for jetson notification of frame ready
-            //       based on sof, this causes teared images, because we render
-            //       images before it fully copied to buffer. Besides, we render
-            //       from tmp buffer, not from v4l2 buff that is being queued.
-            uint8_t static buff[1920*1080*2];
-            this_thread::sleep_for(20ms);
-            memcpy(buff, mRsBuffersPtrs[i]->buffer,mFormat.height*mFormat.bytesperline);
-
-            //map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer);
-            map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)buff, mFormat.bytesperline);
-            memset((void*)mRsBuffersPtrs[i]->buffer, 0, mFormat.height*mFormat.bytesperline);
-        }
-        cv::cvtColor( map, rgbMap, COLOR_YUV2BGR_UYVY);
+        map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer, mFormat.bytesperline);
+        cv::cvtColor(map, rgbMap, COLOR_YUV2BGR_UYVY);
         cv::imshow(mNodeStr.c_str(), rgbMap);
         break;
     default:
