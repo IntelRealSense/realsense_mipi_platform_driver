@@ -57,8 +57,8 @@ Stream::Stream(uint8_t nodeNumber) : mNodeNumber{nodeNumber}
     RS_LOGI("node number %d", mNodeNumber);
 
     int res = initCapabilities();
-    //if(res < 0)
-        //throw runtime_error("initCapabilities failed");
+    if (res < 0)
+        throw runtime_error("initCapabilities failed");
 }
 
 Stream::~Stream()
@@ -354,7 +354,7 @@ int Stream::start(vector<RsBuffer*> rsBuffers,
         return -1;
     }
 
-    for (int i = 0; i < rsBuffers.size(); ++i) {
+    for (unsigned int i = 0; i < rsBuffers.size(); ++i) {
         mV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         mV4l2Buffer.memory = memoryType;
         mV4l2Buffer.index = i;

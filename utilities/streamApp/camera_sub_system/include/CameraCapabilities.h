@@ -129,7 +129,7 @@ public:
      * @return the control if found
      * @throws std::invalid_argument if tag not found
      */
-    const CameraControl& operator[](const std::string &tag) throw(std::invalid_argument);
+    const CameraControl& operator[](const std::string &tag);
 
     /**
      * returns the control map

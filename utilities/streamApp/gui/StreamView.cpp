@@ -42,13 +42,13 @@ namespace camera_viewer {
 StreamView::StreamView(uint8_t nodeNumber,
                        realsense::camera_sub_system::Stream &stream,
                        V4L2Utils::StreamUtils::StreamType st) :
-        mNodeNumber{nodeNumber},
-        mStream{stream},
-        mFormat{V4L2_PIX_FMT_Z16, 1280, 720, 30},
-        mStreamType {st}
+        mNodeNumber {nodeNumber},
+        mStreamType {st},
+        mStream {stream},
+        mFormat {V4L2_PIX_FMT_Z16, 1280, 720, 30}
 {
     RS_AUTOLOG();
-    mNodeStr = {"/dev/video"};
+    mNodeStr = "/dev/video";
     mNodeStr += to_string(mNodeNumber);
 }
 
@@ -116,10 +116,10 @@ void StreamView::startStopTrackbarCB (int pos, void *userData) {
     StreamView* sv = static_cast<StreamView*>(userData);
     switch (pos) {
     case 0:
-        //sv->stop();
+        sv->stop();
         break;
     case 1:
-        //sv->start(V4L2_MEMORY_MMAP);
+        sv->start(V4L2_MEMORY_MMAP);
         break;
     default:
         RS_LOGE("Invalid value %d", pos);
@@ -255,8 +255,7 @@ void StreamView::proccesCaptureResult(uint8_t index)
     cv::Mat histogramOptimizedMap;
     float scale;
     char* ptr;
-    int cnt = 0;
-    int flag = 1;
+    uint32_t cnt = 0;
     char* left;
     char* right;
     char image[mFormat.bytesperline * mFormat.height];
@@ -312,22 +311,24 @@ void StreamView::proccesCaptureResult(uint8_t index)
 
 int StreamView::setAE(bool value) {
     RS_AUTOLOG();
-    mStream.setAE(value);
+    return mStream.setAE(value);
 }
 
 int StreamView::setExposure(int value) {
     RS_AUTOLOG();
-    mStream.setExposure(value);
+    if (value < 1)
+        value = 1;
+    return mStream.setExposure(value);
 }
 
 int StreamView::setLaserMode(bool value) {
     RS_AUTOLOG();
-    mStream.setLaserMode(value);
+    return mStream.setLaserMode(value);
 }
 
 int StreamView::setLaserValue(int value) {
     RS_AUTOLOG();
-    mStream.setLaserValue(value);
+    return mStream.setLaserValue(value);
 }
 
 int StreamView::setFPS(int value) {
@@ -336,17 +337,20 @@ int StreamView::setFPS(int value) {
     // New FPS will take effect in the next stream start
     //if (5 == value || 30 == value)
         mFormat.fps = value;
+    return 0;
 }
 
 int StreamView::setResolution(uint32_t width, uint32_t height)
 {
     mFormat.width = width;
     mFormat.height = height;
+    return 0;
 }
 
 int StreamView::setSlaveMode(bool value){
     // New slave mode will take effect in the next stream start
     mSlaveMode = value;
+    return 0;
 }
 
 

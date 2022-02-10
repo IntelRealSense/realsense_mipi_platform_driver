@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
 		size = sizeof(log) - HEADER_SIZE;
 		msg = (struct ds5_fw_log_msg *)(log + HEADER_SIZE);
 
-		for (int j = 0; size > sizeof(*msg); j++, msg++, size -= sizeof(*msg)) {
+		for (int j = 0; size > (ssize_t)sizeof(*msg); j++, msg++, size -= sizeof(*msg)) {
 			if (msg->magic != 0xa0)
 				continue;
 			cout << "FW_Log_Data:";
