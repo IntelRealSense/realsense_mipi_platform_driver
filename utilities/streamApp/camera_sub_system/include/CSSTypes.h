@@ -125,7 +125,9 @@ struct Format {
     {
         uint32_t bytesperline = ((width / 64) + ((width % 64) ? 1 : 0)) * 64;
 
-        if (v4l2Format == V4L2_PIX_FMT_YUYV || v4l2Format == V4L2_PIX_FMT_Z16)
+        if (v4l2Format == V4L2_PIX_FMT_YUYV ||
+            v4l2Format == V4L2_PIX_FMT_Z16 ||
+            v4l2Format == V4L2_PIX_FMT_Y8I)
             bytesperline *= 2;
         else if (v4l2Format == V4L2_PIX_FMT_Y12I)
             bytesperline *= 4;

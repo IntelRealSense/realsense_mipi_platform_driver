@@ -65,6 +65,9 @@ StreamView::StreamView(uint8_t nodeNumber,
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
         mFormat.v4l2Format = V4L2_PIX_FMT_Y12I;
         break;
+    case V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM:
+        mFormat.v4l2Format = V4L2_PIX_FMT_Y8I;
+        break;
     default:
         break;
     }
@@ -80,6 +83,7 @@ void StreamView::draw()
     createTrackbar("stream on/off", mCtrlWinName.c_str(), &mStartStopTBValue, 1, StreamView::startStopTrackbarCB, static_cast<void*>(this));
     switch(mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
+    case V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM:
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
     case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
         {
@@ -270,25 +274,38 @@ void StreamView::proccesCaptureResult(uint8_t index)
         map = cv::Mat(mFormat.height, mFormat.width, CV_8UC1, (void*)mRsBuffersPtrs[i]->buffer, mFormat.calc64BytesAlignedStride());
         cv::imshow(mNodeStr.c_str(), map);
         break;
+    case V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM:
+        ptr = (char*)(mRsBuffersPtrs[i]->buffer);
+        left = image;
+        right = image + mFormat.width;
+        for(; ptr < (char*)(mRsBuffersPtrs[i]->buffer) + mRsBuffersPtrs[i]->length - 2; ptr += 2, cnt += 2) {
+            *left++ = *ptr;
+            *right++ = *(ptr+1);
+            if (cnt == mFormat.width * 2) {
+                cnt = 0;
+                left += mFormat.width;
+                right += mFormat.width;
+            }
+        }
+
+        map = cv::Mat(mFormat.height, mFormat.width*2, CV_8UC1, image, mFormat.calc64BytesAlignedStride());
+        cv::imshow(mNodeStr.c_str(), map);
+        break;
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
         ptr = (char*)(mRsBuffersPtrs[i]->buffer);
         left = image;
         right = image + mFormat.width;
-        for(;ptr < (char*)(mRsBuffersPtrs[i]->buffer) + mRsBuffersPtrs[i]->length - 4; ptr+=4,cnt+=4) {
-            *right++ = *ptr;
-            *left = *(ptr+1) >> 4;
-            *left |= *(ptr+2) << 4;
-            left++;
-            if(0 == (ptr - (char*)(mRsBuffersPtrs[i]->buffer)) % (mFormat.width*4)) {
-                if(cnt == mFormat.width*4){
-                    cnt = 0;
-                    left += mFormat.width;
-                    right += mFormat.width;
-                }
+        for(; ptr < (char*)(mRsBuffersPtrs[i]->buffer) + mRsBuffersPtrs[i]->length - 4; ptr += 4, cnt += 4) {
+            *left++ = (uint8_t)((0xFFF & *(uint16_t *)ptr) / 4096.0 * 255);
+            *right++ = (uint8_t)((*(uint16_t *)(ptr+1) >> 4) / 4096.0 * 255);
+            if (cnt == mFormat.width * 4) {
+                cnt = 0;
+                left += mFormat.width;
+                right += mFormat.width;
             }
         }
 
-        map = cv::Mat(mFormat.height, mFormat.width*2, CV_8UC1, image);
+        map = cv::Mat(mFormat.height, mFormat.width * 2, CV_8UC1, image, mFormat.calc64BytesAlignedStride() / 2);
         cv::imshow(mNodeStr.c_str(), map);
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:

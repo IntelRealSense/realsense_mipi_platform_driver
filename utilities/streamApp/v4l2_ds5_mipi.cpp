@@ -45,7 +45,7 @@ static void usage(const char *argv0)
     cout << "Usage: " << argv0 << " [options]" << endl;
     cout << "Supported options:\n" << endl;
     cout << "-d        number of the /dev/videoX, default 0" << endl;
-    cout << "-t        stream type \"depth\", \"rgb\", \"y8\", \"y12i\", default depth" << endl;
+    cout << "-t        stream type \"depth\", \"rgb\", \"y8\", \"y12i\", \"y8i\", default depth" << endl;
     cout << "-w        stream width, default 1280" << endl;
     cout << "-h        stream height, default 720" << endl;
     cout << "-f        stream fps, default 30" << endl;
@@ -91,6 +91,8 @@ int main(int argc, char **argv)
                 streamType = V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM;
             if ("y8" == sOptArg)
                  streamType = V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM;
+            if ("y8i" == sOptArg)
+                 streamType = V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM;
             if ("y12i" == sOptArg)
                 streamType = V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM;
             if ("rgb" == sOptArg)
