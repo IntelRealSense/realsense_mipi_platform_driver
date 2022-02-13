@@ -115,17 +115,15 @@ struct Format {
     uint32_t width;
     uint32_t height;
     uint32_t fps;
-    uint32_t bytesperline;
 
     Format (uint32_t f, uint32_t w, uint32_t h, uint32_t fps)
     : v4l2Format(f), width(w), height(h), fps(fps)
     {
-        calc64BytesAlignedStride();
     }
 
     uint32_t calc64BytesAlignedStride(void)
     {
-        bytesperline = ((width / 64) + ((width % 64) ? 1 : 0)) * 64;
+        uint32_t bytesperline = ((width / 64) + ((width % 64) ? 1 : 0)) * 64;
 
         if (v4l2Format == V4L2_PIX_FMT_YUYV || v4l2Format == V4L2_PIX_FMT_Z16)
             bytesperline *= 2;
@@ -133,6 +131,11 @@ struct Format {
             bytesperline *= 4;
 
         return bytesperline;
+    }
+
+    uint32_t calcBytesPerFrame(void)
+    {
+        return calc64BytesAlignedStride() * height;
     }
 };
 
