@@ -1,4 +1,4 @@
-From f2cc27e0aa2da403b91bb5ae4e332b1e5767c8d5 Mon Sep 17 00:00:00 2001
+From 47a17788ac3c7dd17017592558cba626ebf0234e Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Sun, 24 Oct 2021 11:42:50 +0300
 Subject: [PATCH] Enable Y8 on separate video node
@@ -7,7 +7,7 @@ Subject: [PATCH] Enable Y8 on separate video node
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
- common/tegra194-camera-d4xx.dtsi | 97 +++++++++++++++++++++++++---------------
+ common/tegra194-camera-d4xx.dtsi | 97 ++++++++++++++++++++------------
  1 file changed, 62 insertions(+), 35 deletions(-)
 
 diff --git a/common/tegra194-camera-d4xx.dtsi b/common/tegra194-camera-d4xx.dtsi
@@ -166,5 +166,5 @@ index f85fc1d..c394d6f 100644
  				//source@2 {
  				//	remote-source = <&src_depth1>;
 -- 
-2.7.4
+2.17.1
 
