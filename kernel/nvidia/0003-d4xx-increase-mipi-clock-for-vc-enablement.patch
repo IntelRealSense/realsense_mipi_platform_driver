@@ -1,4 +1,4 @@
-From 23dea39939f2e2a3f8f50d2808143a9e7ecc5398 Mon Sep 17 00:00:00 2001
+From 60223f9eb50399a761ceab2042451166bd87aa74 Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Mon, 25 Nov 2019 14:19:21 +0200
 Subject: [PATCH] d4xx: increase mipi clock, for vc enablement
@@ -11,7 +11,7 @@ Signed-off-by: Nael Masalha <nael.masalha@intel.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index e20bd87..a1d2e30 100644
+index e20bd8790..a1d2e3071 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -2379,7 +2379,7 @@ static int ds5_hw_init(struct i2c_client *c, struct ds5 *state)
@@ -24,5 +24,5 @@ index e20bd87..a1d2e30 100644
  		ret = ds5_read(state, 0x500, &mipi_status);
  
 -- 
-2.7.4
+2.17.1
 

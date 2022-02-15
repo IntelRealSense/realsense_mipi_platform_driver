@@ -1,4 +1,4 @@
-From 887841b9b25bd3b322f6279428612304967ade47 Mon Sep 17 00:00:00 2001
+From 779c96b67fef1e77c50e4b44b5336668497b8a6b Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Thu, 27 Jan 2022 11:59:03 +0200
 Subject: [PATCH] Fix D4XX crash when listing RGB supporting frame formats

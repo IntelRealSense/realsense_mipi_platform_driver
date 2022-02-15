@@ -1,4 +1,4 @@
-From a6a5329224f73cb176d2bd87f5c2e126e7b1e62a Mon Sep 17 00:00:00 2001
+From e0f16d18d874ffa0940680ca17163545b6e16e79 Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Tue, 24 Aug 2021 11:53:00 +0300
 Subject: [PATCH] mipi lane rate fix

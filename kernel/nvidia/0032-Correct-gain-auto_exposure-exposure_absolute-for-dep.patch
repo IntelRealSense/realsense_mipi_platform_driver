@@ -1,4 +1,4 @@
-From e5df337e629206461b0a5445f77dbde27a32ce1d Mon Sep 17 00:00:00 2001
+From 3f45929b5ba1e30360ff871e4587a9c52807add9 Mon Sep 17 00:00:00 2001
 From: Xin Zhang <xin.x.zhang@intel.com>
 Date: Mon, 24 Jan 2022 16:08:18 +0800
 Subject: [PATCH] Correct gain/auto_exposure/exposure_absolute for depth/color
@@ -16,7 +16,7 @@ Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
  1 file changed, 78 insertions(+), 98 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 964a3e31e..af3aa74b6 100644
+index 85f1d8233..50cb8e69c 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -78,9 +78,10 @@

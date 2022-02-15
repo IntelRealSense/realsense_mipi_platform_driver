@@ -1,15 +1,15 @@
-From 87c88c353c2d76571b66102edf5a4446bb3d1370 Mon Sep 17 00:00:00 2001
+From 2bd58b2a46456bf604a64359915489803f5c98db Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Wed, 1 Dec 2021 10:40:04 +0200
 Subject: [PATCH] Enable IMU
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
- drivers/media/i2c/d4xx.c | 211 +++++++++++++++++++++++++++++++++++++++--------
+ drivers/media/i2c/d4xx.c | 211 +++++++++++++++++++++++++++++++++------
  1 file changed, 178 insertions(+), 33 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index b29b963..41994f6 100644
+index b29b96390..41994f68c 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -87,6 +87,7 @@ enum ds5_mux_pad {
@@ -38,16 +38,16 @@ index b29b963..41994f6 100644
  };
  
  struct ds5_format {
-@@ -336,6 +337,9 @@ struct ds5 {
+@@ -335,6 +336,9 @@ struct ds5 {
+ 	struct {
  		struct ds5_sensor sensor;
  	} rgb;
- 	struct {
++	struct {
 +		struct ds5_sensor sensor;
 +	} imu;
-+	struct {
+ 	struct {
  		struct ds5_mux_subdev sd;
  		struct media_pad pads[DS5_MUX_PAD_COUNT];
- 		struct ds5_sensor *last_set;
 @@ -353,6 +357,7 @@ struct ds5 {
  	int is_depth;
  	int is_y8;
@@ -559,5 +559,5 @@ index b29b963..41994f6 100644
  	ret = ds5_v4l_init(c, state);
  	if (ret < 0)
 -- 
-2.7.4
+2.17.1
 

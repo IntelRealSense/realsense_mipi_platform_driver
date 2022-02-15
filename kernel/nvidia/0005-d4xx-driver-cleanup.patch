@@ -1,4 +1,4 @@
-From d22b82c6591188ca477cc4456e6617699c916012 Mon Sep 17 00:00:00 2001
+From 433df0a5cb884573d44816518e3a5e3b310914c7 Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Sun, 8 Dec 2019 16:30:09 +0200
 Subject: [PATCH] d4xx: driver cleanup
@@ -9,12 +9,12 @@ Subject: [PATCH] d4xx: driver cleanup
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
- drivers/media/i2c/d4xx.c                           | 46 ++++++++++++++++++----
- .../media/platform/tegra/camera/vi/vi4_formats.h   |  8 ++--
+ drivers/media/i2c/d4xx.c                      | 46 +++++++++++++++----
+ .../platform/tegra/camera/vi/vi4_formats.h    |  8 ++--
  2 files changed, 42 insertions(+), 12 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 24b9a65..990bce5 100644
+index 24b9a6575..990bce548 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -595,7 +595,7 @@ static const struct ds5_format ds5_y_formats_awg[] = {
@@ -141,7 +141,7 @@ index 24b9a65..990bce5 100644
  MODULE_LICENSE("GPL v2");
 +MODULE_VERSION("0.49.4.0");
 diff --git a/drivers/media/platform/tegra/camera/vi/vi4_formats.h b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
-index 0d05a7e..ab90aae 100644
+index 0d05a7e52..ab90aae92 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 @@ -126,16 +126,16 @@ static const struct tegra_video_format vi4_video_formats[] = {
@@ -166,5 +166,5 @@ index 0d05a7e..ab90aae 100644
  				YUV422_8, UYVY, "YUV 4:2:2 UYVY"),
  	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_2X8, 2, 1, T_V8_Y8__U8_Y8,
 -- 
-2.7.4
+2.17.1
 

@@ -1,4 +1,4 @@
-From 9daa2d13ddc895df8f697037a8ec9a0d56a826c6 Mon Sep 17 00:00:00 2001
+From 2a8d613b8394f4fce50a488f7c4acec9919f1bab Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Tue, 17 Dec 2019 19:46:30 +0200
 Subject: [PATCH] d4xx: Add support of Y8 and Y12I formats
@@ -8,12 +8,12 @@ Subject: [PATCH] d4xx: Add support of Y8 and Y12I formats
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
- drivers/media/i2c/d4xx.c                           | 100 ++++++++-------------
- .../media/platform/tegra/camera/vi/vi4_formats.h   |   4 +-
+ drivers/media/i2c/d4xx.c                      | 100 +++++++-----------
+ .../platform/tegra/camera/vi/vi4_formats.h    |   4 +-
  2 files changed, 39 insertions(+), 65 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index ebf983c..78b3941 100644
+index ebf983c11..78b39410b 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -483,11 +483,6 @@ static const struct ds5_resolution ds5_rgb_sizes[] = {
@@ -189,7 +189,7 @@ index ebf983c..78b3941 100644
 -MODULE_VERSION("0.49.4.0");
 +MODULE_VERSION("0.51.1.0");
 diff --git a/drivers/media/platform/tegra/camera/vi/vi4_formats.h b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
-index ab90aae..6f8b1fa 100644
+index ab90aae92..6f8b1fac7 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 @@ -120,8 +120,8 @@ static const struct tegra_video_format vi4_video_formats[] = {
@@ -204,5 +204,5 @@ index ab90aae..6f8b1fa 100644
  				RGB888, RGB32, "RGB-8-8-8-8"),
  
 -- 
-2.7.4
+2.17.1
 

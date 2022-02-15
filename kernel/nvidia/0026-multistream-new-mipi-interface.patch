@@ -1,4 +1,4 @@
-From dbcb2299c5bb4df4172ecb8c9dea6b0572e557d8 Mon Sep 17 00:00:00 2001
+From 63f9060742ab1daa802cae873c860cef3b4a56ce Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Sun, 23 Jan 2022 10:48:41 +0200
 Subject: [PATCH] multistream new mipi interface
