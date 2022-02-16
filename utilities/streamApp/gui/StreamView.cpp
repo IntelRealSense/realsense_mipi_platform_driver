@@ -174,23 +174,20 @@ void StreamView::start(uint32_t memoryType) {
     switch(mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
         mFormat.v4l2Format = V4L2_PIX_FMT_YUYV;
-        bufferLength = mFormat.width*mFormat.height*2;
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
         mFormat.v4l2Format = V4L2_PIX_FMT_Z16;
-        bufferLength = mFormat.width*mFormat.height*2;
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
         mFormat.v4l2Format = V4L2_PIX_FMT_GREY;
-        bufferLength = mFormat.width*mFormat.height;
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
         mFormat.v4l2Format = V4L2_PIX_FMT_Y12I;
-        bufferLength = mFormat.width*mFormat.height*4;
         break;
     default:
         break;
     }
+    bufferLength = mFormat.calc64BytesAlignedStride() * mFormat.height;
 
     mStream.setSlaveMode(mSlaveMode);
 
@@ -259,11 +256,11 @@ void StreamView::proccesCaptureResult(uint8_t index)
     int flag = 1;
     char* left;
     char* right;
-    char image[mFormat.width*mFormat.height*2];
+    char image[mFormat.bytesperline * mFormat.height];
     //lock_guard<mutex> lock(mMutex);
     switch(mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
-        map = cv::Mat(mFormat.height, mFormat.width, CV_16UC1, (void*)mRsBuffersPtrs[i]->buffer);
+        map = cv::Mat(mFormat.height, mFormat.width, CV_16UC1, (void*)mRsBuffersPtrs[i]->buffer, mFormat.bytesperline);
         cv::minMaxIdx(map, &min, &max);
         scale = 255 / (max-min);
         map.convertTo(histogramOptimizedMap, CV_8UC1, scale, -min*scale);
@@ -271,7 +268,7 @@ void StreamView::proccesCaptureResult(uint8_t index)
         cv::imshow(mNodeStr.c_str(), colorMap);
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
-        map = cv::Mat(mFormat.height, mFormat.width, CV_8UC1, (void*)mRsBuffersPtrs[i]->buffer);
+        map = cv::Mat(mFormat.height, mFormat.width, CV_8UC1, (void*)mRsBuffersPtrs[i]->buffer, mFormat.bytesperline);
         cv::imshow(mNodeStr.c_str(), map);
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
@@ -299,7 +296,7 @@ void StreamView::proccesCaptureResult(uint8_t index)
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
         if (mFormat.width == 2000) {
             // TODO: this res is corrupted
-            map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer);
+            map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer, mFormat.bytesperline);
         } else {
             // TODO: this is a workaround for jetson notification of frame ready
             //       based on sof, this causes teared images, because we render
@@ -307,11 +304,11 @@ void StreamView::proccesCaptureResult(uint8_t index)
             //       from tmp buffer, not from v4l2 buff that is being queued.
             uint8_t static buff[1920*1080*2];
             this_thread::sleep_for(20ms);
-            memcpy(buff, mRsBuffersPtrs[i]->buffer,mFormat.height*mFormat.width*2);
+            memcpy(buff, mRsBuffersPtrs[i]->buffer,mFormat.height*mFormat.bytesperline);
 
             //map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer);
-            map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)buff);
-            memset((void*)mRsBuffersPtrs[i]->buffer, 0, mFormat.height*mFormat.width*2);
+            map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)buff, mFormat.bytesperline);
+            memset((void*)mRsBuffersPtrs[i]->buffer, 0, mFormat.height*mFormat.bytesperline);
         }
         cv::cvtColor( map, rgbMap, COLOR_YUV2BGR_UYVY);
         cv::imshow(mNodeStr.c_str(), rgbMap);
