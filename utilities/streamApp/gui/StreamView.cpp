@@ -89,7 +89,9 @@ void StreamView::draw()
         {
             // Get current values of ctrls
             bool laserMode;
+            int laserValue;
             mStream.getLaserMode(&laserMode);
+            mStream.getLaserValue(&laserValue);
 
             bool ae;
             mStream.getAE(&ae);
@@ -104,7 +106,8 @@ void StreamView::draw()
             createTrackbar("exposure", mCtrlWinName.c_str(), &exp, 2000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
             val = static_cast<int>(laserMode);
             createTrackbar("laser power mode", mCtrlWinName.c_str(), &val, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
-            createTrackbar("laser power value", mCtrlWinName.c_str(), nullptr, 10, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
+            laserValue /= 30;
+            createTrackbar("laser power value", mCtrlWinName.c_str(), &laserValue, 12, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
         }
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
@@ -174,7 +177,7 @@ void StreamView::laserModeTrackbarCB (int pos, void *userData) {
 void StreamView::laserValueTrackbarCB (int pos, void *userData) {
     RS_LOGI("pos %d, userdata %p", pos, userData);
     StreamView* sv = static_cast<StreamView*>(userData);
-    sv->setLaserValue(pos);
+    sv->setLaserValue(pos * 30);
 }
 
 void StreamView::fpsTrackbarCB (int pos, void *userData) {
