@@ -95,6 +95,7 @@ private:
     // This node must be streaming node and not meta data node.
     const std::uint8_t mNodeNumber;
     std::string mNodeStr {""};
+    std::string mCtrlWinName {};
     realsense::utils::V4L2Utils::StreamUtils::StreamType mStreamType {realsense::utils::V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM};
     std::mutex mMutex {};
 
