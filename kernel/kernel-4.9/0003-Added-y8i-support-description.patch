@@ -1,0 +1,25 @@
+From 166ff34bfcb14643517e8371161877e377009c5d Mon Sep 17 00:00:00 2001
+From: "Shikun, Ding" <shikun.ding@intel.com>
+Date: Sat, 19 Feb 2022 08:39:58 +0800
+Subject: [PATCH] Added y8i support description
+
+Signed-off-by: Shikun, Ding <shikun.ding@intel.com>
+---
+ drivers/media/v4l2-core/v4l2-ioctl.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/media/v4l2-core/v4l2-ioctl.c b/drivers/media/v4l2-core/v4l2-ioctl.c
+index 911fc8af6fbe..9b8766e1bfc4 100644
+--- a/drivers/media/v4l2-core/v4l2-ioctl.c
++++ b/drivers/media/v4l2-core/v4l2-ioctl.c
+@@ -1281,6 +1281,7 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
+ 	case V4L2_PIX_FMT_Z16:		descr = "16-bit Depth"; break;
+ 	case V4L2_PIX_FMT_Y12I:		descr = "24-bit Interleaved L/R"; break;
+     case V4L2_META_FMT_D4XX_CSI2:	descr = "D4XX meta data"; break;
++	case V4L2_PIX_FMT_Y8I:		descr = "16-bit Interleaved L/R"; break;
+ 
+ 	default:
+ 		/* Compressed formats */
+-- 
+2.17.1
+
