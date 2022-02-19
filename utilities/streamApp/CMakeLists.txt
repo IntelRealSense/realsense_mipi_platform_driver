@@ -19,7 +19,7 @@ add_executable(rs_viewer
 include_directories(camera_sub_system/include
                     gui/include
                     utils/include
-                   /usr/local/include/opencv4)
+                   /usr/include/opencv4)
 set_property(TARGET rs_viewer PROPERTY CXX_STANDARD 14)
 target_link_libraries(rs_viewer pthread opencv_core opencv_imgproc opencv_highgui)
 
