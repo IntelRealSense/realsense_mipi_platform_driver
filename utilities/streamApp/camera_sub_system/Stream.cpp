@@ -57,8 +57,8 @@ Stream::Stream(uint8_t nodeNumber) : mNodeNumber{nodeNumber}
     RS_LOGI("node number %d", mNodeNumber);
 
     int res = initCapabilities();
-    //if(res < 0)
-        //throw runtime_error("initCapabilities failed");
+    if (res < 0)
+        throw runtime_error("initCapabilities failed");
 }
 
 Stream::~Stream()
@@ -261,19 +261,14 @@ int Stream::configure(realsense::camera_sub_system::Format format)
         return -1;
     }
 
-    // TODO: verify format, and operator =
-    mFormat.v4l2Format = format.v4l2Format;
-    mFormat.width = format.width;
-    mFormat.height = format.height;
-    mFormat.fps = format.fps;
-    mFormat.bytesperline = format.bytesperline;
+    mFormat = format;
 
     struct v4l2_format v4l2Format;
     v4l2Format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     v4l2Format.fmt.pix.pixelformat = mFormat.v4l2Format;
     v4l2Format.fmt.pix.width = mFormat.width;
     v4l2Format.fmt.pix.height = mFormat.height;
-    v4l2Format.fmt.pix.bytesperline = mFormat.bytesperline;
+    v4l2Format.fmt.pix.bytesperline = mFormat.calc64BytesAlignedStride();
     int ret = ioctl(fd.get(), VIDIOC_S_FMT, &v4l2Format);
     if (ret < 0) {
         RS_LOGE("VIDIOC_S_FMT failed, errno %d", errno);
@@ -305,7 +300,7 @@ int Stream::configure(realsense::camera_sub_system::Format format)
 
     struct v4l2_control setStride {0};
     setStride.id = 0x9a206e; // the value of TEGRA_CAMERA_CID_VI_PREFERRED_STRIDE, not available in user space header
-    setStride.value = mFormat.bytesperline;
+    setStride.value = mFormat.calc64BytesAlignedStride();
     ret = ioctl(fd.get(), VIDIOC_S_CTRL, &setStride);
     if (ret < 0) {
         RS_LOGE("VIDIOC_S_CTRL failed, errno %d", errno);
@@ -354,7 +349,7 @@ int Stream::start(vector<RsBuffer*> rsBuffers,
         return -1;
     }
 
-    for (int i = 0; i < rsBuffers.size(); ++i) {
+    for (unsigned int i = 0; i < rsBuffers.size(); ++i) {
         mV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         mV4l2Buffer.memory = memoryType;
         mV4l2Buffer.index = i;
@@ -675,26 +670,25 @@ int Stream::getLaserMode (bool* value)
 
 int Stream::setLaserValue (int value)
 {
+    struct v4l2_ext_control manualLaserCtrl {0};
+    manualLaserCtrl.id = DS5_CAMERA_CID_MANUAL_LASER_POWER;
+    manualLaserCtrl.size = 0;
 
-	struct v4l2_ext_control manualLaserCtrl {0};
-	manualLaserCtrl.id = DS5_CAMERA_CID_MANUAL_LASER_POWER;
-	manualLaserCtrl.size = 0;
+    RS_LOGI("setting laser power to %d", value);
+    manualLaserCtrl.value = value;
 
-	RS_LOGI("setting laser power to %d", value);
-	manualLaserCtrl.value = value;
+    // set laser power
+    struct v4l2_ext_controls ext {0};
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.controls = &manualLaserCtrl;
+    ext.count = 1;
 
-	// set laser power
-	struct v4l2_ext_controls ext {0};
-	ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
-	ext.controls = &manualLaserCtrl;
-	ext.count = 1;
-
-	ScopedFileDescriptor fd(mNodeNumber);
-	if (!fd)
-		return -1;
-	int ret = ioctl(fd.get(), VIDIOC_S_EXT_CTRLS, &ext);
-	if (ret < 0)
-		RS_LOGE("VIDIOC_S_EXT_CTRLS laser value failed with %d", errno);
+    ScopedFileDescriptor fd(mNodeNumber);
+    if (!fd)
+            return -1;
+    int ret = ioctl(fd.get(), VIDIOC_S_EXT_CTRLS, &ext);
+    if (ret < 0)
+        RS_LOGE("VIDIOC_S_EXT_CTRLS laser value failed with %d", errno);
 
 	// get laser power
     struct v4l2_ext_control currManualLaserCtrl {0};
@@ -706,7 +700,34 @@ int Stream::setLaserValue (int value)
     if (currManualLaserCtrl.value != manualLaserCtrl.value)
     RS_LOGE("VIDIOC_G_EXT_CTRLS laser value failed with %d", errno);
 
-	return ret;
+    return ret;
+}
+
+int Stream::getLaserValue (int* value)
+{
+
+    struct v4l2_ext_control manualLaserCtrl {0};
+    manualLaserCtrl.id = DS5_CAMERA_CID_MANUAL_LASER_POWER;
+    manualLaserCtrl.size = 0;
+
+    RS_LOGI("getting laser power");
+
+    // get laser power
+    struct v4l2_ext_controls ext {0};
+    ext.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+    ext.controls = &manualLaserCtrl;
+    ext.count = 1;
+
+    ScopedFileDescriptor fd(mNodeNumber);
+    if (!fd)
+            return -1;
+    int ret = ioctl(fd.get(), VIDIOC_G_EXT_CTRLS, &ext);
+    if (ret < 0)
+            RS_LOGE("VIDIOC_G_EXT_CTRLS laser value failed with %d", errno);
+
+    *value = manualLaserCtrl.value;
+
+    return ret;
 }
 
 struct HWMC {

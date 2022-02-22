@@ -56,7 +56,7 @@ public:
      */
     static std::string fourCCToString(unsigned int val);
 
-    enum class StreamType { RS_DEPTH_STREAM, RS_Y8_STREAM, RS_RGB_STREAM , RS_Y12I_STREAM};
+    enum class StreamType { RS_DEPTH_STREAM, RS_Y8_STREAM, RS_RGB_STREAM , RS_Y12I_STREAM, RS_Y8I_STREAM };
 
 }; // class StreamUtils
 

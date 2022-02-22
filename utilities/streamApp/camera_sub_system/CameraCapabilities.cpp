@@ -58,7 +58,7 @@ CameraCapabilities::~CameraCapabilities() {
 }
 
 const CameraControl&
-CameraCapabilities::operator[](const std::string &tag) throw(std::invalid_argument) {
+CameraCapabilities::operator[](const std::string &tag) {
     // make sure key exists, if not throw
     auto itr = mCapabilitiesMap.find(tag);
     if (itr == mCapabilitiesMap.end()) {

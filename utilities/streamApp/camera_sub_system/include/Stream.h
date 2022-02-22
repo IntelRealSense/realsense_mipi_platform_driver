@@ -94,7 +94,7 @@ public:
     int setLaserMode (bool value);
     int getLaserMode (bool* value);
     int setLaserValue (int value);
-    int getLaserValue (bool* value);
+    int getLaserValue (int* value);
     int setSlaveMode (bool value);
 
 private:

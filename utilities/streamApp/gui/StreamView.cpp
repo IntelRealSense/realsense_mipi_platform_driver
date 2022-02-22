@@ -42,32 +42,56 @@ namespace camera_viewer {
 StreamView::StreamView(uint8_t nodeNumber,
                        realsense::camera_sub_system::Stream &stream,
                        V4L2Utils::StreamUtils::StreamType st) :
-        mNodeNumber{nodeNumber},
-        mStream{stream},
-        mFormat{V4L2_PIX_FMT_Z16, 1280, 720, 30},
-        mStreamType {st}
+        mNodeNumber {nodeNumber},
+        mStreamType {st},
+        mStream {stream},
+        mFormat {V4L2_PIX_FMT_Z16, 1280, 720, 30}
 {
     RS_AUTOLOG();
-    mNodeStr = {"/dev/video"};
+    mNodeStr = "/dev/video";
     mNodeStr += to_string(mNodeNumber);
+    mCtrlWinName = mNodeStr + " control";
+
+    switch (mStreamType) {
+    case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
+        mFormat.v4l2Format = V4L2_PIX_FMT_YUYV;
+        break;
+    case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
+        mFormat.v4l2Format = V4L2_PIX_FMT_Z16;
+        break;
+    case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
+        mFormat.v4l2Format = V4L2_PIX_FMT_GREY;
+        break;
+    case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
+        mFormat.v4l2Format = V4L2_PIX_FMT_Y12I;
+        break;
+    case V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM:
+        mFormat.v4l2Format = V4L2_PIX_FMT_Y8I;
+        break;
+    default:
+        break;
+    }
 }
 
 void StreamView::draw()
 {
     RS_AUTOLOG();
 
-    namedWindow(mNodeStr.c_str(), WINDOW_FREERATIO);
-    mCtrlWinName = mNodeStr + " control";
-    namedWindow(mCtrlWinName.c_str(), WINDOW_NORMAL);
-    createTrackbar("stream on/off", mCtrlWinName.c_str(), &mStartStopTBVlaue, 1, StreamView::startStopTrackbarCB, static_cast<void*>(this));
+    namedWindow(mNodeStr.c_str(), WINDOW_NORMAL | WINDOW_KEEPRATIO | WINDOW_GUI_EXPANDED);
+    namedWindow(mCtrlWinName.c_str());
+
+    createTrackbar("stream on/off", mCtrlWinName.c_str(), &mStartStopTBValue, 1, StreamView::startStopTrackbarCB, static_cast<void*>(this));
     switch(mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
+    case V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM:
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
     case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
         {
             // Get current values of ctrls
             bool laserMode;
+            int laserValue;
             mStream.getLaserMode(&laserMode);
+            mStream.getLaserValue(&laserValue);
 
             bool ae;
             mStream.getAE(&ae);
@@ -82,7 +106,8 @@ void StreamView::draw()
             createTrackbar("exposure", mCtrlWinName.c_str(), &exp, 2000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
             val = static_cast<int>(laserMode);
             createTrackbar("laser power mode", mCtrlWinName.c_str(), &val, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
-            createTrackbar("laser power value", mCtrlWinName.c_str(), nullptr, 10, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
+            laserValue /= 30;
+            createTrackbar("laser power value", mCtrlWinName.c_str(), &laserValue, 12, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
         }
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
@@ -116,10 +141,10 @@ void StreamView::startStopTrackbarCB (int pos, void *userData) {
     StreamView* sv = static_cast<StreamView*>(userData);
     switch (pos) {
     case 0:
-        //sv->stop();
+        sv->stop();
         break;
     case 1:
-        //sv->start(V4L2_MEMORY_MMAP);
+        sv->start(V4L2_MEMORY_MMAP);
         break;
     default:
         RS_LOGE("Invalid value %d", pos);
@@ -152,7 +177,7 @@ void StreamView::laserModeTrackbarCB (int pos, void *userData) {
 void StreamView::laserValueTrackbarCB (int pos, void *userData) {
     RS_LOGI("pos %d, userdata %p", pos, userData);
     StreamView* sv = static_cast<StreamView*>(userData);
-    sv->setLaserValue(pos);
+    sv->setLaserValue(pos * 30);
 }
 
 void StreamView::fpsTrackbarCB (int pos, void *userData) {
@@ -173,24 +198,7 @@ void StreamView::start(uint32_t memoryType) {
     mMemoryType = memoryType;
 
     // Allocate Buffers
-    uint32_t bufferLength;
-    switch(mStreamType) {
-    case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
-        mFormat.v4l2Format = V4L2_PIX_FMT_YUYV;
-        break;
-    case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
-        mFormat.v4l2Format = V4L2_PIX_FMT_Z16;
-        break;
-    case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
-        mFormat.v4l2Format = V4L2_PIX_FMT_GREY;
-        break;
-    case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
-        mFormat.v4l2Format = V4L2_PIX_FMT_Y12I;
-        break;
-    default:
-        break;
-    }
-    bufferLength = mFormat.calc64BytesAlignedStride() * mFormat.height;
+    uint32_t bufferLength = mFormat.calcBytesPerFrame();
 
     mStream.setSlaveMode(mSlaveMode);
 
@@ -201,13 +209,11 @@ void StreamView::start(uint32_t memoryType) {
     switch (memoryType) {
     case V4L2_MEMORY_MMAP:
         for (int i = 0; i < mBuffersCount; i++) {
-            // TODO: use resolution
             mRsBuffers.emplace_back(nullptr, bufferLength, i);
         }
         break;
     case V4L2_MEMORY_USERPTR:
         for (int i = 0; i < mBuffersCount; i++) {
-            // TODO: use resolution
             mRsBuffers.emplace_back(malloc(bufferLength), bufferLength, i);
         }
         break;
@@ -225,8 +231,6 @@ void StreamView::start(uint32_t memoryType) {
                             this,
                             std::placeholders::_1),
                   memoryType);
-
-    //mStartStopTBVlaue = 1;
 }
 
 void StreamView::stop() {
@@ -255,15 +259,14 @@ void StreamView::proccesCaptureResult(uint8_t index)
     cv::Mat histogramOptimizedMap;
     float scale;
     char* ptr;
-    int cnt = 0;
-    int flag = 1;
+    uint32_t cnt = 0;
     char* left;
     char* right;
-    char image[mFormat.bytesperline * mFormat.height];
+    char image[mFormat.calcBytesPerFrame()];
     //lock_guard<mutex> lock(mMutex);
     switch(mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
-        map = cv::Mat(mFormat.height, mFormat.width, CV_16UC1, (void*)mRsBuffersPtrs[i]->buffer, mFormat.bytesperline);
+        map = cv::Mat(mFormat.height, mFormat.width, CV_16UC1, (void*)mRsBuffersPtrs[i]->buffer, mFormat.calc64BytesAlignedStride());
         cv::minMaxIdx(map, &min, &max);
         scale = 255 / (max-min);
         map.convertTo(histogramOptimizedMap, CV_8UC1, scale, -min*scale);
@@ -271,49 +274,46 @@ void StreamView::proccesCaptureResult(uint8_t index)
         cv::imshow(mNodeStr.c_str(), colorMap);
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
-        map = cv::Mat(mFormat.height, mFormat.width, CV_8UC1, (void*)mRsBuffersPtrs[i]->buffer, mFormat.bytesperline);
+        map = cv::Mat(mFormat.height, mFormat.width, CV_8UC1, (void*)mRsBuffersPtrs[i]->buffer, mFormat.calc64BytesAlignedStride());
+        cv::imshow(mNodeStr.c_str(), map);
+        break;
+    case V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM:
+        ptr = (char*)(mRsBuffersPtrs[i]->buffer);
+        left = image;
+        right = image + mFormat.width;
+        for(; ptr < (char*)(mRsBuffersPtrs[i]->buffer) + mRsBuffersPtrs[i]->length - 2; ptr += 2, cnt += 2) {
+            *left++ = *ptr;
+            *right++ = *(ptr+1);
+            if (cnt == mFormat.width * 2) {
+                cnt = 0;
+                left += mFormat.width;
+                right += mFormat.width;
+            }
+        }
+
+        map = cv::Mat(mFormat.height, mFormat.width*2, CV_8UC1, image, mFormat.calc64BytesAlignedStride());
         cv::imshow(mNodeStr.c_str(), map);
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM:
         ptr = (char*)(mRsBuffersPtrs[i]->buffer);
         left = image;
         right = image + mFormat.width;
-        for(;ptr < (char*)(mRsBuffersPtrs[i]->buffer) + mRsBuffersPtrs[i]->length - 4; ptr+=4,cnt+=4) {
-            *right++ = *ptr;
-            *left = *(ptr+1) >> 4;
-            *left |= *(ptr+2) << 4;
-            left++;
-            if(0 == (ptr - (char*)(mRsBuffersPtrs[i]->buffer)) % (mFormat.width*4)) {
-                if(cnt == mFormat.width*4){
-                    cnt = 0;
-                    left += mFormat.width;
-                    right += mFormat.width;
-                }
+        for(; ptr < (char*)(mRsBuffersPtrs[i]->buffer) + mRsBuffersPtrs[i]->length - 4; ptr += 4, cnt += 4) {
+            *left++ = (uint8_t)((0xFFF & *(uint16_t *)ptr) / 4096.0 * 255);
+            *right++ = (uint8_t)((*(uint16_t *)(ptr+1) >> 4) / 4096.0 * 255);
+            if (cnt == mFormat.width * 4) {
+                cnt = 0;
+                left += mFormat.width;
+                right += mFormat.width;
             }
         }
 
-        map = cv::Mat(mFormat.height, mFormat.width*2, CV_8UC1, image);
-        //map = cv::Mat(mFormat.height, mFormat.width, CV_8UC1, image);
+        map = cv::Mat(mFormat.height, mFormat.width * 2, CV_8UC1, image, mFormat.calc64BytesAlignedStride() / 2);
         cv::imshow(mNodeStr.c_str(), map);
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
-        if (mFormat.width == 2000) {
-            // TODO: this res is corrupted
-            map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer, mFormat.bytesperline);
-        } else {
-            // TODO: this is a workaround for jetson notification of frame ready
-            //       based on sof, this causes teared images, because we render
-            //       images before it fully copied to buffer. Besides, we render
-            //       from tmp buffer, not from v4l2 buff that is being queued.
-            uint8_t static buff[1920*1080*2];
-            this_thread::sleep_for(20ms);
-            memcpy(buff, mRsBuffersPtrs[i]->buffer,mFormat.height*mFormat.bytesperline);
-
-            //map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer);
-            map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)buff, mFormat.bytesperline);
-            memset((void*)mRsBuffersPtrs[i]->buffer, 0, mFormat.height*mFormat.bytesperline);
-        }
-        cv::cvtColor( map, rgbMap, COLOR_YUV2BGR_UYVY);
+        map = cv::Mat(mFormat.height, mFormat.width, CV_8UC2, (void*)mRsBuffersPtrs[i]->buffer, mFormat.calc64BytesAlignedStride());
+        cv::cvtColor(map, rgbMap, COLOR_YUV2BGR_UYVY);
         cv::imshow(mNodeStr.c_str(), rgbMap);
         break;
     default:
@@ -321,28 +321,28 @@ void StreamView::proccesCaptureResult(uint8_t index)
     }
 
     waitKey(1);
-
-    //mStream.proccesCaptureRequest(mRsBuffersPtrs[i]);
 }
 
 int StreamView::setAE(bool value) {
     RS_AUTOLOG();
-    mStream.setAE(value);
+    return mStream.setAE(value);
 }
 
 int StreamView::setExposure(int value) {
     RS_AUTOLOG();
-    mStream.setExposure(value);
+    if (value < 1)
+        value = 1;
+    return mStream.setExposure(value);
 }
 
 int StreamView::setLaserMode(bool value) {
     RS_AUTOLOG();
-    mStream.setLaserMode(value);
+    return mStream.setLaserMode(value);
 }
 
 int StreamView::setLaserValue(int value) {
     RS_AUTOLOG();
-    mStream.setLaserValue(value);
+    return mStream.setLaserValue(value);
 }
 
 int StreamView::setFPS(int value) {
@@ -351,17 +351,20 @@ int StreamView::setFPS(int value) {
     // New FPS will take effect in the next stream start
     //if (5 == value || 30 == value)
         mFormat.fps = value;
+    return 0;
 }
 
 int StreamView::setResolution(uint32_t width, uint32_t height)
 {
     mFormat.width = width;
     mFormat.height = height;
+    return 0;
 }
 
 int StreamView::setSlaveMode(bool value){
     // New slave mode will take effect in the next stream start
     mSlaveMode = value;
+    return 0;
 }
 
 

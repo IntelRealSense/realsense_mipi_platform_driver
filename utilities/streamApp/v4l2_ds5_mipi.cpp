@@ -42,10 +42,15 @@ using namespace realsense::camera_sub_system;
 
 static void usage(const char *argv0)
 {
-    cout << "Usage: " << argv0 << " [options] device" << endl;
+    cout << "Usage: " << argv0 << " [options]" << endl;
     cout << "Supported options:\n" << endl;
-    cout << "-t, --stream-type        stream type \"depth\", \"rgb\"" << endl;
-    cout << "--help           Show this help screen" << endl;
+    cout << "-d        number of the /dev/videoX, default 0" << endl;
+    cout << "-t        stream type \"depth\", \"rgb\", \"y8\", \"y12i\", \"y8i\", default depth" << endl;
+    cout << "-w        stream width, default 1280" << endl;
+    cout << "-h        stream height, default 720" << endl;
+    cout << "-f        stream fps, default 30" << endl;
+    cout << "-s        slave mode, default false" << endl;
+    cout << "--help    show this help screen" << endl;
 }
 
 static struct option opts[] = {
@@ -70,6 +75,11 @@ int main(int argc, char **argv)
     bool slaveMode{false};
     opterr = 0;
 
+    if (argc == 2 && string(argv[1]) == "--help") {
+        usage(argv[0]);
+        return 0;
+    }
+
     while ((c = getopt_long(argc, argv, "d:t:f:r:w:h:s:", opts, NULL)) != -1) {
         switch (c) {
         case 'd':
@@ -81,6 +91,8 @@ int main(int argc, char **argv)
                 streamType = V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM;
             if ("y8" == sOptArg)
                  streamType = V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM;
+            if ("y8i" == sOptArg)
+                 streamType = V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM;
             if ("y12i" == sOptArg)
                 streamType = V4L2Utils::StreamUtils::StreamType::RS_Y12I_STREAM;
             if ("rgb" == sOptArg)
@@ -111,7 +123,7 @@ int main(int argc, char **argv)
             break;
         default:
             cout << "Invalid option -" << c << endl;
-            cout << "Run " << argv[0] << " -h for help" << endl;
+            cout << "Run " << argv[0] << " --help for help" << endl;
             return 1;
         }
     }
@@ -127,7 +139,6 @@ int main(int argc, char **argv)
     streamView->draw();
 
 
-    int i = 0;
     while(true) {
         this_thread::sleep_for(500ms);
     }

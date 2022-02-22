@@ -79,6 +79,10 @@ int main(int argc, char *argv[]) {
 
 	memcpy(hwmcBuff, &hmc, sizeof(struct HWMC));
 	int ret = ioctl(fd.get(), VIDIOC_S_EXT_CTRLS, &ext);
+        if (ret) {
+            cerr << "ioctl VIDIOC_S_EXT_CTRLS failed" << std::endl;
+            return -1;
+        }
 	if (hmc.opcode == *(hwmcBuff + sizeof(struct HWMC))) {
 	uint16_t outLen = hwmcBuff[1001 + sizeof(struct HWMC)] << 8;
 		outLen |= hwmcBuff[1000 + sizeof(struct HWMC)];

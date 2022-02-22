@@ -112,7 +112,7 @@ private:
     std::vector<realsense::camera_sub_system::RsBuffer*> mRsBuffersPtrs;
 
     // Track bars GUI values
-    int mStartStopTBVlaue {1};
+    int mStartStopTBValue {1};
 
     void start(uint32_t memoryType);
     void stop();
