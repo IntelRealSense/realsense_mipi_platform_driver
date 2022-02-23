@@ -133,16 +133,11 @@ int main(int argc, char **argv)
 
     stream = new Stream{nodeNumber};
     streamView = new StreamView {nodeNumber, *stream, streamType};
-    streamView->setFPS(fps);
     streamView->setResolution(width, height);
+    streamView->setFPS(fps);
     streamView->setSlaveMode(slaveMode);
     streamView->draw();
 
-
-    while(true) {
-        this_thread::sleep_for(500ms);
-    }
-
-    delete stream;
     delete streamView;
+    delete stream;
 }

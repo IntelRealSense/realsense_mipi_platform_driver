@@ -22,6 +22,8 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <chrono>
+using namespace std::chrono_literals;
 
 #include <string.h>
 #include <poll.h>
@@ -272,31 +274,23 @@ int Stream::configure(realsense::camera_sub_system::Format format)
     int ret = ioctl(fd.get(), VIDIOC_S_FMT, &v4l2Format);
     if (ret < 0) {
         RS_LOGE("VIDIOC_S_FMT failed, errno %d", errno);
-    } else
+        return -1;
+    } else {
         RS_LOGI("VIDIOC_S_FMT to %s width(%d) height(%d) done",
                 fourCCToString(mFormat.v4l2Format).c_str(),
                 mFormat.width,
                 mFormat.height);
+    }
 
-    // TODO: set FPS
-    struct v4l2_streamparm setFps {0};
-    struct v4l2_streamparm getFps {0};
-    setFps.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    setFps.parm.capture.timeperframe. numerator= 1;
-    setFps.parm.capture.timeperframe. denominator = format.fps;
-    getFps.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    ret = ioctl(fd.get(), VIDIOC_G_PARM, &getFps);
-    if (ret < 0) {
-        RS_LOGE("VIDIOC_G_PARM failed, errno %d", errno);
-    } else
-        RS_LOGI("FPS get %d ", getFps.parm.capture.timeperframe. denominator);
-
-
-    ret = ioctl(fd.get(), VIDIOC_S_PARM, &setFps);
-    if (ret < 0) {
-        RS_LOGE("VIDIOC_S_PARM failed, errno %d", errno);
-    } else
-        RS_LOGI("FPS set to to %d ", mFormat.fps);
+    if (mFormat.fps == 0) {
+        ret = getFPS(&mFormat.fps);
+        if (ret < 0)
+            return -1;
+    } else {
+        ret = setFPS(mFormat.fps);
+        if (ret < 0)
+            return -1;
+    }
 
     struct v4l2_control setStride {0};
     setStride.id = 0x9a206e; // the value of TEGRA_CAMERA_CID_VI_PREFERRED_STRIDE, not available in user space header
@@ -304,15 +298,15 @@ int Stream::configure(realsense::camera_sub_system::Format format)
     ret = ioctl(fd.get(), VIDIOC_S_CTRL, &setStride);
     if (ret < 0) {
         RS_LOGE("VIDIOC_S_CTRL failed, errno %d", errno);
-    } else
+        return -1;
+    } else {
         RS_LOGI("preferred_stride set to to %d ", setStride.value);
+    }
 
     return ret;
 }
 
-int Stream::start(vector<RsBuffer*> rsBuffers,
-        std::function<void(uint8_t)> proccesCaptureResult,
-        uint32_t memoryType)
+int Stream::start(vector<RsBuffer*> rsBuffers, uint32_t memoryType)
 {
     RS_AUTOLOG();
 
@@ -386,8 +380,6 @@ int Stream::start(vector<RsBuffer*> rsBuffers,
             mV4l2Buffer.length = rsBuffer->length;
         }
 
-        mBufferLength = rsBuffer->length; // TODO: dirty
-
         int ret = ioctl(mFileDescriptor, VIDIOC_QBUF, &mV4l2Buffer);
         if (ret < 0) {
             RS_LOGE("VIDIOC_QBUF failed for buffer %d, errno %d", mV4l2Buffer.index, errno);
@@ -395,8 +387,6 @@ int Stream::start(vector<RsBuffer*> rsBuffers,
             return -1;
         }
     }
-
-    mProccesCaptureResult = proccesCaptureResult;
 
     // initialize event notification object for stopping the thread loop
     mStopEventFD = eventfd(0, 0);
@@ -427,31 +417,6 @@ int Stream::start(vector<RsBuffer*> rsBuffers,
 
     mIsStreaming = true;
     return 0;
-}
-
-int Stream::proccesCaptureRequest(realsense::camera_sub_system::RsBuffer* rsBuffer)
-{
-    mV4l2Buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    mV4l2Buffer.memory = mMemoryType;
-    mV4l2Buffer.index = rsBuffer->index;
-
-    if (V4L2_MEMORY_USERPTR == mMemoryType) {
-        mV4l2Buffer.m.userptr = (unsigned long long)rsBuffer->buffer;
-        mV4l2Buffer.length = rsBuffer->length;
-    }
-
-    int ret;
-    for (int i = 0; i < 3; i++) {
-        ret = ioctl(mFileDescriptor, VIDIOC_QBUF, &mV4l2Buffer);
-        if (ret < 0) {
-            RS_LOGE("VIDIOC_QBUF failed for buffer %d, errno %d", mV4l2Buffer.index, errno);
-            //this_thread::sleep_for(10ms);
-        } else
-            RS_LOGI("VIDIOC_QBUF succeeded for buffer %d, errno %d", mV4l2Buffer.index, errno);
-            break;
-    }
-
-    return ret;
 }
 
 int Stream::stop()
@@ -499,6 +464,55 @@ int Stream::stop()
     close(mFileDescriptor);
     }
 
+    return 0;
+}
+
+int Stream::setFPS(uint32_t value)
+{
+    ScopedFileDescriptor fd(mNodeNumber);
+    if (!fd) {
+        RS_LOGE("ScopedFileDescriptor failed");
+        return -1;
+    }
+
+    struct v4l2_streamparm setFps {0};
+    setFps.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    setFps.parm.capture.timeperframe.numerator= 1;
+    setFps.parm.capture.timeperframe.denominator = value;
+
+    int ret = ioctl(fd.get(), VIDIOC_S_PARM, &setFps);
+    if (ret < 0) {
+        RS_LOGE("VIDIOC_S_PARM failed, errno %d", errno);
+        return -1;
+    } else {
+        mFormat.fps = value;
+        RS_LOGI("FPS set to to %d ", mFormat.fps);
+    }
+    return 0;
+}
+
+int Stream::getFPS(uint32_t* value)
+{
+    ScopedFileDescriptor fd(mNodeNumber);
+    if (!fd) {
+        RS_LOGE("ScopedFileDescriptor failed");
+        return -1;
+    }
+
+    struct v4l2_streamparm getFps {0};
+    getFps.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    int ret = ioctl(fd.get(), VIDIOC_G_PARM, &getFps);
+    if (ret < 0) {
+        RS_LOGE("VIDIOC_G_PARM failed, errno %d", errno);
+        return -1;
+    } else {
+        *value = getFps.parm.capture.timeperframe.denominator / getFps.parm.capture.timeperframe.numerator;
+        RS_LOGI("FPS get %d ", *value);
+        if (*value != mFormat.fps) {
+            mFormat.fps = *value;
+        }
+    }
     return 0;
 }
 
@@ -795,7 +809,7 @@ int Stream::initMmap(vector<RsBuffer*> rsBuffers)
                                                 MAP_SHARED,
                                                 mFileDescriptor,
                                                 mV4l2Buffer.m.offset);
-        RS_LOGE("mmap retruned %p errno %d", rsBuffer->buffer, errno);
+        RS_LOGI("mmap retruned %p errno %d", rsBuffer->buffer, errno);
         memset(rsBuffer->buffer, 0, rsBuffer->length);
     }
     return 0;
@@ -864,16 +878,11 @@ void Stream::streamingThreadLoop()
                 if (ret < 0)
                     RS_LOGE("VIDIOC_QBUF after DQBUF failure failed %d", errno);
             } else {
-                //RS_LOGE("VIDIOC_DQBUF success buffer length %d, bytesused %d", mV4l2Buffer.length, mV4l2Buffer.bytesused);
-                mProccesCaptureResult(mV4l2Buffer.index);
-                ret = ioctl(mFileDescriptor, VIDIOC_QBUF, &mV4l2Buffer);
-                if (ret < 0) {
-                    RS_LOGE("VIDIOC_QBUF after show failure failed %d", errno);
-                    break;
+                {
+                    std::lock_guard<std::mutex> lock(mDisplayMutex);
+                    mDisplayIndex.push_back(mV4l2Buffer.index);
                 }
-                //this_thread::sleep_for(10ms);
-                //thread t(mProccesCaptureResult, mV4l2Buffer.index);
-                //t.detach();
+                mDisplayCV.notify_one();
             }
         } else {
             RS_LOGE("poll error, %d", errno);
@@ -898,6 +907,33 @@ bool Stream::isStopEvent()
         RS_LOGW("Failed to stop streaming thread, size(%d), value(%x)", size, value);
     }
     return false;
+}
+
+uint32_t Stream::getBufferIndex()
+{
+    std::unique_lock<std::mutex> lock(mDisplayMutex);
+    mDisplayCV.wait_for(lock, 5ms, [&]{ return !mDisplayIndex.empty(); });
+    if (mDisplayIndex.empty())
+        return UINT32_MAX;
+    else
+        return mDisplayIndex.front();
+}
+
+void Stream::returnBufferIndex()
+{
+    std::lock_guard<std::mutex> lock(mDisplayMutex);
+    auto index = mDisplayIndex.front();
+    mDisplayIndex.pop_front();
+
+    struct v4l2_buffer buf {0};
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = mMemoryType;
+    buf.index = index;
+    int ret = ioctl(mFileDescriptor, VIDIOC_QBUF, &buf);
+    if (ret < 0) {
+        RS_LOGE("VIDIOC_QBUF failed %d", errno);
+        return;
+    }
 }
 
 } // namespace camera_sub_system

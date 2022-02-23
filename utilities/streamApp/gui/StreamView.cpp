@@ -50,7 +50,6 @@ StreamView::StreamView(uint8_t nodeNumber,
     RS_AUTOLOG();
     mNodeStr = "/dev/video";
     mNodeStr += to_string(mNodeNumber);
-    mCtrlWinName = mNodeStr + " control";
 
     switch (mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
@@ -73,14 +72,13 @@ StreamView::StreamView(uint8_t nodeNumber,
     }
 }
 
-void StreamView::draw()
+int StreamView::draw()
 {
     RS_AUTOLOG();
 
     namedWindow(mNodeStr.c_str(), WINDOW_NORMAL | WINDOW_KEEPRATIO | WINDOW_GUI_EXPANDED);
-    namedWindow(mCtrlWinName.c_str());
 
-    createTrackbar("stream on/off", mCtrlWinName.c_str(), &mStartStopTBValue, 1, StreamView::startStopTrackbarCB, static_cast<void*>(this));
+    createTrackbar("stream on/off", mNodeStr.c_str(), &mStartStopTBValue, 1, StreamView::startStopTrackbarCB, static_cast<void*>(this));
     switch(mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_Y8_STREAM:
     case V4L2Utils::StreamUtils::StreamType::RS_Y8I_STREAM:
@@ -102,12 +100,12 @@ void StreamView::draw()
 
             int val;
             val = static_cast<int>(ae);
-            createTrackbar("ae", mCtrlWinName.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
-            createTrackbar("exposure", mCtrlWinName.c_str(), &exp, 2000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
+            createTrackbar("ae", mNodeStr.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
+            createTrackbar("exposure", mNodeStr.c_str(), &exp, 2000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
             val = static_cast<int>(laserMode);
-            createTrackbar("laser power mode", mCtrlWinName.c_str(), &val, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
+            createTrackbar("laser power mode", mNodeStr.c_str(), &val, 1, StreamView::laserModeTrackbarCB, static_cast<void*>(this));
             laserValue /= 30;
-            createTrackbar("laser power value", mCtrlWinName.c_str(), &laserValue, 12, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
+            createTrackbar("laser power value", mNodeStr.c_str(), &laserValue, 12, StreamView::laserValueTrackbarCB, static_cast<void*>(this));
         }
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
@@ -122,18 +120,32 @@ void StreamView::draw()
 
             int val;
             val = static_cast<int>(ae);
-            createTrackbar("ae", mCtrlWinName.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
-            createTrackbar("exposure", mCtrlWinName.c_str(), &exp, 10000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
+            createTrackbar("ae", mNodeStr.c_str(), &val, 1, StreamView::aETrackbarCB, static_cast<void*>(this));
+            createTrackbar("exposure", mNodeStr.c_str(), &exp, 10000, StreamView::exposureTrackbarCB, static_cast<void*>(this));
         }
         break;
     }
 
-    //cv::waitKey();
-    start(V4L2_MEMORY_MMAP);
+    if (start(V4L2_MEMORY_MMAP) < 0)
+        return -1;
+
+    while (true) {
+        auto index = mStream.getBufferIndex();
+        if (index != UINT32_MAX) {
+            processCaptureResult(index);
+            mStream.returnBufferIndex();
+        }
+        char key = (char)waitKey(1);
+        if (key == 'q' || key == 27)
+            break;
+    }
+
+    return 0;
 }
 
 StreamView::~StreamView()
 {
+    stop();
 }
 
 void StreamView::startStopTrackbarCB (int pos, void *userData) {
@@ -156,14 +168,14 @@ void StreamView::aETrackbarCB (int pos, void *userData) {
     StreamView* sv = static_cast<StreamView*>(userData);
     sv->setAE(pos);
     if (!pos)
-        sv->setExposure(getTrackbarPos("exposure", sv->mCtrlWinName.c_str()));
+        sv->setExposure(getTrackbarPos("exposure", sv->mNodeStr.c_str()));
 }
 
 void StreamView::exposureTrackbarCB (int pos, void *userData) {
     RS_LOGI("pos %d, userdata %p", pos, userData);
     StreamView* sv = static_cast<StreamView*>(userData);
-    if (getTrackbarPos("ae", sv->mCtrlWinName.c_str()))
-        setTrackbarPos("ae", sv->mCtrlWinName.c_str(), 0);
+    if (getTrackbarPos("ae", sv->mNodeStr.c_str()))
+        setTrackbarPos("ae", sv->mNodeStr.c_str(), 0);
     else
         sv->setExposure(pos);
 }
@@ -172,12 +184,17 @@ void StreamView::laserModeTrackbarCB (int pos, void *userData) {
     RS_LOGI("pos %d, userdata %p", pos, userData);
     StreamView* sv = static_cast<StreamView*>(userData);
     sv->setLaserMode(pos);
+    if (pos)
+        sv->setLaserValue(30 * getTrackbarPos("laser power value", sv->mNodeStr.c_str()));
 }
 
 void StreamView::laserValueTrackbarCB (int pos, void *userData) {
     RS_LOGI("pos %d, userdata %p", pos, userData);
     StreamView* sv = static_cast<StreamView*>(userData);
-    sv->setLaserValue(pos * 30);
+    if (!getTrackbarPos("laser power mode", sv->mNodeStr.c_str()))
+        setTrackbarPos("laser power mode", sv->mNodeStr.c_str(), 1);
+    else
+        sv->setLaserValue(pos * 30);
 }
 
 void StreamView::fpsTrackbarCB (int pos, void *userData) {
@@ -192,7 +209,7 @@ void StreamView::slaveModeTrackbarCB (int pos, void *userData) {
     sv->setSlaveMode(pos);
 }
 
-void StreamView::start(uint32_t memoryType) {
+int StreamView::start(uint32_t memoryType) {
     RS_AUTOLOG();
 
     mMemoryType = memoryType;
@@ -202,9 +219,10 @@ void StreamView::start(uint32_t memoryType) {
 
     mStream.setSlaveMode(mSlaveMode);
 
-    if (mStream.configure(mFormat) < 0)
+    if (mStream.configure(mFormat) < 0) {
         RS_LOGE("Configure failed");
-        //return;
+        return -1;
+    }
 
     switch (memoryType) {
     case V4L2_MEMORY_MMAP:
@@ -226,14 +244,10 @@ void StreamView::start(uint32_t memoryType) {
         mRsBuffersPtrs.push_back(&mRsBuffers[i]);
     }
 
-    mStream.start(mRsBuffersPtrs,
-                  std::bind(&StreamView::proccesCaptureResult,
-                            this,
-                            std::placeholders::_1),
-                  memoryType);
+    return mStream.start(mRsBuffersPtrs, memoryType);
 }
 
-void StreamView::stop() {
+int StreamView::stop() {
     RS_AUTOLOG();
     mStream.stop();
     if (V4L2_MEMORY_USERPTR == mMemoryType)
@@ -242,14 +256,18 @@ void StreamView::stop() {
                 free(rsBuf.buffer);
     mRsBuffers.clear();
     mRsBuffersPtrs.clear();
+    return 0;
 }
 
-void StreamView::proccesCaptureResult(uint8_t index)
+void StreamView::processCaptureResult(uint32_t index)
 {
     int i = -1;
     for (i = 0; i < mBuffersCount; i++)
         if (mRsBuffersPtrs[i]->index == index)
             break;
+
+    if (i == mBuffersCount)
+        return;
 
     double min;
     double max;
@@ -319,8 +337,6 @@ void StreamView::proccesCaptureResult(uint8_t index)
     default:
         break;
     }
-
-    waitKey(1);
 }
 
 int StreamView::setAE(bool value) {
@@ -347,11 +363,7 @@ int StreamView::setLaserValue(int value) {
 
 int StreamView::setFPS(int value) {
     RS_AUTOLOG();
-    // TODO: check valid values?
-    // New FPS will take effect in the next stream start
-    //if (5 == value || 30 == value)
-        mFormat.fps = value;
-    return 0;
+    return mStream.setFPS((uint32_t)value);
 }
 
 int StreamView::setResolution(uint32_t width, uint32_t height)

@@ -100,9 +100,9 @@ typedef unsigned FourCC;
 struct RsBuffer {
     void *buffer;
     uint32_t length;
-    uint8_t index;
+    uint32_t index;
 
-    RsBuffer (void* b, uint32_t s, uint8_t i)
+    RsBuffer (void* b, uint32_t s, uint32_t i)
     : buffer(b), length(s), index(i) {}
 };
 
