@@ -62,7 +62,7 @@ public:
     /**
      *
      */
-    void draw();
+    int draw();
 
     /**
      *
@@ -94,8 +94,7 @@ private:
     // The number X of /dev/videoX node that this stream view is associated with.
     // This node must be streaming node and not meta data node.
     const std::uint8_t mNodeNumber;
-    std::string mNodeStr {""};
-    std::string mCtrlWinName {};
+    std::string mNodeStr {};
     realsense::utils::V4L2Utils::StreamUtils::StreamType mStreamType {realsense::utils::V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM};
     std::mutex mMutex {};
 
@@ -105,7 +104,7 @@ private:
     bool mSlaveMode;
 
     // Number of buffers for streaming
-    const std::uint8_t mBuffersCount {4};
+    const std::uint8_t mBuffersCount {16};
     uint32_t mMemoryType;
 
     std::vector<realsense::camera_sub_system::RsBuffer> mRsBuffers;
@@ -114,13 +113,13 @@ private:
     // Track bars GUI values
     int mStartStopTBValue {1};
 
-    void start(uint32_t memoryType);
-    void stop();
+    int start(uint32_t memoryType);
+    int stop();
     int setAE(bool value);
     int setExposure(int value);
     int setLaserMode(bool value);
     int setLaserValue(int value);
-    void proccesCaptureResult(uint8_t);
+    void processCaptureResult(uint32_t);
 
     StreamView(const StreamView&) = delete;
     StreamView& operator = (const StreamView&) = delete;

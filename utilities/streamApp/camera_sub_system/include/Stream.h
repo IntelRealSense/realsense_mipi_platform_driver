@@ -27,6 +27,7 @@
 #include <thread>
 #include <functional>
 #include <unordered_map>
+#include <condition_variable>
 
 #include <linux/videodev2.h>
 
@@ -71,22 +72,21 @@ public:
      *
      */
     int start(std::vector<realsense::camera_sub_system::RsBuffer*>,
-              std::function<void(uint8_t)>,
               uint32_t memoryType);
-
-    /**
-     *
-     */
-    int proccesCaptureRequest(realsense::camera_sub_system::RsBuffer*);
 
     /**
      *
      */
     int stop();
 
+    uint32_t getBufferIndex();
+    void returnBufferIndex();
+
     /**
      *
      */
+    int setFPS(uint32_t value);
+    int getFPS(uint32_t* value);
     int setAE(bool value);
     int getAE(bool* value);
     int setExposure (int value);
@@ -113,10 +113,11 @@ private:
     std::thread mStreamingThread;
     std::mutex mStreamingMutex {};
     bool mIsStreaming {false};
-    std::function<void(uint8_t)> mProccesCaptureResult;
-    uint32_t mBufferLength;
     uint32_t mMemoryType;
     struct v4l2_buffer mV4l2Buffer {0};
+    std::mutex mDisplayMutex;
+    std::condition_variable mDisplayCV;
+    std::list<uint32_t> mDisplayIndex {};
 
     /**
      * Need to set format by user before starting stream
