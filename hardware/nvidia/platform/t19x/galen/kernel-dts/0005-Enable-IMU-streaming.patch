@@ -1,4 +1,4 @@
-From 3718895ff8846d353af4c6734970aa3e4e083bcf Mon Sep 17 00:00:00 2001
+From 1c4b8bb6c646a492f8991e7e6a4c8594143b75e4 Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Thu, 25 Nov 2021 14:03:48 +0200
 Subject: [PATCH] Enable IMU streaming
@@ -7,7 +7,7 @@ Subject: [PATCH] Enable IMU streaming
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
- common/tegra194-camera-d4xx.dtsi | 68 +++++++++++++++++++++++++++++++++++++---
+ common/tegra194-camera-d4xx.dtsi | 68 +++++++++++++++++++++++++++++---
  1 file changed, 63 insertions(+), 5 deletions(-)
 
 diff --git a/common/tegra194-camera-d4xx.dtsi b/common/tegra194-camera-d4xx.dtsi
@@ -123,5 +123,5 @@ index 09edc49..500101d 100644
  				//	remote-source = <&src_depth1>;
  				//};
 -- 
-2.7.4
+2.17.1
 

@@ -1,4 +1,4 @@
-From 0dfadd3325603f106146ad0ed4fbc15ddaba5947 Mon Sep 17 00:00:00 2001
+From 42551919cf777e70e59c4e7c17fbef3b3df3b4a3 Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Thu, 5 Aug 2021 11:03:57 +0300
 Subject: [PATCH] add resolutions & remove hardcode

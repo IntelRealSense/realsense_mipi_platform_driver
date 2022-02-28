@@ -1,4 +1,4 @@
-From 45e8023a38bcc8b1b9f93296d6f52237f4eb4e93 Mon Sep 17 00:00:00 2001
+From 1e7e0f938531bd499d28ed9b7924c841237ee138 Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Sun, 28 Nov 2021 13:48:36 +0200
 Subject: [PATCH] Enable Y8 on separate video node
@@ -7,11 +7,11 @@ Subject: [PATCH] Enable Y8 on separate video node
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
- drivers/media/i2c/d4xx.c | 152 ++++++++++++++++++++++++-----------------------
+ drivers/media/i2c/d4xx.c | 152 ++++++++++++++++++++-------------------
  1 file changed, 77 insertions(+), 75 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index d25b101..610a68a 100644
+index d25b10199..610a68a30 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -98,7 +98,7 @@ enum ds5_mux_pad {
@@ -298,5 +298,5 @@ index d25b101..610a68a 100644
 -MODULE_VERSION("1.0.0.4");
 +MODULE_VERSION("1.0.0.5");
 -- 
-2.7.4
+2.17.1
 

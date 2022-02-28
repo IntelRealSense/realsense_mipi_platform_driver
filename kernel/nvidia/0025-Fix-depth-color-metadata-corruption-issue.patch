@@ -1,7 +1,7 @@
-From 6a51d47e861b3c09e8ac522867950d64aec3032d Mon Sep 17 00:00:00 2001
+From 630ddaafd69868b8360e06e351a466f0fa0d6971 Mon Sep 17 00:00:00 2001
 From: Xin Zhang <xin.x.zhang@intel.com>
 Date: Wed, 19 Jan 2022 09:56:22 +0800
-Subject: [PATCH 2/2] Fix depth/color metadata corruption issue
+Subject: [PATCH] Fix depth/color metadata corruption issue
 
 Set up per channel DMA buffer for metadata instead of using the original
 one in tegra_mc_vi. Previously the depth metadata directly uses the DMA
@@ -11,16 +11,16 @@ metadata it still uses the same structure.
 Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
 ---
  .../media/platform/tegra/camera/vi/channel.c  |  8 +++----
- .../media/platform/tegra/camera/vi/vi4_fops.c | 20 ++++++++--------
+ .../media/platform/tegra/camera/vi/vi4_fops.c | 23 +++++++++---------
  .../media/platform/tegra/camera/vi/vi5_fops.c | 24 +++++++++----------
  include/media/mc_common.h                     |  7 +++---
- 4 files changed, 30 insertions(+), 29 deletions(-)
+ 4 files changed, 32 insertions(+), 30 deletions(-)
 
 diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
-index fd3aad4f4..d115e98d6 100644
+index 9a48e0aa1..bc3f92a60 100644
 --- a/drivers/media/platform/tegra/camera/vi/channel.c
 +++ b/drivers/media/platform/tegra/camera/vi/channel.c
-@@ -2673,11 +2673,11 @@ ctrl_init_error:
+@@ -2757,11 +2757,11 @@ int tegra_channel_cleanup_video(struct tegra_channel *chan)
  int tegra_channel_cleanup(struct tegra_channel *chan)
  {
  	/* release embedded data buffer */
@@ -37,19 +37,22 @@ index fd3aad4f4..d115e98d6 100644
  #if defined(CONFIG_VIDEOBUF2_DMA_CONTIG)
  		tegra_vb2_dma_cleanup(chan->vi->dev, chan->embedded.alloc_ctx,
 diff --git a/drivers/media/platform/tegra/camera/vi/vi4_fops.c b/drivers/media/platform/tegra/camera/vi/vi4_fops.c
-index 0b397c1fe..c7748aee0 100644
+index 408f95fdc..416b6643c 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi4_fops.c
 +++ b/drivers/media/platform/tegra/camera/vi/vi4_fops.c
-@@ -236,7 +236,7 @@ static void tegra_channel_surface_setup(
+@@ -248,9 +248,9 @@ static void tegra_channel_surface_setup(
  
- 	if (chan->embedded.height > 0)
+ 	if (chan->embedded.height > 0) {
  		vi4_channel_write(chan, vnc_id, ATOMP_EMB_SURFACE_OFFSET0,
 -						  chan->vi->emb_buf);
 +						  chan->vi->emb_buf[chan->id]);
- 	else
+ 		vi4_channel_write(chan, vnc_id, ATOMP_EMB_SURFACE_OFFSET0_H,
+-					  (chan->vi->emb_buf) >> 32 & 0xFF);
++					  (chan->vi->emb_buf[chan->id]) >> 32 & 0xFF);
+ 	} else {
  		vi4_channel_write(chan, vnc_id, ATOMP_EMB_SURFACE_OFFSET0, 0);
- 	vi4_channel_write(chan, vnc_id, ATOMP_EMB_SURFACE_OFFSET0_H, 0x0);
-@@ -999,29 +999,29 @@ static int vi4_channel_start_streaming(struct vb2_queue *vq, u32 count)
+ 		vi4_channel_write(chan, vnc_id, ATOMP_EMB_SURFACE_OFFSET0_H, 0x0);
+@@ -1053,29 +1053,30 @@ static int vi4_channel_start_streaming(struct vb2_queue *vq, u32 count)
  		}
  
  		/* Allocate buffer for Embedded Data if need to*/
@@ -67,7 +70,8 @@ index 0b397c1fe..c7748aee0 100644
 -					chan->vi->emb_buf_addr, chan->vi->emb_buf);
 -				chan->vi->emb_buf_size = 0;
 +					chan->vi->emb_buf_size[chan->id],
-+					chan->vi->emb_buf_addr[chan->id], chan->vi->emb_buf[chan->id]);
++					chan->vi->emb_buf_addr[chan->id],
++					chan->vi->emb_buf[chan->id]);
 +				chan->vi->emb_buf_size[chan->id] = 0;
  			}
  
@@ -79,7 +83,7 @@ index 0b397c1fe..c7748aee0 100644
 -			if (!chan->vi->emb_buf_addr) {
 +					&chan->vi->emb_buf[chan->id], GFP_KERNEL);
 +			if (!chan->vi->emb_buf_addr[chan->id]) {
- 				dev_err(&chan->video.dev,
+ 				dev_err(&chan->video->dev,
  						"Can't allocate memory for embedded data\n");
  				goto error_capture_setup;
  			}
@@ -89,22 +93,19 @@ index 0b397c1fe..c7748aee0 100644
  	}
  
 diff --git a/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
-index ccf24326f..96e98945b 100644
+index 1b11bd1bc..fd3d19566 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi5_fops.c
 +++ b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
-@@ -302,9 +302,9 @@ static void vi5_setup_surface(struct tegra_channel *chan,
- 		desc->ch_cfg.frame.embed_x = chan->embedded.width * BPP_MEM;
+@@ -314,7 +314,7 @@ static void vi5_setup_surface(struct tegra_channel *chan,
  		desc->ch_cfg.frame.embed_y = chan->embedded.height;
- 		desc->ch_cfg.atomp.surface[VI_ATOMP_SURFACE_EMBEDDED].offset
--			= (u32)chan->vi->emb_buf;
-+			= (u32)chan->vi->emb_buf[chan->id];
- 		desc->ch_cfg.atomp.surface[VI_ATOMP_SURFACE_EMBEDDED].offset_hi
--			= (u32)(chan->vi->emb_buf >> 32U);
-+			= (u32)(chan->vi->emb_buf[chan->id] >> 32U);
- 		desc->ch_cfg.atomp.surface_stride[VI_ATOMP_SURFACE_EMBEDDED]
- 			= chan->embedded.width * BPP_MEM;
- 	}
-@@ -340,7 +340,7 @@ static void vi5_release_buffer(struct tegra_channel *chan,
+ 
+ 		desc_memoryinfo->surface[VI_ATOMP_SURFACE_EMBEDDED].base_address
+-			= chan->vi->emb_buf;
++			= chan->vi->emb_buf[chan->id];
+ 		desc_memoryinfo->surface[VI_ATOMP_SURFACE_EMBEDDED].size
+ 			= desc->ch_cfg.frame.embed_x * desc->ch_cfg.frame.embed_y;
+ 
+@@ -353,7 +353,7 @@ static void vi5_release_buffer(struct tegra_channel *chan,
  		if(evb) {
  			frm_buffer = vb2_plane_vaddr(evb, 0);
  			if(frm_buffer != NULL) {
@@ -113,50 +114,53 @@ index ccf24326f..96e98945b 100644
  			}
  		}
  	}
-@@ -773,29 +773,29 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
- 		}
+@@ -792,31 +792,31 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
+ 				}
  
- 		/* Allocate buffer for Embedded Data if need to*/
--		if (emb_buf_size > chan->vi->emb_buf_size) {
-+		if (emb_buf_size > chan->vi->emb_buf_size[chan->id]) {
- 			/*
- 			 * if old buffer is smaller than what we need,
- 			 * release the old buffer and re-allocate a bigger
- 			 * one below
- 			 */
--			if (chan->vi->emb_buf_size > 0) {
-+			if (chan->vi->emb_buf_size[chan->id] > 0) {
- 				dma_free_coherent(chan->vi->dev,
--					chan->vi->emb_buf_size,
--					chan->vi->emb_buf_addr, chan->vi->emb_buf);
--				chan->vi->emb_buf_size = 0;
-+					chan->vi->emb_buf_size[chan->id],
-+					chan->vi->emb_buf_addr[chan->id], chan->vi->emb_buf[chan->id]);
-+				chan->vi->emb_buf_size[chan->id] = 0;
- 			}
+ 				/* Allocate buffer for Embedded Data if need to*/
+-				if (emb_buf_size > chan->vi->emb_buf_size) {
++				if (emb_buf_size > chan->vi->emb_buf_size[chan->id]) {
+ 					/*
+ 					 * if old buffer is smaller than what we need,
+ 					 * release the old buffer and re-allocate a
+ 					 * bigger one below.
+ 					 */
+-					if (chan->vi->emb_buf_size > 0) {
++					if (chan->vi->emb_buf_size[chan->id] > 0) {
+ 						dma_free_coherent(chan->vi->dev,
+-							chan->vi->emb_buf_size,
+-							chan->vi->emb_buf_addr,
+-							chan->vi->emb_buf);
+-						chan->vi->emb_buf_size = 0;
++							chan->vi->emb_buf_size[chan->id],
++							chan->vi->emb_buf_addr[chan->id],
++							chan->vi->emb_buf[chan->id]);
++						chan->vi->emb_buf_size[chan->id] = 0;
+ 					}
  
--			chan->vi->emb_buf_addr =
-+			chan->vi->emb_buf_addr[chan->id] =
- 				dma_alloc_coherent(chan->vi->dev,
- 					emb_buf_size,
--					&chan->vi->emb_buf, GFP_KERNEL);
--			if (!chan->vi->emb_buf_addr) {
-+					&chan->vi->emb_buf[chan->id], GFP_KERNEL);
-+			if (!chan->vi->emb_buf_addr[chan->id]) {
- 				dev_err(&chan->video.dev,
- 						"Can't allocate memory for embedded data\n");
- 				goto error;
+-					chan->vi->emb_buf_addr =
++					chan->vi->emb_buf_addr[chan->id] =
+ 						dma_alloc_coherent(chan->vi->dev,
+ 							emb_buf_size,
+-							&chan->vi->emb_buf, GFP_KERNEL);
+-					if (!chan->vi->emb_buf_addr) {
++							&chan->vi->emb_buf[chan->id], GFP_KERNEL);
++					if (!chan->vi->emb_buf_addr[chan->id]) {
+ 						dev_err(&chan->video->dev,
+ 								"Can't allocate memory"
+ 								"for embedded data\n");
+ 						goto err_setup;
+ 					}
+-					chan->vi->emb_buf_size = emb_buf_size;
++					chan->vi->emb_buf_size[chan->id] = emb_buf_size;
+ 				}
  			}
--			chan->vi->emb_buf_size = emb_buf_size;
-+			chan->vi->emb_buf_size[chan->id] = emb_buf_size;
- 		}
- 	}
  
 diff --git a/include/media/mc_common.h b/include/media/mc_common.h
-index d2d3667fa..1fb24fa5b 100644
+index 6c5779b1d..de6c95435 100644
 --- a/include/media/mc_common.h
 +++ b/include/media/mc_common.h
-@@ -40,6 +40,7 @@
+@@ -41,6 +41,7 @@
  #define	ENABLE		1
  #define	DISABLE		0
  #define MAX_SYNCPT_PER_CHANNEL	3
@@ -164,7 +168,7 @@ index d2d3667fa..1fb24fa5b 100644
  
  #define CAPTURE_MIN_BUFFERS	1U
  #define CAPTURE_MAX_BUFFERS	240U
-@@ -328,9 +329,9 @@ struct tegra_mc_vi {
+@@ -340,9 +341,9 @@ struct tegra_mc_vi {
  
  	const struct tegra_vi_fops *fops;
  

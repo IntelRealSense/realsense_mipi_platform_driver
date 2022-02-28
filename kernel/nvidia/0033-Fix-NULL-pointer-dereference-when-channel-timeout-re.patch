@@ -1,0 +1,30 @@
+From 958788fec0ce050f0f288c5c94366afd59c92fda Mon Sep 17 00:00:00 2001
+From: Xin Zhang <xin.x.zhang@intel.com>
+Date: Sun, 20 Feb 2022 15:48:39 +0800
+Subject: [PATCH] Fix NULL pointer dereference when channel timeout reset
+
+This bug exists in JetPack 4.6.1 kernel, info and fix info:
+https://forums.developer.nvidia.com/t/v4l2-timeout-leads-to-null-pointer-dereference-in-kernel-in-jetpack-4-6/187824
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+---
+ drivers/media/platform/tegra/camera/vi/capture.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/tegra/camera/vi/capture.c b/drivers/media/platform/tegra/camera/vi/capture.c
+index d1bc037d8..532d916b9 100644
+--- a/drivers/media/platform/tegra/camera/vi/capture.c
++++ b/drivers/media/platform/tegra/camera/vi/capture.c
+@@ -205,7 +205,8 @@ void vi_capture_shutdown(struct tegra_vi_channel *chan)
+ 		}
+ 
+ 		capture_common_unpin_memory(&capture->requests);
+-		destroy_buffer_table(capture->buf_ctx);
++		if (capture->buf_ctx != NULL)
++			destroy_buffer_table(capture->buf_ctx);
+ 		vfree(capture->unpins_list);
+ 		capture->unpins_list = NULL;
+ 	}
+-- 
+2.17.1
+

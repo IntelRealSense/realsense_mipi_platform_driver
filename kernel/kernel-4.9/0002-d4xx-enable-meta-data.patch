@@ -1,7 +1,7 @@
-From c68d9bf9aee785ecca91e8fce4d550268323f67b Mon Sep 17 00:00:00 2001
+From cbc75d286ba66924a4e03a7e00c5e2b1ca808427 Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Mon, 31 May 2021 20:45:20 +0300
-Subject: [PATCH 2/2] d4xx enable meta data
+Subject: [PATCH] d4xx enable meta data
 
 Signed-off-by: Emil Jahshan <emil.jahshan@intel.com>
 ---
@@ -121,7 +121,7 @@ index 8be561ab2615..81f6b094a5a4 100644
  		SET_VALID_IOCTL(ops, VIDIOC_QUERYBUF, vidioc_querybuf);
  		SET_VALID_IOCTL(ops, VIDIOC_QBUF, vidioc_qbuf);
 diff --git a/drivers/media/v4l2-core/v4l2-ioctl.c b/drivers/media/v4l2-core/v4l2-ioctl.c
-index 42ea3a90eac2..911fc8af6fbe 100644
+index 541230ae9f6a..602281feead4 100644
 --- a/drivers/media/v4l2-core/v4l2-ioctl.c
 +++ b/drivers/media/v4l2-core/v4l2-ioctl.c
 @@ -162,6 +162,7 @@ const char *v4l2_type_names[] = {
@@ -167,15 +167,15 @@ index 42ea3a90eac2..911fc8af6fbe 100644
  	default:
  		break;
  	}
-@@ -1265,6 +1280,7 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
- 	case V4L2_TCH_FMT_TU08:		descr = "8-bit unsigned touch data"; break;
- 	case V4L2_PIX_FMT_Z16:		descr = "16-bit Depth"; break;
- 	case V4L2_PIX_FMT_Y12I:		descr = "24-bit Interleaved L/R"; break;
-+    case V4L2_META_FMT_D4XX_CSI2:	descr = "D4XX meta data"; break;
+@@ -1280,6 +1295,7 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
+ 		descr = "Planar Depth/Confidence (INZC)"; break;
+ 	case V4L2_PIX_FMT_PAIR:
+ 		descr = "Relative IR (PAIR)"; break;
++	case V4L2_META_FMT_D4XX_CSI2:	descr = "D4XX meta data"; break;
  
  	default:
  		/* Compressed formats */
-@@ -1372,6 +1388,11 @@ static int v4l_enum_fmt(const struct v4l2_ioctl_ops *ops,
+@@ -1387,6 +1403,11 @@ static int v4l_enum_fmt(const struct v4l2_ioctl_ops *ops,
  			break;
  		ret = ops->vidioc_enum_fmt_sdr_out(file, fh, arg);
  		break;
@@ -187,7 +187,7 @@ index 42ea3a90eac2..911fc8af6fbe 100644
  	}
  	if (ret == 0)
  		v4l_fill_fmtdesc(p);
-@@ -1471,6 +1492,10 @@ static int v4l_g_fmt(const struct v4l2_ioctl_ops *ops,
+@@ -1486,6 +1507,10 @@ static int v4l_g_fmt(const struct v4l2_ioctl_ops *ops,
  		if (unlikely(!is_tx || !is_sdr || !ops->vidioc_g_fmt_sdr_out))
  			break;
  		return ops->vidioc_g_fmt_sdr_out(file, fh, arg);
@@ -198,7 +198,7 @@ index 42ea3a90eac2..911fc8af6fbe 100644
  	}
  	return -EINVAL;
  }
-@@ -1576,6 +1601,11 @@ static int v4l_s_fmt(const struct v4l2_ioctl_ops *ops,
+@@ -1591,6 +1616,11 @@ static int v4l_s_fmt(const struct v4l2_ioctl_ops *ops,
  			break;
  		CLEAR_AFTER_FIELD(p, fmt.sdr);
  		return ops->vidioc_s_fmt_sdr_out(file, fh, arg);
@@ -210,7 +210,7 @@ index 42ea3a90eac2..911fc8af6fbe 100644
  	}
  	return -EINVAL;
  }
-@@ -1661,6 +1691,11 @@ static int v4l_try_fmt(const struct v4l2_ioctl_ops *ops,
+@@ -1676,6 +1706,11 @@ static int v4l_try_fmt(const struct v4l2_ioctl_ops *ops,
  			break;
  		CLEAR_AFTER_FIELD(p, fmt.sdr);
  		return ops->vidioc_try_fmt_sdr_out(file, fh, arg);
@@ -223,10 +223,10 @@ index 42ea3a90eac2..911fc8af6fbe 100644
  	return -EINVAL;
  }
 diff --git a/drivers/media/v4l2-core/videobuf2-core.c b/drivers/media/v4l2-core/videobuf2-core.c
-index cd666f20b299..32ddd4775cfb 100644
+index 0831e40ce962..e5cce6041e95 100644
 --- a/drivers/media/v4l2-core/videobuf2-core.c
 +++ b/drivers/media/v4l2-core/videobuf2-core.c
-@@ -1605,7 +1605,7 @@ int vb2_core_dqbuf(struct vb2_queue *q, unsigned int *pindex, void *pb,
+@@ -1602,7 +1602,7 @@ int vb2_core_dqbuf(struct vb2_queue *q, unsigned int *pindex, void *pb,
  
  	switch (vb->state) {
  	case VB2_BUF_STATE_DONE:
@@ -235,7 +235,7 @@ index cd666f20b299..32ddd4775cfb 100644
  		break;
  	case VB2_BUF_STATE_ERROR:
  		dprintk(3, "returning done buffer with errors\n");
-@@ -1617,12 +1617,14 @@ int vb2_core_dqbuf(struct vb2_queue *q, unsigned int *pindex, void *pb,
+@@ -1614,12 +1614,14 @@ int vb2_core_dqbuf(struct vb2_queue *q, unsigned int *pindex, void *pb,
  
  	call_void_vb_qop(vb, buf_finish, vb);
  
@@ -252,7 +252,7 @@ index cd666f20b299..32ddd4775cfb 100644
  
  	/* Remove from videobuf queue */
  	list_del(&vb->queued_entry);
-@@ -1633,8 +1635,8 @@ int vb2_core_dqbuf(struct vb2_queue *q, unsigned int *pindex, void *pb,
+@@ -1630,8 +1632,8 @@ int vb2_core_dqbuf(struct vb2_queue *q, unsigned int *pindex, void *pb,
  	/* go back to dequeued state */
  	__vb2_dqbuf(vb);
  
@@ -325,7 +325,7 @@ index 574ff2ae94be..053639be475e 100644
  	/* Buffer handlers */
  	int (*vidioc_reqbufs)(struct file *file, void *fh,
 diff --git a/include/uapi/linux/videodev2.h b/include/uapi/linux/videodev2.h
-index ccdd0ff58f94..bd6fff5a6ac5 100644
+index 14b77a221d66..c2c3aa4a4fdc 100644
 --- a/include/uapi/linux/videodev2.h
 +++ b/include/uapi/linux/videodev2.h
 @@ -143,6 +143,7 @@ enum v4l2_buf_type {
@@ -345,7 +345,7 @@ index ccdd0ff58f94..bd6fff5a6ac5 100644
  #define V4L2_CAP_READWRITE              0x01000000  /* read/write systemcalls */
  #define V4L2_CAP_ASYNCIO                0x02000000  /* async I/O */
  #define V4L2_CAP_STREAMING              0x04000000  /* streaming I/O ioctls */
-@@ -659,6 +662,8 @@ struct v4l2_pix_format {
+@@ -681,6 +684,8 @@ struct v4l2_pix_format {
  /* priv field value to indicates that subsequent fields are valid. */
  #define V4L2_PIX_FMT_PRIV_MAGIC		0xfeedcafe
  
@@ -354,7 +354,7 @@ index ccdd0ff58f94..bd6fff5a6ac5 100644
  /* Flags */
  #define V4L2_PIX_FMT_FLAG_PREMUL_ALPHA	0x00000001
  
-@@ -2032,6 +2037,17 @@ struct v4l2_sdr_format {
+@@ -2054,6 +2059,17 @@ struct v4l2_sdr_format {
  	__u8				reserved[24];
  } __attribute__ ((packed));
  
@@ -372,7 +372,7 @@ index ccdd0ff58f94..bd6fff5a6ac5 100644
  /**
   * struct v4l2_format - stream data format
   * @type:	enum v4l2_buf_type; type of the data stream
-@@ -2051,6 +2067,7 @@ struct v4l2_format {
+@@ -2073,6 +2089,7 @@ struct v4l2_format {
  		struct v4l2_vbi_format		vbi;     /* V4L2_BUF_TYPE_VBI_CAPTURE */
  		struct v4l2_sliced_vbi_format	sliced;  /* V4L2_BUF_TYPE_SLICED_VBI_CAPTURE */
  		struct v4l2_sdr_format		sdr;     /* V4L2_BUF_TYPE_SDR_CAPTURE */

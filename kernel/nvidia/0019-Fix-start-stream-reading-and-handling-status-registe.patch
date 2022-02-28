@@ -1,4 +1,4 @@
-From 5fda4826d82742432d81f3d68411280947299571 Mon Sep 17 00:00:00 2001
+From 2fb920400f00b0e8fa5cd5c6ad749b7974740097 Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Wed, 17 Nov 2021 19:53:04 +0200
 Subject: [PATCH] Fix start stream reading and handling status register
@@ -9,7 +9,7 @@ Signed-off-by: Nael Masalha <nael.masalha@intel.com>
  1 file changed, 11 insertions(+), 6 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 0a804cc..d25b101 100644
+index 0a804cc6a..d25b10199 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -98,7 +98,7 @@ enum ds5_mux_pad {
@@ -66,5 +66,5 @@ index 0a804cc..d25b101 100644
 -MODULE_VERSION("1.0.0.3");
 +MODULE_VERSION("1.0.0.4");
 -- 
-2.7.4
+2.17.1
 

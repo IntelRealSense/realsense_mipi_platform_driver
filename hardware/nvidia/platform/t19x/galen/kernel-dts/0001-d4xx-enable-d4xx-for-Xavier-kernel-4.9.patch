@@ -1,11 +1,11 @@
-From 04a1a73ebc5770790913822921a34a63b43ca897 Mon Sep 17 00:00:00 2001
+From 698f5bf4dbb9bfab10868d67e7ef2f0f8f406c1d Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Sun, 19 Jan 2020 17:02:04 +0200
 Subject: [PATCH] d4xx: enable d4xx for Xavier, kernel 4.9
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
- common/tegra194-camera-d4xx.dtsi   | 447 +++++++++++++++++++++++++++++++++++++
+ common/tegra194-camera-d4xx.dtsi   | 447 +++++++++++++++++++++++++++++
  tegra194-p2888-0001-p2822-0000.dts |   5 +-
  2 files changed, 450 insertions(+), 2 deletions(-)
  create mode 100644 common/tegra194-camera-d4xx.dtsi
@@ -477,5 +477,5 @@ index f4073db..dc4e143 100644
 +#include "common/tegra194-camera-d4xx.dtsi"
 +/*#include "t19x-common-modules/tegra194-camera-plugin-manager.dtsi"*/
 -- 
-2.7.4
+2.17.1
 

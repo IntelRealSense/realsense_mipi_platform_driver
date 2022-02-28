@@ -1,20 +1,20 @@
-From c776fa929825c0244b5bff149aae01d6b03d353d Mon Sep 17 00:00:00 2001
+From e22b5b530b4aef1a46d0cb899fb8096df9f99a1d Mon Sep 17 00:00:00 2001
 From: Xin Zhang <xin.x.zhang@intel.com>
 Date: Tue, 8 Feb 2022 20:01:34 +0800
 Subject: [PATCH] Disable virtual channel 2 IR metadata
 
 Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
 ---
- drivers/media/platform/tegra/camera/vi/channel.c  |  2 ++
- drivers/media/platform/tegra/camera/vi/graph.c    | 14 ++++++++------
- drivers/media/platform/tegra/camera/vi/vi5_fops.c |  2 ++
- 3 files changed, 12 insertions(+), 6 deletions(-)
+ drivers/media/platform/tegra/camera/vi/channel.c |  2 ++
+ drivers/media/platform/tegra/camera/vi/graph.c   | 16 +++++++++-------
+ .../media/platform/tegra/camera/vi/vi5_fops.c    |  2 ++
+ 3 files changed, 13 insertions(+), 7 deletions(-)
 
 diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
-index 56ad42c01..044030fc1 100644
+index bc3f92a60..a57cf8645 100644
 --- a/drivers/media/platform/tegra/camera/vi/channel.c
 +++ b/drivers/media/platform/tegra/camera/vi/channel.c
-@@ -2675,10 +2675,12 @@ int tegra_channel_init(struct tegra_channel *chan)
+@@ -2723,10 +2723,12 @@ int tegra_channel_init(struct tegra_channel *chan)
  
  	/*FIXME: init embedded channel only if embedded is set in DT*/
  	/*if (chan->embedded.height) {*/
@@ -28,44 +28,47 @@ index 56ad42c01..044030fc1 100644
  
  	chan->init_done = true;
 diff --git a/drivers/media/platform/tegra/camera/vi/graph.c b/drivers/media/platform/tegra/camera/vi/graph.c
-index 1ae6adf95..eeabd8112 100644
+index 3ab116534..6544f884f 100644
 --- a/drivers/media/platform/tegra/camera/vi/graph.c
 +++ b/drivers/media/platform/tegra/camera/vi/graph.c
-@@ -365,13 +365,15 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
- 		return ret;
+@@ -389,15 +389,17 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
+ 		goto register_device_error;
  	}
  
 -	emb_ret = video_register_device(&chan->embedded.video,
 -			VFL_TYPE_GRABBER, -1);
--	if (emb_ret < 0)
--		dev_err(&chan->video.dev, "%s(): register embedded %s: %d\n",
--			__func__, chan->embedded.video.name, emb_ret);
--	dev_err(&chan->video.dev, "%s(): register embedded %s: %d\n",
+-	if (emb_ret < 0) {
 +	if (chan->id == 0 || chan->id == 1) {
 +		emb_ret = video_register_device(&chan->embedded.video,
 +				VFL_TYPE_GRABBER, -1);
-+		if (emb_ret < 0)
-+			dev_err(&chan->video.dev, "%s(): register embedded %s: %d\n",
- 				__func__, chan->embedded.video.name, emb_ret);
-+		dev_err(&chan->video.dev, "%s(): register embedded %s: %d\n",
++		if (emb_ret < 0) {
++			dev_err(&chan->video->dev, "%s(): register embedded %s: %d\n",
++				__func__, chan->embedded.video.name, emb_ret);
++			goto register_embedded_device_error;
++		}
+ 		dev_err(&chan->video->dev, "%s(): register embedded %s: %d\n",
+-			__func__, chan->embedded.video.name, emb_ret);
+-		goto register_embedded_device_error;
 +					__func__, chan->embedded.video.name, emb_ret);
-+	}
+ 	}
+-	dev_err(&chan->video->dev, "%s(): register embedded %s: %d\n",
+-				__func__, chan->embedded.video.name, emb_ret);
  
  	/* Create links for every entity. */
  	list_for_each_entry(entity, &chan->entities, list) {
 diff --git a/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
-index 96e98945b..22c6b4dba 100644
+index fd3d19566..0e2fe065b 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi5_fops.c
 +++ b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
-@@ -763,6 +763,8 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
- 				chan->embedded.height =
- 					sensor_mode->image_properties.\
- 					embedded_metadata_height;
-+				if (chan->id != 0 && chan->id != 1)
-+					chan->embedded.height = 0;
- 				/* rounding up to page size */
- 				emb_buf_size =
- 					round_up(chan->embedded.width *
+@@ -780,6 +780,8 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
+ 						chan->embedded.height =
+ 							sensor_mode->image_properties.\
+ 							embedded_metadata_height;
++						if (chan->id != 0 && chan->id != 1)
++							chan->embedded.height = 0;
+ 						/* rounding up to page size */
+ 						emb_buf_size =
+ 							round_up(chan->\
 -- 
 2.17.1
 

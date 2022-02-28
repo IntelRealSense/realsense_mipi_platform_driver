@@ -1,17 +1,17 @@
-From e1bf5c8bec2ef20ca71c9fcc52523d903e7cfe1d Mon Sep 17 00:00:00 2001
+From 96ea72f2d8498c1722629811a9361269f7e49bdf Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Sun, 19 Jan 2020 16:28:49 +0200
 Subject: [PATCH] d4xx: enable d4xx on Xavier, kernel 4.9
 
 Signed-off-by: Nael Masalha <nael.masalha@intel.com>
 ---
- drivers/media/i2c/d4xx.c                           | 113 ++++++++++++---------
- .../media/platform/tegra/camera/vi/vi5_formats.h   |  23 +++--
- drivers/video/tegra/camera/tegra_camera_platform.c |   5 +
+ drivers/media/i2c/d4xx.c                      | 113 ++++++++++--------
+ .../platform/tegra/camera/vi/vi5_formats.h    |  23 +++-
+ .../tegra/camera/tegra_camera_platform.c      |   5 +
  3 files changed, 85 insertions(+), 56 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 2156d8e..c7c56b6 100644
+index 2156d8e58..c7c56b6ab 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -736,7 +736,8 @@ static int ds5_sensor_get_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_pad_con
@@ -279,7 +279,7 @@ index 2156d8e..c7c56b6 100644
  
  	state->vcc = devm_regulator_get(&c->dev, "vcc");
 diff --git a/drivers/media/platform/tegra/camera/vi/vi5_formats.h b/drivers/media/platform/tegra/camera/vi/vi5_formats.h
-index 51cbbad..7d2169e 100644
+index 51cbbad5b..7d2169ee0 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi5_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi5_formats.h
 @@ -87,6 +87,8 @@ static const struct tegra_video_format vi5_video_formats[] = {
@@ -337,10 +337,10 @@ index 51cbbad..7d2169e 100644
  
  #endif
 diff --git a/drivers/video/tegra/camera/tegra_camera_platform.c b/drivers/video/tegra/camera/tegra_camera_platform.c
-index 81aebfb..5aaf9f9 100644
+index c63d9d299..a192531eb 100644
 --- a/drivers/video/tegra/camera/tegra_camera_platform.c
 +++ b/drivers/video/tegra/camera/tegra_camera_platform.c
-@@ -960,6 +960,11 @@ int tegra_camera_update_clknbw(void *priv, bool stream_on)
+@@ -970,6 +970,11 @@ int tegra_camera_update_clknbw(void *priv, bool stream_on)
  	struct tegra_camera_info *info;
  	int ret = 0;
  
@@ -353,5 +353,5 @@ index 81aebfb..5aaf9f9 100644
  	if (!info)
  		return -EINVAL;
 -- 
-2.7.4
+2.17.1
 

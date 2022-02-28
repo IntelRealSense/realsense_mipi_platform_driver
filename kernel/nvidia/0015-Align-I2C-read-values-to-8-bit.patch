@@ -1,4 +1,4 @@
-From 28f01649f78823ba81a557667236609f3d8f9e86 Mon Sep 17 00:00:00 2001
+From 7323d483bd9175cd9e1815632a262706f5cdf1a7 Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Sun, 26 Sep 2021 15:42:29 +0300
 Subject: [PATCH] Align I2C read values to 8-bit

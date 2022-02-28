@@ -1,4 +1,4 @@
-From 40872202cf1348d5e819b6a03557d67c3adacea8 Mon Sep 17 00:00:00 2001
+From 8a345d767e0276c9e226d2df153b478ee788d2b0 Mon Sep 17 00:00:00 2001
 From: Nael Masalha <nael.masalha@intel.com>
 Date: Thu, 19 Dec 2019 14:20:02 +0200
 Subject: [PATCH] d4xx: Add res 2048x1536 to RGB camera
@@ -12,7 +12,7 @@ Signed-off-by: Nael Masalha <nael.masalha@intel.com>
  1 file changed, 5 insertions(+)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 78b3941..2156d8e 100644
+index 78b39410b..2156d8e58 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -483,6 +483,11 @@ static const struct ds5_resolution ds5_rgb_sizes[] = {
@@ -28,5 +28,5 @@ index 78b3941..2156d8e 100644
  };
  
 -- 
-2.7.4
+2.17.1
 

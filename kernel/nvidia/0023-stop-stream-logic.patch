@@ -1,4 +1,4 @@
-From 84fdb8f6a163e481207138182b35d6fc1ef9c83f Mon Sep 17 00:00:00 2001
+From 1d0f79c1b527d99782ffd77456f7018cb475a52c Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Wed, 12 Jan 2022 15:17:14 +0200
 Subject: [PATCH] stop stream logic

@@ -1,4 +1,4 @@
-From 825fa16e8710f0a4337f70420c9c80238427f52e Mon Sep 17 00:00:00 2001
+From bad342c64c0221581d84fc2971706ffddbce0b64 Mon Sep 17 00:00:00 2001
 From: Emil Jahshan <emil.jahshan@intel.com>
 Date: Thu, 2 Dec 2021 14:31:14 +0200
 Subject: [PATCH] enable RGB MD
