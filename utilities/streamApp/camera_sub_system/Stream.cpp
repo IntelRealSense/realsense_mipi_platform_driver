@@ -276,6 +276,15 @@ int Stream::configure(realsense::camera_sub_system::Format format)
         RS_LOGE("VIDIOC_S_FMT failed, errno %d", errno);
         return -1;
     } else {
+        if (v4l2Format.fmt.pix.pixelformat != mFormat.v4l2Format ||
+            v4l2Format.fmt.pix.width != mFormat.width ||
+            v4l2Format.fmt.pix.height != mFormat.height) {
+            RS_LOGE("VIDIOC_S_FMT fails to set to %s width(%d) height(%d) done",
+                    fourCCToString(mFormat.v4l2Format).c_str(),
+                    mFormat.width,
+                    mFormat.height);
+            return -1;
+        }
         RS_LOGI("VIDIOC_S_FMT to %s width(%d) height(%d) done",
                 fourCCToString(mFormat.v4l2Format).c_str(),
                 mFormat.width,
@@ -410,6 +419,7 @@ int Stream::start(vector<RsBuffer*> rsBuffers, uint32_t memoryType)
     ret = ioctl(mFileDescriptor, VIDIOC_STREAMON, &type);
     if (ret < 0) {
         RS_LOGE("VIDIOC_STREAMON failed, errno %d", errno);
+        cleanup();
         close(mStopEventFD);
         close(mFileDescriptor);
         return -1;
@@ -419,26 +429,13 @@ int Stream::start(vector<RsBuffer*> rsBuffers, uint32_t memoryType)
     return 0;
 }
 
-int Stream::stop()
+int Stream::cleanup()
 {
-    RS_AUTOLOG();
-
-    {
-    lock_guard<mutex> lock(mStreamingMutex);
-
-    if (!mIsStreaming) {
-        RS_LOGW("Stream is stopped");
-        return 0;
-    }
-    mIsStreaming =false;
-
     // write an event to stop the streaming thread loop
     uint64_t stop {StopEventFdValue};
     ssize_t size = write(mStopEventFD, &stop, sizeof(uint64_t));
     if (size != sizeof(uint64_t)) {
         RS_LOGE("Failed to stop streaming thread %d", errno);
-        return -1;
-    }
     }
 
     // a stop event was sent. wait for the streaming thread to end.
@@ -448,23 +445,37 @@ int Stream::stop()
         RS_LOGE("Failed joining streaming thread.");
     }
 
-    {
+    if (V4L2_MEMORY_MMAP == mMemoryType)
+        unInitMmap();
+
+    return 0;
+}
+
+int Stream::stop()
+{
+    int ret;
+    RS_AUTOLOG();
+
     lock_guard<mutex> lock(mStreamingMutex);
+
+    if (!mIsStreaming) {
+        RS_LOGW("Stream is stopped");
+        return 0;
+    }
+
+    mIsStreaming =false;
+
     enum v4l2_buf_type type {V4L2_BUF_TYPE_VIDEO_CAPTURE};
-    int ret = ioctl(mFileDescriptor, VIDIOC_STREAMOFF, &type);
+    ret = ioctl(mFileDescriptor, VIDIOC_STREAMOFF, &type);
     if (ret < 0)
         RS_LOGE("VIDIOC_STREAMOFF failed, errno %d", errno);
 
-    if (V4L2_MEMORY_MMAP == mMemoryType) {
-        unInitMmap();
-    }
+    ret = cleanup();
 
     close(mFileDescriptor);
     close(mStopEventFD);
-    close(mFileDescriptor);
-    }
 
-    return 0;
+    return ret;
 }
 
 int Stream::setFPS(uint32_t value)
