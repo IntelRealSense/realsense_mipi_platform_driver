@@ -51,31 +51,27 @@ Then the necessary files are at
 - dtb `images/arch/arm64/boot/dts/tegra194-p2888-0001-p2822-0000.dtb`
 - D457 driver `images/drivers/media/i2c/d4xx.ko`
 
-## Boot Jetson AGX Xavier with our images
+## Install kernel and D457 driver to Jetson AGX Xavier
 
 Please copy the 3 files to the Jetson AGX Xavier board, and do the following:
+
+Edit `/boot/extlinux/extlinux.conf` primary boot option's LINUX/FDT lines to use built kernel image and dtb file:
+
+- LINUX /boot/Image
+- FDT /boot/dtb/tegra194-p2888-0001-p2822-000.dtb
+
+FDT entry doesn't exist by default, add it.
+
+It's recommended to save the original kernel image as backup boot option. `sudo cp /boot/Image /boot/Image.backup` and use it in the backup boot option in `/boot/extlinux/extlinux.conf`.
+
+Then move the images in place and enable driver autoload at kernel boot.
 
 ```
 sudo cp Image /boot
 sudo cp tegra194-p2888-0001-p2822-0000.dtb /boot/dtb
-
-# edit /boot/extlinux/extlinux.conf primary boot option for the LINUX/FDT lines to use built kernel image and dtb file:
-#     LINUX /boot/Image
-#     FDT /boot/dtb/tegra194-p2888-0001-p2822-000.dtb // FDT entry doesn't exist by default, add it
-
-# reboot to use built kernel and dtb
-sudo reboot
+sudo cp d4xx.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/i2c/
+echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf
+sudo depmod
 ```
 
-Make sure the booted kernel is your built image. Run `dmesg | head` to check, the second line should have your built user/machine/date info:
-
-```
-[    0.000000] Linux version 4.9.253-tegra (xzhang84@flexbj-realsense) (gcc version 7.5.0 (Ubuntu/Linaro 7.5.0-3ubuntu1~18.04) ) #32 SMP PREEMPT Sun Feb 20 15:53:46 CST 2022
-```
-
-If the kernel/dtb is right, run the SerDes script and load D457 driver module on Jetson, then everything should be ready to use:
-
-```
-bash ./perc_hw_ds5u_android-jetson_tx2/scripts/SerDes_D457.sh
-sudo insmod d4xx.ko
-```
+After rebooting Jetson, the D457 driver should work.
