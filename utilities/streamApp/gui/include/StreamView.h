@@ -23,7 +23,6 @@
 #define __STREAM_VIEW_H__
 
 #include <mutex>
-#include <atomic>
 
 #include "CSSTypes.h"
 #include "StreamUtils.h"
@@ -113,7 +112,6 @@ private:
 
     // Track bars GUI values
     int mStartStopTBValue {1};
-    std::atomic<bool> stop_flag {false};
 
     int start(uint32_t memoryType);
     int stop();

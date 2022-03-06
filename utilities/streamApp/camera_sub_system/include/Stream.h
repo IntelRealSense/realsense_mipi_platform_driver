@@ -141,7 +141,6 @@ private:
     int enumFrameIntervals(unsigned int, std::uint32_t, std::uint32_t, std::uint32_t);
     int initMmap(std::vector<RsBuffer*> rsBuffers);
     int unInitMmap();
-    int cleanup();
     void streamingThreadLoop();
     bool isStopEvent();
 

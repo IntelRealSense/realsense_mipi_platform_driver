@@ -129,7 +129,7 @@ int StreamView::draw()
     if (start(V4L2_MEMORY_MMAP) < 0)
         return -1;
 
-    while (!stop_flag) {
+    while (true) {
         auto index = mStream.getBufferIndex();
         if (index != UINT32_MAX) {
             processCaptureResult(index);
@@ -249,7 +249,6 @@ int StreamView::start(uint32_t memoryType) {
 
 int StreamView::stop() {
     RS_AUTOLOG();
-    stop_flag = true;
     mStream.stop();
     if (V4L2_MEMORY_USERPTR == mMemoryType)
         for (RsBuffer rsBuf : mRsBuffers)
