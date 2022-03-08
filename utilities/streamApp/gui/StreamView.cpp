@@ -364,7 +364,11 @@ int StreamView::setLaserValue(int value) {
 
 int StreamView::setFPS(int value) {
     RS_AUTOLOG();
-    return mStream.setFPS((uint32_t)value);
+    int ret;
+    if ((ret = mStream.setFPS((uint32_t)value)) == 0)
+        mFormat.fps = (uint32_t)value;
+
+    return ret;
 }
 
 int StreamView::setResolution(uint32_t width, uint32_t height)
