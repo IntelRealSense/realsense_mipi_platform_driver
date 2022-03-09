@@ -58,7 +58,7 @@ Please copy the 3 files to the Jetson AGX Xavier board, and do the following:
 Edit `/boot/extlinux/extlinux.conf` primary boot option's LINUX/FDT lines to use built kernel image and dtb file:
 
 - LINUX /boot/Image
-- FDT /boot/dtb/tegra194-p2888-0001-p2822-000.dtb
+- FDT /boot/dtb/tegra194-p2888-0001-p2822-0000.dtb
 
 FDT entry doesn't exist by default, add it.
 
