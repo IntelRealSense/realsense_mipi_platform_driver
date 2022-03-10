@@ -1,32 +1,32 @@
-From 664dd6a7a501cae8f6f05999937a11b21ee9ad5c Mon Sep 17 00:00:00 2001
+From 5bf8978b3dfd85154be1d0cd137dd243b5683ebf Mon Sep 17 00:00:00 2001
 From: "Shikun, Ding" <shikun.ding@intel.com>
 Date: Thu, 17 Feb 2022 17:44:10 +0800
 Subject: [PATCH] y8i support for test
 
 Signed-off-by: Shikun, Ding <shikun.ding@intel.com>
 ---
- drivers/media/i2c/d4xx.c                        | 17 ++++++++++++++++-
- .../platform/tegra/camera/vi/vi4_formats.h      |  2 ++
- .../platform/tegra/camera/vi/vi5_formats.h      |  3 +++
- 3 files changed, 21 insertions(+), 1 deletion(-)
+ drivers/media/i2c/d4xx.c                      | 19 ++++++++++++++++++-
+ .../platform/tegra/camera/vi/vi4_formats.h    |  6 ++++--
+ .../platform/tegra/camera/vi/vi5_formats.h    |  7 +++++--
+ 3 files changed, 27 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 12ece6b11..097ee10ca 100644
+index cb84f6fcd..438615470 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
-@@ -676,6 +676,11 @@ static const struct ds5_format ds5_depth_formats_d43x[] = {
+@@ -728,6 +728,11 @@ static const struct ds5_format ds5_depth_formats_d43x[] = {
  		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
  		.n_resolutions = ARRAY_SIZE(d43x_depth_sizes),
  		.resolutions = d43x_depth_sizes,
 +	}, {
-+		.data_type = 0x32,	/* Y8I */
-+		.mbus_code = MEDIA_BUS_FMT_RGB565_1X16,
++		.data_type = 0x1e,	/* Y8I */
++		.mbus_code = MEDIA_BUS_FMT_YVYU8_1X16,
 +		.n_resolutions = ARRAY_SIZE(d43x_depth_sizes),
 +		.resolutions = d43x_depth_sizes,
  	}, {
  		.data_type = 0x24,	/* 24-bit Calibration */
  		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
-@@ -692,11 +697,16 @@ static const struct ds5_format ds5_depth_formats_d46x[] = {
+@@ -744,11 +749,16 @@ static const struct ds5_format ds5_depth_formats_d46x[] = {
  		.n_resolutions = ARRAY_SIZE(d46x_depth_sizes),
  		.resolutions = d46x_depth_sizes,
  	}, {
@@ -37,49 +37,80 @@ index 12ece6b11..097ee10ca 100644
  		.resolutions = d46x_depth_sizes,
 +	}, {
 +		/* First format: default */
-+		.data_type = 0x32,	/* Y8I */
-+		.mbus_code = MEDIA_BUS_FMT_RGB565_1X16,
++		.data_type = 0x1e,	/* Y8I */
++		.mbus_code = MEDIA_BUS_FMT_YVYU8_1X16,
 +		.n_resolutions = ARRAY_SIZE(d46x_depth_sizes),
 +		.resolutions = d46x_depth_sizes,
  	}, {
  		.data_type = 0x24,	/* 24-bit Calibration */
  		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
-@@ -714,6 +724,11 @@ static const struct ds5_format ds5_y_formats_ds5u[] = {
+@@ -766,6 +776,11 @@ static const struct ds5_format ds5_y_formats_ds5u[] = {
  		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
  		.n_resolutions = ARRAY_SIZE(y8_sizes),
  		.resolutions = y8_sizes,
 +	}, {
-+		.data_type = 0x32,	/* Y8I */
-+		.mbus_code = MEDIA_BUS_FMT_RGB565_1X16,
++		.data_type = 0x1e,	/* Y8I */
++		.mbus_code = MEDIA_BUS_FMT_YVYU8_1X16,
 +		.n_resolutions = ARRAY_SIZE(y8_sizes),
 +		.resolutions = y8_sizes,
  	}, {
  		.data_type = 0x24,	/* 24-bit Calibration */
  		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
+@@ -1116,6 +1131,8 @@ static int ds5_configure(struct ds5 *state)
+ 	// Still set depth stream data type as original 0x31
+ 	if (state->is_depth)
+ 		ret = ds5_write(state, dt_addr, 0x31);
++	if (state->is_y8 && fmt == 0x1e) //FIXME
++		ret = ds5_write(state, dt_addr, 0x32);
+ 	else
+ 		ret = ds5_write(state, dt_addr, fmt);
+ 	if (ret < 0)
 diff --git a/drivers/media/platform/tegra/camera/vi/vi4_formats.h b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
-index 6f8b1fac7..b0ccffc62 100644
+index 6f8b1fac7..cd1a90d86 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi4_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
+@@ -132,8 +132,8 @@ static const struct tegra_video_format vi4_video_formats[] = {
+ 				YUV422_8, VYUY, "YUV 4:2:2"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YUYV8_1X16, 2, 1, T_Y8_U8__Y8_V8,
+ 				YUV422_8, YUYV, "YUV 4:2:2"),
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
+-				YUV422_8, YVYU, "YUV 4:2:2"),
++	//TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
++	//			YUV422_8, YVYU, "YUV 4:2:2"),
+ 	//TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 1, 1, T_Y8__V8U8_N422,
+ 	//			YUV422_8, NV16, "NV16"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_2X8, 2, 1, T_U8_Y8__V8_Y8,
 @@ -155,6 +155,8 @@ static const struct tegra_video_format vi4_video_formats[] = {
  	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
  				RGB888, Y12I, "Y12I 24"),
  
-+	TEGRA_VIDEO_FORMAT(RGB565, 16, RGB565_1X16, 2, 1, T_R5G6B5,
-+				USER_3, Y8I, "Y8I 16"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
++				YUV422_8, Y8I, "Y8I 16"),
  };
  
  #endif
 diff --git a/drivers/media/platform/tegra/camera/vi/vi5_formats.h b/drivers/media/platform/tegra/camera/vi/vi5_formats.h
-index 7d2169ee0..0722df200 100644
+index 7d2169ee0..acd6d13ec 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi5_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi5_formats.h
+@@ -131,8 +131,8 @@ static const struct tegra_video_format vi5_video_formats[] = {
+ 				YUV422_8, VYUY, "YUV 4:2:2"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YUYV8_1X16, 2, 1, T_Y8_U8__Y8_V8,
+ 				YUV422_8, YUYV, "YUV 4:2:2"),
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
+-				YUV422_8, YVYU, "YUV 4:2:2"),
++	//TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
++	//			YUV422_8, YVYU, "YUV 4:2:2"),
+ 	//TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 1, 1, T_Y8__V8U8_N422,
+ 	//			YUV422_8, NV16, "NV16"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_2X8, 2, 1, T_U8_Y8__V8_Y8,
 @@ -152,6 +152,9 @@ static const struct tegra_video_format vi5_video_formats[] = {
  	// R[7:3]R[3:0] | L[3:0]R[11:8] | L[11:8]L[7:4] | ALIGN[7:0]
  	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
  				RGB888, Y12I, "Y12I 24"),
 +
-+	TEGRA_VIDEO_FORMAT(RGB565, 16, RGB565_1X16, 2, 1, T_R5G6B5,
-+				USER_3, Y8I, "Y8I 16"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
++				YUV422_8, Y8I, "Y8I 16"),
  };
  
  #endif
