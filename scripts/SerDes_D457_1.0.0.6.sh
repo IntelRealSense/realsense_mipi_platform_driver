@@ -1,16 +1,18 @@
 #D457 SerDes script: 
 # D457_MAX9295A_MAX9296A_Intel.cpp
-# Version: 1.0.0.7
+# Version: 1.0.0.6
 # Compatible Driver Version: 1.0.1.0+
 # Compatible FW Version: 5.13.0.150+
-# Depth (with Metadata)  +   RGB (with Metadata) + IR (Y8/Y8I) + IMU
+# The script shall be used for the following configuration:
+# Depth (with Metadata)  +   RGB (with Metadata) + IR
+# Tracked on DSO-18060
 
 # Written by Oliver Jakobi, Edited by Eddie De Reza
 # Analog Devices
-# Feb 15, 2022
+# Feb 1, 2022
 
 # This script sets up MAX9295A and MAX9296A.
-# EMB8 will be carried with Depth, RGB
+# EMB8 will be carried with Depth, RGB , Y8 (Not Y12I)
 
 # MAX9295A
 # CSI Port A:	2 lanes
@@ -19,8 +21,8 @@
 # Pipe Y:	RGB 	DT 0x1E VC1
 #		EMB8	DT 0x12 VC1
 # Pipe Z:	Y8 	DT 0x2A VC2
-#		Y8I	DT 0x32 VC2
-# Pipe U:	IMU 	DT 0x2A VC3
+#		EMB8	DT 0x12 VC2
+# Pipe U:	Y12I 	DT 0x24 VC2
 
 # MAX9296A
 # CSI Port A:	2 lanes, 1500Mbps/lane
@@ -29,8 +31,8 @@
 # Pipe Y:	RGB 	DT 0x1E VC1
 #		EMB8	DT 0x12 VC1
 # Pipe Z:	Y8 	DT 0x2A VC2
-#		Y8I     DT 0x32 VC2
-# Pipe U:	IMU 	DT 0x2A VC3
+#		EMB8	DT 0x12 VC2
+# Pipe U:	Y12I 	DT 0x24 VC2
 
 # Default Power Up States
 # MAX9295A
@@ -84,7 +86,7 @@ sudo i2cset -f -y 2 0x40 0x03 0x5215 w # Pipe X pulls EMB8 (DT 0x12)
 sudo i2cset -f -y 2 0x40 0x03 0x0109 w # Pipe X pulls VC0
 sudo i2cset -f -y 2 0x40 0x03 0x000A w
 
-sudo i2cset -f -y 2 0x40 0x03 0x0F12 w # Double 8-bit data on pipe X, Y, Z & U
+sudo i2cset -f -y 2 0x40 0x03 0x0712 w # Double 8-bit data on pipe X, Y ,Z  
 sudo i2cset -f -y 2 0x40 0x03 0x301C w # BPP = 16 in pipe X 
                                 
 sudo i2cset -f -y 2 0x40 0x03 0x5E16 w # Pipe Y pulls RGB (DT 0x1E)
@@ -93,18 +95,17 @@ sudo i2cset -f -y 2 0x40 0x03 0x020B w # Pipe Y pulls VC1
 sudo i2cset -f -y 2 0x40 0x03 0x000C w
 sudo i2cset -f -y 2 0x40 0x03 0x301D w # BPP = 16 in pipe Y                         
 
-sudo i2cset -f -y 2 0x40 0x03 0x6A18 w # Pipe Z pulls Y8 (DT 0x2A) 
-# sudo i2cset -f -y 2 0x40 0x03 0x5219 w # Pipe Z pulls EMB8 (DT 0x12)
+sudo i2cset -f -y 2 0x40 0x03 0x6A18 w # Pipe Z pulls Y8 (DT 0x2A) -- reg 0x0318 data - 0x6A
+# sudo i2cset -f -y 2 0x40 0x03 0x5219 w # Pipe Z pulls EMB8 (DT 0x12) -- reg 0x0319 data - 0x52
 sudo i2cset -f -y 2 0x40 0x03 0x7219 w # Pipe Z pulls Y8I (DT 0x32)
 sudo i2cset -f -y 2 0x40 0x03 0x040D w # Pipe Z pulls VC2
 sudo i2cset -f -y 2 0x40 0x03 0x000E w
-sudo i2cset -f -y 2 0x40 0x03 0x301E w # BPP = 16 in pipe Z      
-
-sudo i2cset -f -y 2 0x40 0x03 0x6A1A w # Pipe U pulls IMU (DT 0x2A)
-sudo i2cset -f -y 2 0x40 0x03 0x080F w # Pipe U pulls VC3
+sudo i2cset -f -y 2 0x40 0x03 0x301E w # BPP = 16 in pipe Z -- reg 0x031E data - 0x30
+                                
+sudo i2cset -f -y 2 0x40 0x03 0x641A w # Pipe U pulls Y12I (DT 0x24)
+sudo i2cset -f -y 2 0x40 0x03 0x040F w # Pipe U pulls VC2
 sudo i2cset -f -y 2 0x40 0x03 0x0010 w
-sudo i2cset -f -y 2 0x40 0x03 0x301F w # BPP = 16 in pipe U  
-          
+                                
 sudo i2cset -f -y 2 0x40 0x03 0xD215 w # Enable independent VC's
 
 sudo i2cset -f -y 2 0x40 0x01 0x0E02 w # LIM_HEART Pipe X: Disabled
@@ -113,16 +114,19 @@ sudo i2cset -f -y 2 0x40 0x01 0x0E12 w # LIM_HEART Pipe Z: Disabled
 sudo i2cset -f -y 2 0x40 0x01 0x0E1A w # LIM_HEART Pipe U: Disabled
 
 
+
 # MAX9296A Setup **********************************************************
 
 sudo i2cset -f -y 2 0x48 0x04 0x504A w # 4 lanes on port A // Write 0x50 for 2 lanes
                                 
 sudo i2cset -f -y 2 0x48 0x03 0x2F20 w # 1500Mbps/lane on port A
                                 
-#sudo i2cset -f -y 2 0x48 0x03 0x001C w # Do not un-double 8bpp in this register
-#sudo i2cset -f -y 2 0x48 0x03 0x001F w # Do not un-double 8bpp in this register
-sudo i2cset -f -y 2 0x48 0x04 0x1073 w # Un-double 8-bit data, Enable ALT2_MEM_MAP8
-                                						   
+sudo i2cset -f -y 2 0x48 0x03 0x001C w # Un-double 8-bit data in , do not un-double 8bpp
+sudo i2cset -f -y 2 0x48 0x03 0x001F w # Un-double 8-bit data in , do not un-double 8bpp
+sudo i2cset -f -y 2 0x48 0x04 0x1073 w # Un-double 8-bit data, No:ALT_MEM_MAP8 & Yes:ALT2_MEM_MAP8
+                                						    
+sudo i2cset -f -y 2 0x48 0x02 0x3939 w # Force VS low in pipe U (VC2 VS will come from pipe Z, not needed for pipe U)
+
 sudo i2cset -f -y 2 0x48 0x04 0x0F0B w # Enable 4 mappings for Pipe X
 sudo i2cset -f -y 2 0x48 0x04 0x1E0D w # Map Depth  VC0
 sudo i2cset -f -y 2 0x48 0x04 0x1E0E w	
@@ -152,20 +156,14 @@ sudo i2cset -f -y 2 0x48 0x04 0x808F w # Map frame start  VC2
 sudo i2cset -f -y 2 0x48 0x04 0x8090 w
 sudo i2cset -f -y 2 0x48 0x04 0x8191 w # Map frame end  VC2
 sudo i2cset -f -y 2 0x48 0x04 0x8192 w
-# sudo i2cset -f -y 2 0x48 0x04 0x9293 w # Map EMB8, VC2
-# sudo i2cset -f -y 2 0x48 0x04 0x9294 w
 sudo i2cset -f -y 2 0x48 0x04 0xB293 w # Map Y8I, VC2
 sudo i2cset -f -y 2 0x48 0x04 0xB294 w
 sudo i2cset -f -y 2 0x48 0x04 0x55AD w # Map to PHY1 (master for port A)
                                 
-sudo i2cset -f -y 2 0x48 0x04 0x07CB w # Enable 3 mappings for Pipe U
-sudo i2cset -f -y 2 0x48 0x04 0xEACD w # Map IMU  VC3
-sudo i2cset -f -y 2 0x48 0x04 0xEACE w
-sudo i2cset -f -y 2 0x48 0x04 0xC0CF w # Map frame start  VC3
-sudo i2cset -f -y 2 0x48 0x04 0xC0D0 w
-sudo i2cset -f -y 2 0x48 0x04 0xC1D1 w # Map frame end VC3
-sudo i2cset -f -y 2 0x48 0x04 0xC1D2 w
-sudo i2cset -f -y 2 0x48 0x04 0x15ED w # Map to PHY1 (master for port A)
+sudo i2cset -f -y 2 0x48 0x04 0x01CB w # Enable 1 mappings for Pipe U (VC2 FS/FE will come from pipe Z, not needed in pipe U)
+sudo i2cset -f -y 2 0x48 0x04 0xA4CD w # Map Y12I  VC2
+sudo i2cset -f -y 2 0x48 0x04 0xA4CE w
+sudo i2cset -f -y 2 0x48 0x04 0x01ED w # Map to PHY1 (master for port A)
 
 sudo i2cset -f -y 2 0x48 0x01 0x2300 w # SEQ_MISS_EN Pipe X: Disabled / DIS_PKT_DET Pipe X: Disabled
 sudo i2cset -f -y 2 0x48 0x01 0x2312 w # SEQ_MISS_EN Pipe Y: Disabled / DIS_PKT_DET Pipe Y: Disabled
