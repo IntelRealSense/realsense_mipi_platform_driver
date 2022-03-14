@@ -1,4 +1,4 @@
-From 4c3968c97784c13063699685cabce06b502ae126 Mon Sep 17 00:00:00 2001
+From 8bb3d733b6bf3c81671a87e7e42d11c7859a081d Mon Sep 17 00:00:00 2001
 From: Xin Zhang <xin.x.zhang@intel.com>
 Date: Fri, 11 Mar 2022 11:10:14 +0800
 Subject: [PATCH] IR Y8I enabling changes
@@ -19,7 +19,7 @@ Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
  5 files changed, 24 insertions(+), 10 deletions(-)
 
 diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
-index 0457c5863..6d2fb81c6 100644
+index e696bb1d7..37ebd0a4c 100644
 --- a/drivers/media/i2c/d4xx.c
 +++ b/drivers/media/i2c/d4xx.c
 @@ -757,6 +757,11 @@ static const struct ds5_format ds5_y_formats_ds5u[] = {
@@ -34,9 +34,9 @@ index 0457c5863..6d2fb81c6 100644
  	}, {
  		.data_type = 0x24,	/* 24-bit Calibration */
  		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
-@@ -1083,9 +1088,15 @@ static int ds5_configure(struct ds5 *state)
+@@ -1095,9 +1100,15 @@ static int ds5_configure(struct ds5 *state)
+ 
  	fmt = sensor->streaming ? sensor->config.format->data_type : 0;
- 	md_fmt = 0x12;
  
 -	// Still set depth stream data type as original 0x31
 -	if (state->is_depth)
