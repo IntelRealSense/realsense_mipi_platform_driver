@@ -105,7 +105,7 @@ private:
     bool mSlaveMode;
 
     // Number of buffers for streaming
-    const std::uint8_t mBuffersCount {16};
+    const std::uint8_t mBuffersCount {4};
     uint32_t mMemoryType;
 
     std::vector<realsense::camera_sub_system::RsBuffer> mRsBuffers;
