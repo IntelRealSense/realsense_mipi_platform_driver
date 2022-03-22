@@ -121,7 +121,7 @@ index b7b9b1c46..cb84f6fcd 100644
 -		ret = ds5_write(state, DS5_IR_STREAM_MD, (0x2 << 8) | 0x12);
 -		if (ret < 0)
 -			return ret;
--		
+-
 -		if (state->is_y8 && motion_t->streaming) {
 -			ret = ds5_write(state, DS5_IR_OVERRIDE, mfmt);
 -			if (ret < 0)
@@ -159,7 +159,7 @@ index b7b9b1c46..cb84f6fcd 100644
 -		ret = ds5_write(state, DS5_DEPTH_STREAM_MD, 0x12);
 -		if (ret < 0)
 -			return ret;
--		
+-
 -		if (state->is_depth && depth->streaming) {
 -			// override output DT to 0x1E, since 0x31 is not supported in Jetson
 -			ret = ds5_write(state, DS5_DEPTH_OVERRIDE, 0x1E);

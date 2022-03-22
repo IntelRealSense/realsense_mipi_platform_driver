@@ -85,7 +85,7 @@ index 78de6aafc..088df4bc5 100644
 -			//}
 -
 -			ret = ds5_write(state, DS5_DEPTH_Y_FPS, depth->config.framerate);
-+		
++
 +		if (state->is_y8 && motion_t->streaming) {
 +			ret = ds5_write(state, 0x401C, mfmt);
  			if (ret < 0)
@@ -122,7 +122,7 @@ index 78de6aafc..088df4bc5 100644
 +		ret = ds5_write(state, DS5_DEPTH_STREAM_MD, 0x12);
 +		if (ret < 0)
 +			return ret;
-+		
++
 +		if (state->is_depth && depth->streaming) {
 +			// override output DT to 0x1E, since 0x31 is not supported in Jetson
 +			ret = ds5_write(state, 0x401C, 0x1E);
@@ -348,7 +348,7 @@ index 78de6aafc..088df4bc5 100644
 -	//	state->motion_t.sensor.streaming = true;
 +	dev_info(&client->dev, "%s(): cfg0 %x %ux%u cfg0_md %x %ux%u\n", __func__,
 +		 cfg0, dw, dh, cfg0_md, yw, yh);
-+		 
++
 +	dev_info(&client->dev, "%s(): cfg1 %x %ux%u cfg1_md %x %ux%u\n", __func__,
 +		 cfg1, dw, dh, cfg1_md, yw, yh);
  

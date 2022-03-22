@@ -141,7 +141,7 @@ index cc373ed6b..e6fcb417c 100644
 +		ret = ds5_write(state, DS5_IR_STREAM_MD, (0x2 << 8) | 0x12);
  		if (ret < 0)
  			return ret;
- 		
+
 @@ -1079,7 +1122,7 @@ static int ds5_configure(struct ds5 *state)
  
  		/* TODO: read VC from DT */
