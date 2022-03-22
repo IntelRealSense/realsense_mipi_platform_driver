@@ -87,7 +87,7 @@ index 088df4bc5..8caa634f9 100644
  		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
 @@ -1012,7 +1034,7 @@ static int ds5_configure(struct ds5 *state)
  			return ret;
- 		
+
  		if (state->is_y8 && motion_t->streaming) {
 -			ret = ds5_write(state, 0x401C, mfmt);
 +			ret = ds5_write(state, DS5_IR_OVERRIDE, mfmt);
@@ -95,7 +95,7 @@ index 088df4bc5..8caa634f9 100644
  				return ret;
  
 @@ -1045,7 +1067,7 @@ static int ds5_configure(struct ds5 *state)
- 		
+
  		if (state->is_depth && depth->streaming) {
  			// override output DT to 0x1E, since 0x31 is not supported in Jetson
 -			ret = ds5_write(state, 0x401C, 0x1E);
