@@ -8,15 +8,15 @@ Please make sure the board is ready to use.
 
 ## Build kernel, dtb and D457 driver
 
-In previous step to flash Jetson board with NVIDIA SDK Manager, the JetPack 4.6.1 folder should already be downloaded to your home directory at `~/nvidia/nvidia_sdk/JetPack_4.6_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra`. Get JetPack kernel source code using existing script in JetPack 4.6.1, or download directly from [JetPack 4.6 BSP sources](https://developer.nvidia.com/embedded/l4t/r32_release_v6.1/sources/t186/public_sources.tbz2).
+In previous step to flash Jetson board with NVIDIA SDK Manager, the JetPack 4.6.1 folder should already be downloaded to your home directory at `~/nvidia/nvidia_sdk/JetPack_4.6.1_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra`. Get JetPack kernel source code using existing script in JetPack 4.6.1, or download directly from [JetPack 4.6.1 BSP sources](https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2).
 
 ```
 # SDK Manager method, download kernel source code
-cd ~/nvidia/nvidia_sdk/JetPack_4.6_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra
-./source_sync.sh -t tegra-l4t-r32.6.1
+cd ~/nvidia/nvidia_sdk/JetPack_4.6.1_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra
+./source_sync.sh -t tegra-l4t-r32.7.1
 
 # direct download method
-wget https://developer.nvidia.com/embedded/l4t/r32_release_v6.1/sources/t186/public_sources.tbz2
+wget https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2
 tar xjf public_sources.tbz2
 cd Linux_for_Tegra/source/public
 tar xjf kernel_src.tbz2
@@ -26,7 +26,7 @@ Apply D457 patches and build the kernel image, dtb and D457 driver.
 
 ```
 # NVIDIA SDK Manager method
-cd ~/nvidia/nvidia_sdk/JetPack_4.6_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra/sources
+cd ~/nvidia/nvidia_sdk/JetPack_4.6.1_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra/sources
 
 # direct download method
 cd Linux_for_Tegra/source/public
