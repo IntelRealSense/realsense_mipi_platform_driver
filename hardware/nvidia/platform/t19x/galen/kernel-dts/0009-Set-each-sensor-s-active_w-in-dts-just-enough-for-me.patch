@@ -1,0 +1,61 @@
+From 827ec9b711dcd491391ad12e0184bcb17b9d8ec8 Mon Sep 17 00:00:00 2001
+From: Xin Zhang <xin.x.zhang@intel.com>
+Date: Wed, 30 Mar 2022 19:14:16 +0800
+Subject: [PATCH] Set each sensor's active_w in dts just enough for metadata
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+---
+ common/tegra194-camera-d4xx.dtsi | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/common/tegra194-camera-d4xx.dtsi b/common/tegra194-camera-d4xx.dtsi
+index 009e0ee..0b33d06 100644
+--- a/common/tegra194-camera-d4xx.dtsi
++++ b/common/tegra194-camera-d4xx.dtsi
+@@ -83,8 +83,8 @@
+ 					mode0 {
+ 						pixel_t = "grey_y16";
+ 						num_lanes = "2";
+-						active_w = "1280";
+-						active_h = "720";
++						active_w = "128";
++						active_h = "0";
+ 						tegra_sinterface = "serial_a";
+ 						mclk_khz = "24000";
+ 						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
+@@ -137,8 +137,8 @@
+ 						pixel_t = "grey_y8";
+ 
+ 						num_lanes = "2";
+-						active_w = "1920";
+-						active_h = "1080";
++						active_w = "128";
++						active_h = "0";
+ 						tegra_sinterface = "serial_e";
+ 						mclk_khz = "24000";
+ 						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
+@@ -191,8 +191,8 @@
+ 					mode0 {
+ 						pixel_t = "grey_y8";
+ 						num_lanes = "2";
+-						active_w = "1280";
+-						active_h = "720";
++						active_w = "128";
++						active_h = "0";
+ 						tegra_sinterface = "serial_b";
+ 						mclk_khz = "24000";
+ 						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
+@@ -245,8 +245,8 @@
+ 					mode0 {
+ 						pixel_t = "grey_y8";
+ 						num_lanes = "2";
+-						active_w = "640";
+-						active_h = "480";
++						active_w = "128";
++						active_h = "0";
+ 						tegra_sinterface = "serial_b";
+ 						mclk_khz = "24000";
+ 						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
+-- 
+2.17.1
+
