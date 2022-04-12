@@ -1,6 +1,6 @@
 #D457 SerDes script: 
 # D457_MAX9295A_MAX9296A_Intel.cpp
-# Version: 1.0.0.8
+# Version: 1.0.0.7
 # Compatible Driver Version: 1.0.1.0+
 # Compatible FW Version: 5.13.0.150+
 # Depth (with Metadata)  +   RGB (with Metadata) + IR (Y8/Y8I) + IMU
@@ -19,7 +19,7 @@
 # Pipe Y:	RGB 	DT 0x1E VC1
 #		EMB8	DT 0x12 VC1
 # Pipe Z:	Y8 	DT 0x2A VC2
-#		Y8I	DT 0x1E VC2
+#		Y8I	DT 0x32 VC2
 # Pipe U:	IMU 	DT 0x2A VC3
 
 # MAX9296A
@@ -29,7 +29,7 @@
 # Pipe Y:	RGB 	DT 0x1E VC1
 #		EMB8	DT 0x12 VC1
 # Pipe Z:	Y8 	DT 0x2A VC2
-#		Y8I     DT 0x1E VC2
+#		Y8I     DT 0x32 VC2
 # Pipe U:	IMU 	DT 0x2A VC3
 
 # Default Power Up States
@@ -95,7 +95,7 @@ sudo i2cset -f -y 2 0x40 0x03 0x301D w # BPP = 16 in pipe Y
 
 sudo i2cset -f -y 2 0x40 0x03 0x6A18 w # Pipe Z pulls Y8 (DT 0x2A) 
 # sudo i2cset -f -y 2 0x40 0x03 0x5219 w # Pipe Z pulls EMB8 (DT 0x12)
-sudo i2cset -f -y 2 0x40 0x03 0x5E19 w # Pipe Z pulls Y8I (DT 0x1E)
+sudo i2cset -f -y 2 0x40 0x03 0x7219 w # Pipe Z pulls Y8I (DT 0x32)
 sudo i2cset -f -y 2 0x40 0x03 0x040D w # Pipe Z pulls VC2
 sudo i2cset -f -y 2 0x40 0x03 0x000E w
 sudo i2cset -f -y 2 0x40 0x03 0x301E w # BPP = 16 in pipe Z      
@@ -154,8 +154,8 @@ sudo i2cset -f -y 2 0x48 0x04 0x8191 w # Map frame end  VC2
 sudo i2cset -f -y 2 0x48 0x04 0x8192 w
 # sudo i2cset -f -y 2 0x48 0x04 0x9293 w # Map EMB8, VC2
 # sudo i2cset -f -y 2 0x48 0x04 0x9294 w
-sudo i2cset -f -y 2 0x48 0x04 0x9E93 w # Map Y8I, VC2
-sudo i2cset -f -y 2 0x48 0x04 0x9E94 w
+sudo i2cset -f -y 2 0x48 0x04 0xB293 w # Map Y8I, VC2
+sudo i2cset -f -y 2 0x48 0x04 0xB294 w
 sudo i2cset -f -y 2 0x48 0x04 0x55AD w # Map to PHY1 (master for port A)
                                 
 sudo i2cset -f -y 2 0x48 0x04 0x07CB w # Enable 3 mappings for Pipe U
