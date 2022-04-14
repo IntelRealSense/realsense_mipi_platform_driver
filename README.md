@@ -75,3 +75,22 @@ sudo depmod
 ```
 
 After rebooting Jetson, the D457 driver should work.
+
+## Available directives on max9295/max9296 register setting
+- Dump registers
+    ```
+    cat /sys/bus/i2c/drivers/max9295/30-0040/register_dump
+    cat /sys/bus/i2c/drivers/max9296/30-0048/register_dump
+    ```
+- Dump setting version
+    ```
+    cat /sys/module/max9295/parameters/max9295_setting_verison
+    cat /sys/module/max9296/parameters/max9296_setting_verison
+   ```
+
+- Disable updating setting dynamically (updating setting manually by running script).
+  **0** means disable updating setting dynamically, while **1** means enable updating setting dynamically.
+    ```
+    echo 0 | sudo tee /sys/module/max9295/parameters/max9295_dynamic_update
+    echo 0 | sudo tee /sys/module/max9296/parameters/max9296_dynamic_update
+    ```
