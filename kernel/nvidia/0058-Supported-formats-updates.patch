@@ -1,0 +1,274 @@
+From e30f8c4fede4743f044ca45a177677a08965df0b Mon Sep 17 00:00:00 2001
+From: Xin Zhang <xin.x.zhang@intel.com>
+Date: Fri, 15 Apr 2022 18:59:24 +0800
+Subject: [PATCH] Supported formats updates
+
+- Revert the modification of existing format definition, add new items
+  in vi5_formats with dedicated MEDIA_BUS_FMT_XXX (VI code uses it as
+  key to search);
+- Correct color sensor V4L2 format to UYVY that the real data from
+  camera/FW always is.
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+---
+ drivers/media/i2c/d4xx.c                      | 41 ++++---------------
+ .../platform/tegra/camera/vi/vi4_formats.h    | 31 ++++----------
+ .../platform/tegra/camera/vi/vi5_formats.h    | 41 +++++++++----------
+ 3 files changed, 37 insertions(+), 76 deletions(-)
+
+diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
+index 449639888..91228c775 100644
+--- a/drivers/media/i2c/d4xx.c
++++ b/drivers/media/i2c/d4xx.c
+@@ -709,42 +709,19 @@ static const struct ds5_resolution ds5_size_imu[] = {
+ 
+ static const struct ds5_format ds5_depth_formats_d43x[] = {
+ 	{
+-		// TODO: 0x31 is replaced with 0x1e since it caused low FPS in Jetson.
+ 		.data_type = 0x1e,	/* Z16 */
+-		.mbus_code = MEDIA_BUS_FMT_UYVY8_1X16,
++		.mbus_code = MEDIA_BUS_FMT_SBGGR16_1X16,
+ 		.n_resolutions = ARRAY_SIZE(d43x_depth_sizes),
+ 		.resolutions = d43x_depth_sizes,
+-	}, {
+-		.data_type = 0x2a,	/* Y8 */
+-		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
+-		.n_resolutions = ARRAY_SIZE(d43x_depth_sizes),
+-		.resolutions = d43x_depth_sizes,
+-	}, {
+-		.data_type = 0x24,	/* 24-bit Calibration */
+-		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
+-		.n_resolutions = ARRAY_SIZE(d43x_calibration_sizes),
+-		.resolutions = d43x_calibration_sizes,
+ 	},
+ };
+ 
+ static const struct ds5_format ds5_depth_formats_d46x[] = {
+ 	{
+-		// TODO: 0x31 is replaced with 0x1e since it caused low FPS in Jetson.
+ 		.data_type = 0x1e,	/* Z16 */
+-		.mbus_code = MEDIA_BUS_FMT_UYVY8_1X16,
++		.mbus_code = MEDIA_BUS_FMT_SBGGR16_1X16,
+ 		.n_resolutions = ARRAY_SIZE(d46x_depth_sizes),
+ 		.resolutions = d46x_depth_sizes,
+-	}, {
+-		/* First format: default */
+-		.data_type = 0x2a,	/* Y8 */
+-		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
+-		.n_resolutions = ARRAY_SIZE(d46x_depth_sizes),
+-		.resolutions = d46x_depth_sizes,
+-	}, {
+-		.data_type = 0x24,	/* 24-bit Calibration */
+-		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
+-		.n_resolutions = ARRAY_SIZE(d46x_calibration_sizes),
+-		.resolutions = d46x_calibration_sizes,
+ 	},
+ };
+ 
+@@ -752,19 +729,18 @@ static const struct ds5_format ds5_depth_formats_d46x[] = {
+ 
+ static const struct ds5_format ds5_y_formats_ds5u[] = {
+ 	{
+-		/* First format: default */
+ 		.data_type = 0x2a,	/* Y8 */
+ 		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
+ 		.n_resolutions = ARRAY_SIZE(y8_sizes),
+ 		.resolutions = y8_sizes,
+ 	}, {
+ 		.data_type = 0x1e,	/* Y8I */
+-		.mbus_code = MEDIA_BUS_FMT_VYUY8_1X16,
++		.mbus_code = MEDIA_BUS_FMT_SGBRG16_1X16,
+ 		.n_resolutions = ARRAY_SIZE(y8_sizes),
+ 		.resolutions = y8_sizes,
+ 	}, {
+ 		.data_type = 0x24,	/* 24-bit Calibration */
+-		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
++		.mbus_code = MEDIA_BUS_FMT_YUV8_1X24,
+ 		.n_resolutions = ARRAY_SIZE(d46x_calibration_sizes),
+ 		.resolutions = d46x_calibration_sizes,
+ 	},
+@@ -772,7 +748,7 @@ static const struct ds5_format ds5_y_formats_ds5u[] = {
+ 
+ static const struct ds5_format ds5_rlt_rgb_format = {
+ 	.data_type = 0x1e,	/* UYVY */
+-	.mbus_code = MEDIA_BUS_FMT_YUYV8_1X16,
++	.mbus_code = MEDIA_BUS_FMT_SGRBG16_1X16,
+ 	.n_resolutions = ARRAY_SIZE(ds5_rlt_rgb_sizes),
+ 	.resolutions = ds5_rlt_rgb_sizes,
+ };
+@@ -780,7 +756,7 @@ static const struct ds5_format ds5_rlt_rgb_format = {
+ 
+ static const struct ds5_format ds5_onsemi_rgb_format = {
+ 	.data_type = 0x1e,	/* UYVY */
+-	.mbus_code = MEDIA_BUS_FMT_YUYV8_1X16,
++	.mbus_code = MEDIA_BUS_FMT_SGRBG16_1X16,
+ 	.n_resolutions = ARRAY_SIZE(ds5_onsemi_rgb_sizes),
+ 	.resolutions = ds5_onsemi_rgb_sizes,
+ };
+@@ -795,7 +771,6 @@ static const struct ds5_variant ds5_variants[] = {
+ 
+ static const struct ds5_format ds5_imu_formats[] = {
+ 	{
+-		/* First format: default */
+ 		.data_type = 0x2a,	/* IMU DT */
+ 		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
+ 		.n_resolutions = ARRAY_SIZE(ds5_size_imu),
+@@ -2846,14 +2821,16 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
+ 	case DS5_DEVICE_TYPE_D43X:
+ 	case DS5_DEVICE_TYPE_D45X:
+ 		sensor->formats = ds5_depth_formats_d43x;
++		sensor->n_formats = ARRAY_SIZE(ds5_depth_formats_d43x);
+ 		break;
+ 	case DS5_DEVICE_TYPE_D46X:
+ 		sensor->formats = ds5_depth_formats_d46x;
++		sensor->n_formats = ARRAY_SIZE(ds5_depth_formats_d46x);
+ 		break;
+ 	default:
+ 		sensor->formats = ds5_depth_formats_d46x;
++		sensor->n_formats = ARRAY_SIZE(ds5_depth_formats_d46x);
+ 	}
+-	sensor->n_formats = 1;
+ 	sensor->mux_pad = DS5_MUX_PAD_DEPTH;
+ 
+ 	sensor = &state->motion_t.sensor;
+diff --git a/drivers/media/platform/tegra/camera/vi/vi4_formats.h b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
+index 50e7c1862..de33c42fb 100644
+--- a/drivers/media/platform/tegra/camera/vi/vi4_formats.h
++++ b/drivers/media/platform/tegra/camera/vi/vi4_formats.h
+@@ -87,9 +87,6 @@ static const struct tegra_video_format vi4_video_formats[] = {
+ 	/* RAW 7: TODO */
+ 
+ 	/* RAW 8 */
+-	TEGRA_VIDEO_FORMAT(RAW8, 8, Y8_1X8, 1, 1, T_L8,
+-				RAW8, GREY, "Greyscale 8"),
+-
+ 	TEGRA_VIDEO_FORMAT(RAW8, 8, SRGGB8_1X8, 1, 1, T_L8,
+ 				RAW8, SRGGB8, "RGRG.. GBGB.."),
+ 	TEGRA_VIDEO_FORMAT(RAW8, 8, SGRBG8_1X8, 1, 1, T_L8,
+@@ -120,22 +117,22 @@ static const struct tegra_video_format vi4_video_formats[] = {
+ 				RAW12, SBGGR12, "BGBG.. GRGR.."),
+ 
+ 	/* RGB888 */
+-	//TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
+-	//			RGB888, ABGR32, "BGRA-8-8-8-8"),
++	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
++				RGB888, ABGR32, "BGRA-8-8-8-8"),
+ 	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X32_PADHI, 4, 1, T_A8B8G8R8,
+ 				RGB888, RGB32, "RGB-8-8-8-8"),
+ 
+ 	/* YUV422 */
+-	//TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_U8_Y8__V8_Y8,
+-	//			YUV422_8, UYVY, "YUV 4:2:2"),
+-	//TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_1X16, 2, 1, T_V8_Y8__U8_Y8,
+-	//			YUV422_8, VYUY, "YUV 4:2:2"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_U8_Y8__V8_Y8,
++				YUV422_8, UYVY, "YUV 4:2:2"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_1X16, 2, 1, T_V8_Y8__U8_Y8,
++				YUV422_8, VYUY, "YUV 4:2:2"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YUYV8_1X16, 2, 1, T_Y8_U8__Y8_V8,
+ 				YUV422_8, YUYV, "YUV 4:2:2"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
+ 				YUV422_8, YVYU, "YUV 4:2:2"),
+-	//TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 1, 1, T_Y8__V8U8_N422,
+-	//			YUV422_8, NV16, "NV16"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 1, 1, T_Y8__V8U8_N422,
++				YUV422_8, NV16, "NV16"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_2X8, 2, 1, T_U8_Y8__V8_Y8,
+ 				YUV422_8, UYVY, "YUV 4:2:2 UYVY"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_2X8, 2, 1, T_V8_Y8__U8_Y8,
+@@ -144,18 +141,6 @@ static const struct tegra_video_format vi4_video_formats[] = {
+ 				YUV422_8, YUYV, "YUV 4:2:2 YUYV"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_2X8, 2, 1, T_Y8_V8__Y8_U8,
+ 				YUV422_8, YVYU, "YUV 4:2:2 YVYU"),
+-
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_U8_Y8__V8_Y8,
+-				YUV422_8, Z16, "Depth 16"),
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_1X16, 2, 1, T_V8_Y8__U8_Y8,
+-				YUV422_8, Y8I, "Y8I 16"),
+-	// TODO: RealSesne calibration format Y12I should be 3-byte,
+-	// R[7:3]R[3:0] | L[3:0]R[11:8] | L[11:8]L[7:4]
+-	// but, currently, it's 4-byte, one byte is added as alignment
+-	// R[7:3]R[3:0] | L[3:0]R[11:8] | L[11:8]L[7:4] | ALIGN[7:0]
+-	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
+-				RGB888, Y12I, "Y12I 24"),
+-
+ };
+ 
+ #endif
+diff --git a/drivers/media/platform/tegra/camera/vi/vi5_formats.h b/drivers/media/platform/tegra/camera/vi/vi5_formats.h
+index 0de34514c..af5d0987e 100644
+--- a/drivers/media/platform/tegra/camera/vi/vi5_formats.h
++++ b/drivers/media/platform/tegra/camera/vi/vi5_formats.h
+@@ -87,8 +87,6 @@ static const struct tegra_video_format vi5_video_formats[] = {
+ 	/* RAW 7: TODO */
+ 
+ 	/* RAW 8 */
+-	TEGRA_VIDEO_FORMAT(RAW8, 8, Y8_1X8, 1, 1, T_R8,
+-				RAW8, GREY, "Greyscale 8"),
+ 	TEGRA_VIDEO_FORMAT(RAW8, 8, SRGGB8_1X8, 1, 1, T_R8,
+ 				RAW8, SRGGB8, "RGRG.. GBGB.."),
+ 	TEGRA_VIDEO_FORMAT(RAW8, 8, SGRBG8_1X8, 1, 1, T_R8,
+@@ -119,22 +117,34 @@ static const struct tegra_video_format vi5_video_formats[] = {
+ 				RAW12, SBGGR12, "BGBG.. GRGR.."),
+ 
+ 	/* RGB888 */
+-	//TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
+-	//			RGB888, ABGR32, "BGRA-8-8-8-8"),
++	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
++				RGB888, ABGR32, "BGRA-8-8-8-8"),
+ 	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X32_PADHI, 4, 1, T_A8B8G8R8,
+ 				RGB888, RGB32, "RGB-8-8-8-8"),
+ 
++	/* D457 */
++	TEGRA_VIDEO_FORMAT(RAW8, 8, Y8_1X8, 1, 1, T_R8,
++				RAW8, GREY, "Greyscale 8"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, SBGGR16_1X16, 2, 1, T_U8_Y8__V8_Y8,
++				YUV422_8, Z16, "Depth 16"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, SGBRG16_1X16, 2, 1, T_U8_Y8__V8_Y8,
++				YUV422_8, Y8I, "Y8I 16"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, SGRBG16_1X16, 2, 1, T_Y8_U8__Y8_V8,
++				YUV422_8, UYVY, "YUV 4:2:2"),
++	TEGRA_VIDEO_FORMAT(RGB888, 24, YUV8_1X24, 4, 1, T_A8R8G8B8,
++				RGB888, Y12I, "Y12I 24"),
++
+ 	/* YUV422 */
+-	//TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_U8_Y8__V8_Y8,
+-	//			YUV422_8, UYVY, "YUV 4:2:2"),
+-	//TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_1X16, 2, 1, T_V8_Y8__U8_Y8,
+-	//			YUV422_8, VYUY, "YUV 4:2:2"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_U8_Y8__V8_Y8,
++				YUV422_8, UYVY, "YUV 4:2:2"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_1X16, 2, 1, T_V8_Y8__U8_Y8,
++				YUV422_8, VYUY, "YUV 4:2:2"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YUYV8_1X16, 2, 1, T_Y8_U8__Y8_V8,
+ 				YUV422_8, YUYV, "YUV 4:2:2"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_1X16, 2, 1, T_Y8_V8__Y8_U8,
+ 				YUV422_8, YVYU, "YUV 4:2:2"),
+-	//TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 1, 1, T_Y8__V8U8_N422,
+-	//			YUV422_8, NV16, "NV16"),
++	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 1, 1, T_Y8__V8U8_N422,
++				YUV422_8, NV16, "NV16"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_2X8, 2, 1, T_U8_Y8__V8_Y8,
+ 				YUV422_8, UYVY, "YUV 4:2:2 UYVY"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_2X8, 2, 1, T_V8_Y8__U8_Y8,
+@@ -143,17 +153,6 @@ static const struct tegra_video_format vi5_video_formats[] = {
+ 				YUV422_8, YUYV, "YUV 4:2:2 YUYV"),
+ 	TEGRA_VIDEO_FORMAT(YUV422, 16, YVYU8_2X8, 2, 1, T_Y8_V8__Y8_U8,
+ 				YUV422_8, YVYU, "YUV 4:2:2 YVYU"),
+-
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, UYVY8_1X16, 2, 1, T_U8_Y8__V8_Y8,
+-				YUV422_8, Z16, "Depth 16"),
+-	TEGRA_VIDEO_FORMAT(YUV422, 16, VYUY8_1X16, 2, 1, T_V8_Y8__U8_Y8,
+-				YUV422_8, Y8I, "Y8I 16"),
+-	// TODO: RealSesne calibration format Y12I should be 3-byte,
+-	// R[7:3]R[3:0] | L[3:0]R[11:8] | L[11:8]L[7:4]
+-	// but, currently, it's 4-byte, one byte is added as alignment
+-	// R[7:3]R[3:0] | L[3:0]R[11:8] | L[11:8]L[7:4] | ALIGN[7:0]
+-	TEGRA_VIDEO_FORMAT(RGB888, 24, RGB888_1X24, 4, 1, T_A8R8G8B8,
+-				RGB888, Y12I, "Y12I 24"),
+ };
+ 
+ #endif
+-- 
+2.17.1
+

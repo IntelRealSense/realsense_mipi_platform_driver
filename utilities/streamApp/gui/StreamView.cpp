@@ -53,7 +53,7 @@ StreamView::StreamView(uint8_t nodeNumber,
 
     switch (mStreamType) {
     case V4L2Utils::StreamUtils::StreamType::RS_RGB_STREAM:
-        mFormat.v4l2Format = V4L2_PIX_FMT_YUYV;
+        mFormat.v4l2Format = V4L2_PIX_FMT_UYVY;
         break;
     case V4L2Utils::StreamUtils::StreamType::RS_DEPTH_STREAM:
         mFormat.v4l2Format = V4L2_PIX_FMT_Z16;
