@@ -123,7 +123,7 @@ struct Format {
 
     uint32_t calc64BytesAlignedStride(void)
     {
-        uint32_t bytesperline = ((width / 64) + ((width % 64) ? 1 : 0)) * 64;
+        uint32_t bytesperline = width;
 
         if (v4l2Format == V4L2_PIX_FMT_YUYV ||
             v4l2Format == V4L2_PIX_FMT_Z16 ||
@@ -132,7 +132,7 @@ struct Format {
         else if (v4l2Format == V4L2_PIX_FMT_Y12I)
             bytesperline *= 4;
 
-        return bytesperline;
+        return ((bytesperline / 64) + ((bytesperline % 64) ? 1 : 0)) * 64;
     }
 
     uint32_t calcBytesPerFrame(void)
