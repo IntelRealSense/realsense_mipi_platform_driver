@@ -1,0 +1,754 @@
+From 13cef6c077cf5ec858e4082596ad1c906bd6cb63 Mon Sep 17 00:00:00 2001
+From: Xin Zhang <xin.x.zhang@intel.com>
+Date: Thu, 28 Apr 2022 15:40:21 +0800
+Subject: [PATCH] HWMC code cleanup
+
+- Remove some not needed HWMC controls, driver should just pass the cmd
+  without knowing the logic, the logic should be handled in user space;
+- Refactor HWMC and log control code.
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+---
+ drivers/media/i2c/d4xx.c | 589 ++++-----------------------------------
+ 1 file changed, 54 insertions(+), 535 deletions(-)
+
+diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
+index 8890c9461..154720ca3 100644
+--- a/drivers/media/i2c/d4xx.c
++++ b/drivers/media/i2c/d4xx.c
+@@ -121,6 +121,15 @@
+ #define DS5_STATUS_INVALID_RES		0x4
+ #define DS5_STATUS_INVALID_FPS		0x8
+ 
++#define DS5_HWMC_DATA			0x4900
++#define DS5_HWMC_STATUS			0x4904
++#define DS5_HWMC_RESP_LEN		0x4908
++#define DS5_HWMC_EXEC			0x490C
++
++#define DS5_HWMC_STATUS_OK		0
++#define DS5_HWMC_STATUS_ERR		1
++#define DS5_HWMC_STATUS_WIP		2
++
+ #define MIPI_LANE_RATE			1000
+ 
+ #define MAX_DEPTH_EXP			2000
+@@ -143,7 +152,7 @@ enum ds5_mux_pad {
+ 	DS5_MUX_PAD_COUNT,
+ };
+ 
+-#define DS5_N_CONTROLS			8
++#define DS5_N_CONTROLS			7
+ 
+ #define CSI2_MAX_VIRTUAL_CHANNELS	4
+ 
+@@ -209,73 +218,6 @@ static const struct hwm_cmd cmd_switch_to_dfu = {
+ 	.param1 = 0x01,
+ };
+ 
+-enum table_id {
+-	COEF_CALIBRATION_ID = 0x19,
+-	DEPTH_CALIBRATION_ID = 0x1f,
+-	RGB_CALIBRATION_ID = 0x20,
+-	IMU_CALIBRATION_ID = 0x22
+-} table_id_t;
+-
+-static const struct hwm_cmd get_calib_data = {
+-	.header = 0x14,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x15,
+-	.param1 = 0x00,	//table_id
+-};
+-
+-static const struct hwm_cmd set_calib_data = {
+-	.header = 0x0114,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x62,
+-	.param1 = 0x00,	//table_id
+-	.param2 = 0x02,	//region
+-};
+-
+-static const struct hwm_cmd gvd = {
+-	.header = 0x14,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x10,
+-};
+-
+-static const struct hwm_cmd set_ae_roi = {
+-	.header = 0x14,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x44,
+-};
+-
+-static const struct hwm_cmd get_ae_roi = {
+-	.header = 0x014,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x45,
+-};
+-
+-static const struct hwm_cmd set_ae_setpoint = {
+-	.header = 0x18,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x2B,
+-	.param1 = 0xa, // AE control
+-};
+-
+-static const struct hwm_cmd get_ae_setpoint = {
+-	.header = 0x014,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x2C,
+-	.param1 = 0xa, // AE control
+-	.param2 = 0, // get current
+-};
+-
+-static const struct hwm_cmd erb = {
+-	.header = 0x14,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x17,
+-};
+-
+-static const struct hwm_cmd ewb = {
+-	.header = 0x14,
+-	.magic_word = 0xCDAB,
+-	.opcode = 0x18,
+-};
+-
+ struct __fw_status {
+ 	uint32_t	spare1;
+ 	uint32_t	FW_lastVersion;
+@@ -294,18 +236,6 @@ struct ds5_ctrls {
+ 	struct v4l2_ctrl_handler handler;
+ 	struct {
+ 		struct v4l2_ctrl *log;
+-		struct v4l2_ctrl *fw_version;
+-		struct v4l2_ctrl *gvd;
+-		struct v4l2_ctrl *get_depth_calib;
+-		struct v4l2_ctrl *set_depth_calib;
+-		struct v4l2_ctrl *get_coeff_calib;
+-		struct v4l2_ctrl *set_coeff_calib;
+-		struct v4l2_ctrl *ae_roi_get;
+-		struct v4l2_ctrl *ae_roi_set;
+-		struct v4l2_ctrl *ae_setpoint_get;
+-		struct v4l2_ctrl *ae_setpoint_set;
+-		struct v4l2_ctrl *erb;
+-		struct v4l2_ctrl *ewb;
+ 		struct v4l2_ctrl *hwmc;
+ 		struct v4l2_ctrl *laser_power;
+ 		struct v4l2_ctrl *manual_laser_power;
+@@ -338,7 +268,7 @@ struct ds5_sensor {
+ 	struct {
+ 		const struct ds5_format *format;
+ 		const struct ds5_resolution *resolution;
+-		u16 framerate;
++		u8 framerate;
+ 	} config;
+ 	bool streaming;
+ 	/*struct ds5_vchan *vchan;*/
+@@ -1288,90 +1218,67 @@ static int ds5_hw_set_exposure(struct ds5 *state, u32 base, s32 val)
+ #define DS5_CAMERA_CID_LOG			(DS5_CAMERA_CID_BASE+0)
+ #define DS5_CAMERA_CID_LASER_POWER		(DS5_CAMERA_CID_BASE+1)
+ #define DS5_CAMERA_CID_MANUAL_LASER_POWER	(DS5_CAMERA_CID_BASE+2)
+-#define DS5_CAMERA_DEPTH_CALIBRATION_TABLE_GET	(DS5_CAMERA_CID_BASE+3)
+-#define DS5_CAMERA_DEPTH_CALIBRATION_TABLE_SET	(DS5_CAMERA_CID_BASE+4)
+-#define DS5_CAMERA_COEFF_CALIBRATION_TABLE_GET	(DS5_CAMERA_CID_BASE+5)
+-#define DS5_CAMERA_COEFF_CALIBRATION_TABLE_SET	(DS5_CAMERA_CID_BASE+6)
+-#define DS5_CAMERA_CID_FW_VERSION		(DS5_CAMERA_CID_BASE+7)
+-#define DS5_CAMERA_CID_GVD			(DS5_CAMERA_CID_BASE+8)
+-#define DS5_CAMERA_CID_AE_ROI_GET		(DS5_CAMERA_CID_BASE+9)
+-#define DS5_CAMERA_CID_AE_ROI_SET		(DS5_CAMERA_CID_BASE+10)
+-#define DS5_CAMERA_CID_AE_SETPOINT_GET		(DS5_CAMERA_CID_BASE+11)
+-#define DS5_CAMERA_CID_AE_SETPOINT_SET		(DS5_CAMERA_CID_BASE+12)
+-#define DS5_CAMERA_CID_ERB			(DS5_CAMERA_CID_BASE+13)
+-#define DS5_CAMERA_CID_EWB			(DS5_CAMERA_CID_BASE+14)
+ #define DS5_CAMERA_CID_HWMC			(DS5_CAMERA_CID_BASE+15)
+ 
+ static int ds5_send_hwmc(struct ds5 *state, u16 cmdLen, struct hwm_cmd *cmd,
+ 			 bool isRead, u16 *dataLen)
+ {
+ 	int ret = 0;
+-	u16 status = 2;
++	u16 status = DS5_HWMC_STATUS_WIP;
+ 	int retries = 20;
+ 	int errorCode;
++	u16 tmp_len = 0;
+ 
+ 	dev_info(&state->client->dev, "%s(): HWMC header: 0x%x, magic: 0x%x, opcode: 0x%x, param1: %d, param2: %d, param3: %d, param4: %d\n",
+ 			__func__, cmd->header, cmd->magic_word, cmd->opcode, cmd->param1, cmd->param2, cmd->param3, cmd->param4);
+ 
+-	ds5_raw_write_with_check(state, 0x4900, cmd, cmdLen);
++	ds5_raw_write_with_check(state, DS5_HWMC_DATA, cmd, cmdLen);
+ 
+-	ds5_write_with_check(state, 0x490C, 0x01); /* execute cmd */
++	ds5_write_with_check(state, DS5_HWMC_EXEC, 0x01); /* execute cmd */
+ 	do {
+-		if (retries != 5)
+-			msleep_range(50);
+-		ret = ds5_read(state, 0x4904, &status);
+-	} while (retries-- && status != 0);
+-
+-	if (ret || status != 0) {
+-		ds5_raw_read(state, 0x4900, &errorCode, 4);
+-		dev_err(&state->client->dev, "%s(): HWMC failed, ret: %d, status: %x, error code: %d\n",
+-					__func__, ret, status, errorCode);
++		msleep_range(50);
++		ret = ds5_read(state, DS5_HWMC_STATUS, &status);
++	} while (!ret && retries-- && status != DS5_HWMC_STATUS_WIP);
++
++	if (ret || status != DS5_HWMC_STATUS_OK) {
++		if (status == DS5_HWMC_STATUS_ERR) {
++			ds5_raw_read(state, DS5_HWMC_DATA, &errorCode,
++				     sizeof(errorCode));
++			dev_err(&state->client->dev,
++				"HWMC failed, ret: %d, error code: %d\n",
++				ret, errorCode);
++		} else {
++			dev_err(&state->client->dev,
++				"HWMC failed because of timeout, ret: %d\n",
++				ret);
++		}
+ 		ret = -EAGAIN;
+ 	}
+ 
+ 	if (isRead) {
+-		if (*dataLen == 0) {
+-			ret = regmap_raw_read(state->regmap, 0x4908, dataLen, sizeof(u16));
+-			if (ret)
+-				return -EAGAIN;
+-		}
++		ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN, &tmp_len, sizeof(tmp_len));
++		if (ret)
++			return -EAGAIN;
++
++		if (*dataLen != 0 && *dataLen != tmp_len)
++			return -EINVAL;
++
++		*dataLen = tmp_len;
+ 
+ 		dev_err(&state->client->dev, "%s(): HWMC read len: %d\n",
+-					__func__, *dataLen);
++					__func__, tmp_len);
++
+ 		// First 4 bytes of cmd->Data after read will include opcode
+-		ds5_raw_read_with_check(state, 0x4900, cmd->Data, *dataLen);
++		ds5_raw_read_with_check(state, DS5_HWMC_DATA, cmd->Data, tmp_len);
+ 
+ 		/*This is neede for libreealsense, to align there code with UVC*/
+-		cmd->Data[1000] = (unsigned char)((*dataLen) & 0x00FF);
+-		cmd->Data[1001] = (unsigned char)(((*dataLen) & 0xFF00) >> 8);
++		cmd->Data[1000] = (unsigned char)(tmp_len & 0x00FF);
++		cmd->Data[1001] = (unsigned char)((tmp_len & 0xFF00) >> 8);
+ 	}
+ 
+ 	return 0;
+ }
+ 
+-static int ds5_set_calibration_data(struct ds5 *state, struct hwm_cmd *cmd, u16 length)
+-{
+-	int ret;
+-	int retries = 10;
+-	u16 status = 2;
+-
+-	ds5_raw_write_with_check(state, 0x4900, cmd, length);
+-
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+-	do {
+-		if (retries != 10)
+-			msleep_range(200);
+-		ret = ds5_read(state, 0x4904, &status);
+-	} while (retries-- && status != 0);
+-
+-	if (ret || status != 0) {
+-		dev_err(&state->client->dev, "%s(): Failed to set calibration table %d, ret: %d, fw error: %x\n",
+-				__func__, cmd->param1, ret, status);
+-	}
+-
+-	return -EINVAL;
+-}
+-
+ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ {
+ 	struct ds5 *state = container_of(ctrl->handler, struct ds5,
+@@ -1411,139 +1318,6 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 			ret = ds5_write(state, base | DS5_MANUAL_LASER_POWER,
+ 					ctrl->val);
+ 		break;
+-	case DS5_CAMERA_DEPTH_CALIBRATION_TABLE_SET: {
+-		struct hwm_cmd *calib_cmd;
+-
+-		dev_info(&state->client->dev, "%s(): DS5_CAMERA_DEPTH_CALIBRATION_TABLE_SET \n", __func__);
+-		dev_info(&state->client->dev, "%s(): table id: 0x%x\n", __func__, *((u8*)ctrl->p_new.p + 2));
+-		if (ctrl->p_new.p && DEPTH_CALIBRATION_ID == *((u8*)ctrl->p_new.p + 2)) {
+-			calib_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 256, GFP_KERNEL);
+-			memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
+-			calib_cmd->header = 276;
+-			calib_cmd->param1 = DEPTH_CALIBRATION_ID;
+-			memcpy(calib_cmd->Data, (u8*)ctrl->p_new.p , 256);
+-			ret = ds5_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 256);
+-			devm_kfree(&state->client->dev, calib_cmd);
+-		}
+-		break;
+-		}
+-	case DS5_CAMERA_COEFF_CALIBRATION_TABLE_SET: {
+-			struct hwm_cmd *calib_cmd;
+-
+-			dev_info(&state->client->dev, "%s(): DS5_CAMERA_COEFF_CALIBRATION_TABLE_SET \n", __func__);
+-			dev_info(&state->client->dev, "%s(): table id %d\n", __func__, *((u8*)ctrl->p_new.p + 2));
+-			if (ctrl->p_new.p && COEF_CALIBRATION_ID == *((u8*)ctrl->p_new.p + 2)) {
+-				calib_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 512, GFP_KERNEL);
+-				memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
+-				calib_cmd->header = 532;
+-				calib_cmd->param1 = COEF_CALIBRATION_ID;
+-				memcpy(calib_cmd->Data, (u8*)ctrl->p_new.p , 512);
+-				ret = ds5_set_calibration_data(state, calib_cmd, sizeof(struct hwm_cmd) + 512);
+-				devm_kfree(&state->client->dev, calib_cmd);
+-			}
+-
+-		}
+-		break;
+-	case DS5_CAMERA_CID_AE_ROI_SET: {
+-		struct hwm_cmd ae_roi_cmd;
+-		memcpy(&ae_roi_cmd, &set_ae_roi, sizeof(ae_roi_cmd));
+-		ae_roi_cmd.param1 = *((u16*)ctrl->p_new.p_u16);
+-		ae_roi_cmd.param2 = *((u16*)ctrl->p_new.p_u16 + 1);
+-		ae_roi_cmd.param3 = *((u16*)ctrl->p_new.p_u16 + 2);
+-		ae_roi_cmd.param4 = *((u16*)ctrl->p_new.p_u16 + 3);
+-		ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), &ae_roi_cmd, false, NULL);
+-		break;
+-		}
+-	case DS5_CAMERA_CID_AE_SETPOINT_SET: {
+-		struct hwm_cmd *ae_setpoint_cmd;
+-		if (ctrl->p_new.p_s32) {
+-			dev_err(&state->client->dev, "%s():0x%x \n", __func__,
+-					*(ctrl->p_new.p_s32));
+-			ae_setpoint_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 4, GFP_KERNEL);
+-			memcpy(ae_setpoint_cmd, &set_ae_setpoint, sizeof (set_ae_setpoint));
+-			memcpy(ae_setpoint_cmd->Data, (u8*)ctrl->p_new.p_s32 , 4);
+-			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd) + 4, ae_setpoint_cmd, false, NULL);
+-			devm_kfree(&state->client->dev, ae_setpoint_cmd);
+-		}
+-		break;
+-	}
+-	case DS5_CAMERA_CID_ERB:
+-		if (ctrl->p_new.p_u8) {
+-			u16 offset = 0;
+-			u16 size = 0;
+-			struct hwm_cmd *erb_cmd;
+-
+-			offset = *(ctrl->p_new.p_u8) << 8;
+-			offset |= *(ctrl->p_new.p_u8 + 1);
+-			size = *(ctrl->p_new.p_u8 + 2) << 8;
+-			size |= *(ctrl->p_new.p_u8 + 3);
+-
+-			dev_err(&state->client->dev, "%s(): offset %x, size: %x\n",
+-							__func__, offset, size);
+-
+-
+-			erb_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + size, GFP_KERNEL);
+-			memcpy(erb_cmd, &erb, sizeof(struct hwm_cmd));
+-			erb_cmd->param1 = offset;
+-			erb_cmd->param2 = size;
+-			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), erb_cmd, true, &size);
+-
+-			if (ret) {
+-				dev_err(&state->client->dev, "%s(): ERB cmd failed, ret: %d, requested size: %d, actual size: %d\n",
+-								__func__, ret, erb_cmd->param2, size);
+-				devm_kfree(&state->client->dev, erb_cmd);
+-				return -EAGAIN;
+-			}
+-
+-			// Actual size returned from FW
+-			*(ctrl->p_new.p_u8 + 2) = (size & 0xFF00) >> 8;
+-			*(ctrl->p_new.p_u8 + 3) = (size & 0x00FF);
+-
+-			memcpy(ctrl->p_new.p_u8 + 4, erb_cmd->Data + 4, size - 4);
+-			dev_info(&state->client->dev, "%s(): 0x%x 0x%x 0x%x 0x%x \n",
+-				__func__,
+-				*(ctrl->p_new.p_u8),
+-				*(ctrl->p_new.p_u8+1),
+-				*(ctrl->p_new.p_u8+2),
+-				*(ctrl->p_new.p_u8+3));
+-			devm_kfree(&state->client->dev, erb_cmd);
+-		}
+-		break;
+-	case DS5_CAMERA_CID_EWB:
+-		if (ctrl->p_new.p_u8) {
+-			u16 offset = 0;
+-			u16 size = 0;
+-			struct hwm_cmd *ewb_cmd;
+-
+-			offset = *((u8*)ctrl->p_new.p_u8) << 8;
+-			offset |= *((u8*)ctrl->p_new.p_u8 + 1);
+-			size = *((u8*)ctrl->p_new.p_u8 + 2) << 8;
+-			size |= *((u8*)ctrl->p_new.p_u8 + 3);
+-
+-			dev_err(&state->client->dev, "%s():0x%x 0x%x 0x%x 0x%x\n", __func__,
+-					*((u8*)ctrl->p_new.p_u8),
+-					*((u8*)ctrl->p_new.p_u8 + 1),
+-					*((u8*)ctrl->p_new.p_u8 + 2),
+-					*((u8*)ctrl->p_new.p_u8 + 3));
+-
+-			ewb_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + size, GFP_KERNEL);
+-			memcpy(ewb_cmd, &ewb, sizeof (ewb));
+-			ewb_cmd->header = 0x14 + size;
+-			ewb_cmd->param1 = offset; // start index
+-			ewb_cmd->param2 = size; // size
+-			memcpy(ewb_cmd->Data, (u8*)ctrl->p_new.p_u8 + 4, size);
+-			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd) + size, ewb_cmd, false, NULL);
+-
+-			if (ret) {
+-				dev_err(&state->client->dev, "%s(): EWB cmd failed, ret: %d, requested size: %d, actual size: %d\n",
+-								__func__, ret, ewb_cmd->param2, size);
+-				devm_kfree(&state->client->dev, ewb_cmd);
+-				return -EAGAIN;
+-			}
+-
+-			devm_kfree(&state->client->dev, ewb_cmd);
+-		}
+-		break;
+ 	case DS5_CAMERA_CID_HWMC:
+ 		if (ctrl->p_new.p_u8) {
+ 			u16 dataLen = 0;
+@@ -1562,73 +1336,6 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
+ 	return ret;
+ }
+ 
+-static int ds5_get_calibration_data(struct ds5 *state, enum table_id id, unsigned char *table, unsigned int length)
+-{
+-	struct hwm_cmd *cmd;
+-	int ret;
+-	int retries = 3;
+-	u16 status = 2;
+-	u16 table_length;
+-
+-	cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + length + 4, GFP_KERNEL);
+-	memcpy(cmd, &get_calib_data, sizeof(get_calib_data));
+-	cmd->param1 = id;
+-	ds5_raw_write_with_check(state, 0x4900, cmd, sizeof(struct hwm_cmd));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+-	do {
+-		if (retries != 3)
+-			msleep_range(10);
+-		ret = ds5_read(state, 0x4904, &status);
+-	} while (ret && retries-- && status != 0);
+-
+-	if (ret || status != 0) {
+-		dev_err(&state->client->dev, "%s(): Failed to get calibration table %d, fw error: %x\n", __func__, id, status);
+-		devm_kfree(&state->client->dev, cmd);
+-		return status;
+-	}
+-
+-	// get table length from fw
+-	ret = regmap_raw_read(state->regmap, 0x4908, &table_length, sizeof(table_length));
+-
+-	// read table
+-	ds5_raw_read_with_check(state, 0x4900, cmd->Data, table_length);
+-
+-	// first 4 bytes are opcode HWM, not part of calibration table
+-	memcpy(table, cmd->Data + 4, length);
+-	devm_kfree(&state->client->dev, cmd);
+-	return 0;
+-}
+-
+-static int ds5_gvd(struct ds5 *state, unsigned char *data)
+-{
+-	struct hwm_cmd cmd;
+-	int ret;
+-	u16 length = 0;
+-	u16 status = 2;
+-	u8 retries = 3;
+-
+-	memcpy(&cmd, &gvd, sizeof(gvd));
+-	ds5_raw_write_with_check(state, 0x4900, &cmd, sizeof(cmd));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
+-	do {
+-		if (retries != 3)
+-			msleep_range(10);
+-
+-		ret = ds5_read(state, 0x4904, &status);
+-	} while (ret && retries-- && status != 0);
+-
+-	if (ret || status != 0) {
+-		dev_err(&state->client->dev, "%s(): Failed to read GVD, HWM cmd status: %x\n", __func__, status);
+-		return status;
+-	}
+-
+-	ret = regmap_raw_read(state->regmap, 0x4908, &length, sizeof(length));
+-	ds5_raw_read_with_check(state, 0x4900, data, length);
+-
+-	return ret;
+-}
+-
+-
+ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ {
+ 	struct ds5 *state = container_of(ctrl->handler, struct ds5,
+@@ -1647,18 +1354,18 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 		//       2. send command
+ 		//       3. execute command
+ 		//       4. wait for ccompletion
+-		ret = regmap_raw_write(state->regmap, 0x4900,
++		ret = regmap_raw_write(state->regmap, DS5_HWMC_DATA,
+ 				       log_prepare, sizeof(log_prepare));
+ 		if (ret < 0)
+ 			return ret;
+ 
+-		ret = regmap_raw_write(state->regmap, 0x490C,
++		ret = regmap_raw_write(state->regmap, DS5_HWMC_EXEC,
+ 				&execute_cmd, sizeof(execute_cmd));
+ 		if (ret < 0)
+ 			return ret;
+ 
+ 		for (i = 0; i < DS5_MAX_LOG_POLL; i++) {
+-			ret = regmap_raw_read(state->regmap, 0x4904,
++			ret = regmap_raw_read(state->regmap, DS5_HWMC_STATUS,
+ 					      &data, sizeof(data));
+ 			dev_info(&state->client->dev, "%s(): log ready 0x%x\n",
+ 				 __func__, data);
+@@ -1672,7 +1379,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ //		if (i == DS5_MAX_LOG_POLL)
+ //			return -ETIMEDOUT;
+ 
+-		ret = regmap_raw_read(state->regmap, 0x4908,
++		ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN,
+ 				      &data, sizeof(data));
+ 		dev_info(&state->client->dev, "%s(): log size 0x%x\n",
+ 			 __func__, data);
+@@ -1682,44 +1389,11 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+ 			return 0;
+ 		if (data > 1024)
+ 			return -ENOBUFS;
+-		ret = regmap_raw_read(state->regmap, 0x4900,
++		ret = regmap_raw_read(state->regmap, DS5_HWMC_DATA,
+ 				      ctrl->p_new.p_u8, data);
+ 		break;
+-	case DS5_CAMERA_DEPTH_CALIBRATION_TABLE_GET:
+-		ret = ds5_get_calibration_data(state, DEPTH_CALIBRATION_ID,ctrl->p_new.p_u8, 256);
+-		break;
+-	case DS5_CAMERA_COEFF_CALIBRATION_TABLE_GET:
+-		ret = ds5_get_calibration_data(state, COEF_CALIBRATION_ID,ctrl->p_new.p_u8, 512);
+-		break;
+-	case DS5_CAMERA_CID_FW_VERSION:
+-		*ctrl->p_new.p_u32 = state->fw_version << 16;
+-		*ctrl->p_new.p_u32 |= state->fw_build;
+-		break;
+-	case DS5_CAMERA_CID_GVD:
+-		ret = ds5_gvd(state, ctrl->p_new.p_u8);
+-		break;
+-	case DS5_CAMERA_CID_AE_ROI_GET: {
+-		u16 len = 0;
+-		struct hwm_cmd *ae_roi_cmd;
+-		ae_roi_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 12, GFP_KERNEL);
+-		memcpy(ae_roi_cmd, &get_ae_roi, sizeof(struct hwm_cmd));
+-		ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), ae_roi_cmd, true, &len);
+-		memcpy(ctrl->p_new.p_u16, ae_roi_cmd->Data + 4, 8);
+-		devm_kfree(&state->client->dev, ae_roi_cmd);
+-		}
+-		break;
+-	case DS5_CAMERA_CID_AE_SETPOINT_GET: {
+-		u16 len = 0;
+-		struct hwm_cmd *ae_setpoint_cmd;
+-		ae_setpoint_cmd = devm_kzalloc(&state->client->dev, sizeof(struct hwm_cmd) + 8, GFP_KERNEL);
+-		memcpy(ae_setpoint_cmd, &get_ae_setpoint, sizeof(struct hwm_cmd));
+-		ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd), ae_setpoint_cmd, true, &len);
+-		memcpy(ctrl->p_new.p_s32, ae_setpoint_cmd->Data + 4, 4);
+-		dev_info(&state->client->dev, "%s(): 0x%x \n",
+-					__func__,
+-					*(ctrl->p_new.p_s32));
+-		devm_kfree(&state->client->dev, ae_setpoint_cmd);
+-		}
++	default:
++		ret = -EINVAL;
+ 		break;
+ 	}
+ 
+@@ -1764,148 +1438,6 @@ static const struct v4l2_ctrl_config ds5_ctrl_manual_laser_power = {
+ 	.def = 150,
+ };
+ 
+-static const struct v4l2_ctrl_config ds5_ctrl_fw_version = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_CID_FW_VERSION,
+-	.name = "fw version",
+-	.type = V4L2_CTRL_TYPE_U32,
+-	.dims = {1},
+-	.elem_size = sizeof(u32),
+-	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_gvd = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_CID_GVD,
+-	.name = "GVD",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {239},
+-	.elem_size = sizeof(u8),
+-	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_get_depth_calib = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_DEPTH_CALIBRATION_TABLE_GET,
+-	.name = "get depth calib",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {256},
+-	.elem_size = sizeof(u8),
+-	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_set_depth_calib = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_DEPTH_CALIBRATION_TABLE_SET,
+-	.name = "set depth calib",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {256},
+-	.elem_size = sizeof(u8),
+-	.min = 0,
+-	.max = 0xFFFFFFFF,
+-	.def = 240,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_get_coeff_calib = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_COEFF_CALIBRATION_TABLE_GET,
+-	.name = "get coeff calib",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {512},
+-	.elem_size = sizeof(u8),
+-	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_set_coeff_calib = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_COEFF_CALIBRATION_TABLE_SET,
+-	.name = "set coeff calib",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {512},
+-	.elem_size = sizeof(u8),
+-	.min = 0,
+-	.max = 0xFFFFFFFF,
+-	.def = 240,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_ae_roi_get = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_CID_AE_ROI_GET,
+-	.name = "ae roi get",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {8},
+-	.elem_size = sizeof(u16),
+-	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_ae_roi_set = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_CID_AE_ROI_SET,
+-	.name = "ae roi set",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {8},
+-	.elem_size = sizeof(u16),
+-	.min = 0,
+-	.max = 0xFFFFFFFF,
+-	.def = 240,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_ae_setpoint_get = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_CID_AE_SETPOINT_GET,
+-	.name = "ae setpoint get",
+-	.type = V4L2_CTRL_TYPE_INTEGER,
+-	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_ae_setpoint_set = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_CID_AE_SETPOINT_SET,
+-	.name = "ae setpoint set",
+-	.type = V4L2_CTRL_TYPE_INTEGER,
+-	.min = 0,
+-	.max = 4095,
+-	.step = 1,
+-	.def = 0,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_erb = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_CID_ERB,
+-	.name = "ERB eeprom read",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {1020},
+-	.elem_size = sizeof(u8),
+-	.min = 0,
+-	.max = 0xFFFFFFFF,
+-	.def = 240,
+-	.step = 1,
+-	.step = 1,
+-};
+-
+-static const struct v4l2_ctrl_config ds5_ctrl_ewb = {
+-	.ops = &ds5_ctrl_ops,
+-	.id = DS5_CAMERA_CID_EWB,
+-	.name = "EWB eeprom write",
+-	.type = V4L2_CTRL_TYPE_U8,
+-	.dims = {1020},
+-	.elem_size = sizeof(u8),
+-	.min = 0,
+-	.max = 0xFFFFFFFF,
+-	.def = 240,
+-	.step = 1,
+-	.step = 1,
+-};
+-
+ static const struct v4l2_ctrl_config ds5_ctrl_hwmc = {
+ 	.ops = &ds5_ctrl_ops,
+ 	.id = DS5_CAMERA_CID_HWMC,
+@@ -1915,8 +1447,7 @@ static const struct v4l2_ctrl_config ds5_ctrl_hwmc = {
+ 	.elem_size = sizeof(u8),
+ 	.min = 0,
+ 	.max = 0xFFFFFFFF,
+-	.def = 240,
+-	.step = 1,
++	.def = 0,
+ 	.step = 1,
+ };
+ 
+@@ -2020,18 +1551,6 @@ static int ds5_ctrl_init(struct ds5 *state)
+ 
+ 	// Add these after v4l2_ctrl_handler_setup so they won't be set up
+ 	ctrls->log = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_log, NULL);
+-	ctrls->fw_version = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_fw_version, NULL);
+-	ctrls->gvd = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_gvd, NULL);
+-	ctrls->get_depth_calib = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_get_depth_calib, NULL);
+-	ctrls->set_depth_calib = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_set_depth_calib, NULL);
+-	ctrls->get_coeff_calib = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_get_coeff_calib, NULL);
+-	ctrls->set_coeff_calib = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_set_coeff_calib, NULL);
+-	ctrls->ae_roi_get = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_roi_get, NULL);
+-	ctrls->ae_roi_set = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_roi_set, NULL);
+-	ctrls->ae_setpoint_get = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_setpoint_get, NULL);
+-	ctrls->ae_setpoint_set = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_setpoint_set, NULL);
+-	ctrls->erb = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_erb, NULL);
+-	ctrls->ewb = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ewb, NULL);
+ 	ctrls->hwmc = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_hwmc, NULL);
+ 
+ 	state->mux.sd.subdev.ctrl_handler = hdl;
+@@ -3017,8 +2536,8 @@ static int ds5_dfu_switch_to_dfu(struct ds5 *state)
+ 	int i = DS5_START_MAX_COUNT;
+ 	u16 status;
+ 
+-	ds5_raw_write_with_check(state, 0x4900, &cmd_switch_to_dfu, sizeof(cmd_switch_to_dfu));
+-	ds5_write_with_check(state, 0x490c, 0x01); /* execute cmd */
++	ds5_raw_write_with_check(state, DS5_HWMC_DATA, &cmd_switch_to_dfu, sizeof(cmd_switch_to_dfu));
++	ds5_write_with_check(state, DS5_HWMC_EXEC, 0x01); /* execute cmd */
+ 	/*Wait for DFU fw to boot*/
+ 	do {
+ 		msleep_range(DS5_START_POLL_TIME*10);
+-- 
+2.17.1
+
