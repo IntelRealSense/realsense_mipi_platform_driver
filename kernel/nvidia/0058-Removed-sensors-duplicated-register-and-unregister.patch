@@ -1,0 +1,83 @@
+From 078861737c84690c14b10a3fca12b964bdc0df8d Mon Sep 17 00:00:00 2001
+From: Shikun Ding <shikun.ding@intel.com>
+Date: Mon, 9 May 2022 10:21:47 +0800
+Subject: [PATCH] Removed sensors duplicated register and unregister
+
+One i2c device is correponding to one d4xx module probe.
+One mux subdev register process is followed by registering one of
+sensors, depth, rgb, ir and imu.
+
+It's
+d4xx probe---> mux register---->depth sensor register
+d4xx probe---> mux register---->rgb sensor register
+d4xx probe---> mux register---->ir sensor register
+d4xx probe---> mux register---->imu sensor register
+
+but not
+
+d4xx probe--> mux register-->depth& rgb& ir& imu sensors register
+d4xx probe--> mux register-->depth& rgb& ir& imu sensors register
+d4xx probe--> mux register-->depth& rgb& ir& imu sensors register
+d4xx probe--> mux register-->depth& rgb& ir& imu sensors register
+
+There're duplicated and invalid subdev registers on depth, rgb,
+ir and imu sensors. Removed them.
+
+Signed-off-by: Shikun Ding <shikun.ding@intel.com>
+---
+ drivers/media/i2c/d4xx.c | 30 ++----------------------------
+ 1 file changed, 2 insertions(+), 28 deletions(-)
+
+diff --git a/drivers/media/i2c/d4xx.c b/drivers/media/i2c/d4xx.c
+index f4cec3a27..31845820d 100644
+--- a/drivers/media/i2c/d4xx.c
++++ b/drivers/media/i2c/d4xx.c
+@@ -2656,43 +2656,17 @@ static const struct v4l2_subdev_ops ds5_mux_subdev_ops = {
+ static int ds5_mux_registered(struct v4l2_subdev *sd)
+ {
+ 	struct ds5 *state = v4l2_get_subdevdata(sd);
+-	int ret = ds5_sensor_register(state, &state->depth.sensor);
++	int ret = ds5_sensor_register(state, state->mux.last_set);
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	ret = ds5_sensor_register(state, &state->motion_t.sensor);
+-	if (ret < 0)
+-		goto e_depth;
+-
+-	ret = ds5_sensor_register(state, &state->rgb.sensor);
+-	if (ret < 0)
+-		goto e_rgb;
+-
+-	ret = ds5_sensor_register(state, &state->imu.sensor);
+-	if (ret < 0)
+-		goto e_imu;
+-
+ 	return 0;
+-
+-e_imu:
+-	v4l2_device_unregister_subdev(&state->rgb.sensor.sd);
+-
+-e_rgb:
+-	v4l2_device_unregister_subdev(&state->motion_t.sensor.sd);
+-
+-e_depth:
+-	v4l2_device_unregister_subdev(&state->depth.sensor.sd);
+-
+-	return ret;
+ }
+ 
+ static void ds5_mux_unregistered(struct v4l2_subdev *sd)
+ {
+ 	struct ds5 *state = v4l2_get_subdevdata(sd);
+-	ds5_sensor_remove(&state->imu.sensor);
+-	ds5_sensor_remove(&state->rgb.sensor);
+-	ds5_sensor_remove(&state->motion_t.sensor);
+-	ds5_sensor_remove(&state->depth.sensor);
++	ds5_sensor_remove(state->mux.last_set);
+ }
+ 
+ static const struct v4l2_subdev_internal_ops ds5_mux_internal_ops = {
+-- 
+2.17.1
+
