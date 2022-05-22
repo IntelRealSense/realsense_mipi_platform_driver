@@ -12,4 +12,4 @@ export KERNEL_MODULES_OUT=$TEGRA_KERNEL_OUT/modules
 cd $DEVDIR/../kernel/kernel-4.9
 make ARCH=arm64 O=$TEGRA_KERNEL_OUT tegra_defconfig
 make ARCH=arm64 O=$TEGRA_KERNEL_OUT -j`nproc`
-make ARCH=arm64 O=$TEGRA_KERNEL_OUT modules_install INSTALL_MOD_PATH=$KERNEL_MODULES_OUT
+make ARCH=arm64 O=$TEGRA_KERNEL_OUT modules_install INSTALL_MOD_PATH=$KERNEL_MODULES_OUT -j`nproc`
