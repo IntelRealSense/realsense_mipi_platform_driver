@@ -270,7 +270,6 @@ int Stream::configure(realsense::camera_sub_system::Format format)
     v4l2Format.fmt.pix.pixelformat = mFormat.v4l2Format;
     v4l2Format.fmt.pix.width = mFormat.width;
     v4l2Format.fmt.pix.height = mFormat.height;
-    v4l2Format.fmt.pix.bytesperline = mFormat.calc64BytesAlignedStride();
     int ret = ioctl(fd.get(), VIDIOC_S_FMT, &v4l2Format);
     if (ret < 0) {
         RS_LOGE("VIDIOC_S_FMT failed, errno %d", errno);
@@ -299,17 +298,6 @@ int Stream::configure(realsense::camera_sub_system::Format format)
         ret = setFPS(mFormat.fps);
         if (ret < 0)
             return -1;
-    }
-
-    struct v4l2_control setStride {0};
-    setStride.id = 0x9a206e; // the value of TEGRA_CAMERA_CID_VI_PREFERRED_STRIDE, not available in user space header
-    setStride.value = mFormat.calc64BytesAlignedStride();
-    ret = ioctl(fd.get(), VIDIOC_S_CTRL, &setStride);
-    if (ret < 0) {
-        RS_LOGE("VIDIOC_S_CTRL failed, errno %d", errno);
-        return -1;
-    } else {
-        RS_LOGI("preferred_stride set to to %d ", setStride.value);
     }
 
     return ret;
@@ -821,7 +809,7 @@ int Stream::initMmap(vector<RsBuffer*> rsBuffers)
                                                 mFileDescriptor,
                                                 mV4l2Buffer.m.offset);
         RS_LOGI("mmap retruned %p errno %d", rsBuffer->buffer, errno);
-        memset(rsBuffer->buffer, 0, rsBuffer->length);
+        memset(rsBuffer->buffer, 0, mV4l2Buffer.length);
     }
     return 0;
 }
