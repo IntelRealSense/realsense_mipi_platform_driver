@@ -1,0 +1,621 @@
+From fe92607f64782f7b12c5d49f79f98351dfcc079e Mon Sep 17 00:00:00 2001
+From: Junze Wu <junze.wu@intel.com>
+Date: Fri, 27 May 2022 11:14:21 +0800
+Subject: [PATCH] Metadata related fixes
+
+- Make metadata buffer smaller so copy on it could waste less CPU;
+- IR channel changed from 2 SerDes configs (Y8_Y8I, Y12I) to 3 configs
+  (Y8, Y8I, Y12I), and Y8/Y8I configs enabled metadata datatype, the 2
+  datatypes per channel limitation is still respected while we could
+  have metadata on IR Y8 and Y8I;
+- Enable metadata for IR, /dev/video5 will be IR metadata node;
+- Y12I doesn't have metadata, the metadata node /dev/video5 will output
+  no data when the format is set to Y12I.
+- Metadata related code refactoring in MC/VI driver: cleanup, move
+  related code into one place, get config from dt instead of hardcode.
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+Signed-off-by: Shikun Ding <shikun.ding@intel.com>
+Signed-off-by: Junze Wu <junze.wu@intel.com>
+---
+ drivers/media/i2c/max9295.c                   | 65 +++++++++-----
+ drivers/media/i2c/max9296.c                   | 68 ++++++++++-----
+ .../media/platform/tegra/camera/vi/channel.c  | 24 ++----
+ .../media/platform/tegra/camera/vi/graph.c    | 53 ++++++++----
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 85 +++++++++++--------
+ include/media/mc_common.h                     |  1 +
+ 6 files changed, 181 insertions(+), 115 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index a65f3d464..f37d52b95 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -103,11 +103,6 @@ struct max9295_client_ctx {
+ 	bool st_done;
+ };
+ 
+-enum ir_type {
+-	Y8_Y8I,
+-	Y12I,
+-};
+-
+ struct max9295 {
+ 	struct i2c_client *i2c_client;
+ 	struct regmap *regmap;
+@@ -117,7 +112,7 @@ struct max9295 {
+ 	__u32 def_addr;
+ 	__u32 pst2_ref;
+ 
+-	int ir_type_value;
++	u32 ir_type_value;
+ };
+ 
+ static struct max9295 *prim_priv__;
+@@ -534,10 +529,20 @@ static struct reg_pair map_pipe_y_control[] = {
+ 	{0x010A, 0x0E}, // LIM_HEART Pipe Y: Disabled
+ };
+ 
+-static struct reg_pair map_pipe_z_y8_y8i_control[] = {
++static struct reg_pair map_pipe_z_y8_control[] = {
+ 	/* addr, val */
+ 	{0x0318, 0x6A}, // Pipe Z pulls Y8 (DT 0x2A)
+-	{0x0319, 0x5E}, // Pipe Z pulls Y8I (DT 0x1E)
++	{0x0319, 0x52}, // Pipe Z pulls EMB8 (DT 0x12)
++	{0x030D, 0x04}, // Pipe Z pulls VC2
++	{0x030E, 0x00},
++	{0x031E, 0x30}, // BPP = 16 in pipe Z
++	{0x0112, 0x0E}, // LIM_HEART Pipe Z: Disabled
++};
++
++static struct reg_pair map_pipe_z_y8i_control[] = {
++	/* addr, val */
++	{0x0318, 0x5E}, // Pipe Z pulls Y8I (DT 0x1E)
++	{0x0319, 0x52}, // Pipe Z pulls EMB8 (DT 0x12)
+ 	{0x030D, 0x04}, // Pipe Z pulls VC2
+ 	{0x030E, 0x00},
+ 	{0x031E, 0x30}, // BPP = 16 in pipe Z
+@@ -547,7 +552,7 @@ static struct reg_pair map_pipe_z_y8_y8i_control[] = {
+ static struct reg_pair map_pipe_z_y12i_control[] = {
+ 	/* addr, val */
+ 	{0x0318, 0x64}, // Pipe Z pulls Y12I (DT 0x24)
+-	{0x0319, 0x00}, // Reset to clean setting of Y8/Y8I configs
++	{0x0319, 0x00}, // Reset to clean EMB8 setting of Y8/Y8I configs
+ 	{0x030D, 0x04}, // Pipe Z pulls VC2
+ 	{0x030E, 0x00},
+ 	/* Reset reg 0x031E since it's very likely to be modified in Y8/Y8I
+@@ -626,9 +631,12 @@ static int max9295_init_settings(struct device *dev)
+ 	err |= max9295_set_registers(dev, map_pipe_y_control,
+ 				     ARRAY_SIZE(map_pipe_y_control));
+ 	// Pipe Z
+-	if (priv->ir_type_value == Y8_Y8I)
+-		err |= max9295_set_registers(dev, map_pipe_z_y8_y8i_control,
+-				     ARRAY_SIZE(map_pipe_z_y8_y8i_control));
++	if (priv->ir_type_value == V4L2_PIX_FMT_GREY)
++		err |= max9295_set_registers(dev, map_pipe_z_y8_control,
++				     ARRAY_SIZE(map_pipe_z_y8_control));
++	else if (priv->ir_type_value == V4L2_PIX_FMT_Y8I)
++		err |= max9295_set_registers(dev, map_pipe_z_y8i_control,
++				ARRAY_SIZE(map_pipe_z_y8i_control));
+ 	else
+ 		err |= max9295_set_registers(dev, map_pipe_z_y12i_control,
+ 				     ARRAY_SIZE(map_pipe_z_y12i_control));
+@@ -676,18 +684,29 @@ int max9295_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ 		return 0;
+ 
+ 	priv = dev_get_drvdata(dev);
+-	if ((priv->ir_type_value != Y8_Y8I) &&
+-	    (fourcc == V4L2_PIX_FMT_GREY || fourcc == V4L2_PIX_FMT_Y8I)) {
++	if ((priv->ir_type_value != V4L2_PIX_FMT_GREY) &&
++	    (fourcc == V4L2_PIX_FMT_GREY)) {
++		// Init control
++		err = max9295_set_registers(dev, map_pipe_y8_opt,
++					ARRAY_SIZE(map_pipe_y8_opt));
++		// Pipe Z
++		err |= max9295_set_registers(dev, map_pipe_z_y8_control,
++				     ARRAY_SIZE(map_pipe_z_y8_control));
++
++		if (err == 0)
++			priv->ir_type_value = V4L2_PIX_FMT_GREY;
++	} else if ((priv->ir_type_value != V4L2_PIX_FMT_Y8I) &&
++	           (fourcc == V4L2_PIX_FMT_Y8I)) {
+ 		// Init control
+ 		err = max9295_set_registers(dev, map_pipe_y8_opt,
+ 					ARRAY_SIZE(map_pipe_y8_opt));
+ 		// Pipe Z
+-		err |= max9295_set_registers(dev, map_pipe_z_y8_y8i_control,
+-					ARRAY_SIZE(map_pipe_z_y8_y8i_control));
++		err |= max9295_set_registers(dev, map_pipe_z_y8i_control,
++				     ARRAY_SIZE(map_pipe_z_y8i_control));
+ 		if (err == 0)
+-			priv->ir_type_value = Y8_Y8I;
+-	} else if ((priv->ir_type_value != Y12I) &&
+-		   (fourcc == V4L2_PIX_FMT_Y12I)) {
++			priv->ir_type_value = V4L2_PIX_FMT_Y8I;
++	} else if ((priv->ir_type_value != V4L2_PIX_FMT_Y12I) &&
++	           (fourcc == V4L2_PIX_FMT_Y12I)) {
+ 		// Init control
+ 		err = max9295_set_registers(dev, map_pipe_y12i_opt,
+ 					ARRAY_SIZE(map_pipe_y12i_opt));
+@@ -695,7 +714,7 @@ int max9295_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ 		err |= max9295_set_registers(dev, map_pipe_z_y12i_control,
+ 					ARRAY_SIZE(map_pipe_z_y12i_control));
+ 		if (err == 0)
+-			priv->ir_type_value = Y12I;
++			priv->ir_type_value = V4L2_PIX_FMT_Y12I;
+ 	}
+ 
+ 	return err;
+@@ -776,8 +795,8 @@ static ssize_t max9295_dev_dump_show(struct device *dev,
+ 	count += data_size;
+ 	data_addr += data_size;
+ 
+-	data_size = max9295_get_dump(dev, data_addr, map_pipe_z_y8_y8i_control,
+-				     ARRAY_SIZE(map_pipe_z_y8_y8i_control));
++	data_size = max9295_get_dump(dev, data_addr, map_pipe_z_y8_control,
++				     ARRAY_SIZE(map_pipe_z_y8_control));
+ 	count += data_size;
+ 	data_addr += data_size;
+ 
+@@ -869,7 +888,7 @@ static int max9295_probe(struct i2c_client *client,
+ 
+ 	dev_set_drvdata(&client->dev, priv);
+ 
+-	priv->ir_type_value = Y8_Y8I;
++	priv->ir_type_value = V4L2_PIX_FMT_GREY;
+ 
+ #ifdef CONFIG_SYSFS
+ 	err = sysfs_create_group(&client->dev.kobj, &max9295_attr_group);
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 87da4d7bd..fa19d3d91 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -104,11 +104,6 @@ struct pipe_ctx {
+ 	u32 st_id_sel;
+ };
+ 
+-enum ir_type {
+-	Y8_Y8I,
+-	Y12I,
+-};
+-
+ struct max9296 {
+ 	struct i2c_client *i2c_client;
+ 	struct regmap *regmap;
+@@ -130,7 +125,7 @@ struct max9296 {
+ 	int pw_ref;
+ 	struct regulator *vdd_cam_1v2;
+ 
+-	int ir_type_value;
++	u32 ir_type_value;
+ };
+ 
+ static int max9296_write_reg(struct device *dev,
+@@ -849,7 +844,7 @@ static struct reg_pair map_pipe_y_control[] = {
+ 	{0x0112, 0x23}, // pipe Y
+ };
+ 
+-static struct reg_pair map_pipe_z_y8_y8i_control[] = {
++static struct reg_pair map_pipe_z_y8_control[] = {
+ 	/* addr, val */
+ 	{0x048B, 0x0F}, // Enable 4 mappings for Pipe Z
+ 	{0x048D, 0xAA}, // Map Y8 VC2
+@@ -858,8 +853,25 @@ static struct reg_pair map_pipe_z_y8_y8i_control[] = {
+ 	{0x0490, 0x80},
+ 	{0x0491, 0x81}, // Map frame end  VC2
+ 	{0x0492, 0x81},
+-	{0x0493, 0x9E}, // Map Y8I, VC2
+-	{0x0494, 0x9E},
++	{0x0493, 0x92}, // Map EMB8, VC2
++	{0x0494, 0x92},
++	{0x04AD, 0x55}, // Map to PHY1 (master for port A)
++
++	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
++	{0x0124, 0x23}, // pipe Z
++};
++
++static struct reg_pair map_pipe_z_y8i_control[] = {
++	/* addr, val */
++	{0x048B, 0x0F}, // Enable 4 mappings for Pipe Z
++	{0x048D, 0x9E}, // Map Y8I VC2
++	{0x048E, 0x9E},
++	{0x048F, 0x80}, // Map frame start  VC2
++	{0x0490, 0x80},
++	{0x0491, 0x81}, // Map frame end  VC2
++	{0x0492, 0x81},
++	{0x0493, 0x92}, // Map EMB8, VC2
++	{0x0494, 0x92},
+ 	{0x04AD, 0x55}, // Map to PHY1 (master for port A)
+ 
+ 	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+@@ -952,9 +964,12 @@ static int max9296_init_settings(struct device *dev)
+ 	err |= max9296_set_registers(dev, map_pipe_y_control,
+ 				     ARRAY_SIZE(map_pipe_y_control));
+ 	// Pipe Z
+-	if (priv->ir_type_value == Y8_Y8I)
+-		err |= max9296_set_registers(dev, map_pipe_z_y8_y8i_control,
+-				     ARRAY_SIZE(map_pipe_z_y8_y8i_control));
++	if (priv->ir_type_value == V4L2_PIX_FMT_GREY)
++		err |= max9296_set_registers(dev, map_pipe_z_y8_control,
++				     ARRAY_SIZE(map_pipe_z_y8_control));
++	else if (priv->ir_type_value == V4L2_PIX_FMT_Y8I)
++		err |= max9296_set_registers(dev, map_pipe_z_y8i_control,
++				ARRAY_SIZE(map_pipe_z_y8i_control));
+ 	else
+ 		err |= max9296_set_registers(dev, map_pipe_z_y12i_control,
+ 				     ARRAY_SIZE(map_pipe_z_y12i_control));
+@@ -1002,20 +1017,27 @@ int max9296_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ 		return 0;
+ 
+ 	priv = dev_get_drvdata(dev);
+-	if ((priv->ir_type_value != Y8_Y8I) &&
+-	    (fourcc == V4L2_PIX_FMT_GREY || fourcc == V4L2_PIX_FMT_Y8I)) {
++	if ((priv->ir_type_value != V4L2_PIX_FMT_GREY) &&
++	    (fourcc == V4L2_PIX_FMT_GREY)) {
++		// Pipe Z
++		err = max9296_set_registers(dev, map_pipe_z_y8_control,
++					ARRAY_SIZE(map_pipe_z_y8_control));
++		if (err == 0)
++			priv->ir_type_value = V4L2_PIX_FMT_GREY;
++	} else if ((priv->ir_type_value != V4L2_PIX_FMT_Y8I) &&
++	           (fourcc == V4L2_PIX_FMT_Y8I)) {
+ 		// Pipe Z
+-		err = max9296_set_registers(dev, map_pipe_z_y8_y8i_control,
+-					ARRAY_SIZE(map_pipe_z_y8_y8i_control));
++		err = max9296_set_registers(dev, map_pipe_z_y8i_control,
++					ARRAY_SIZE(map_pipe_z_y8i_control));
+ 		if (err == 0)
+-			priv->ir_type_value = Y8_Y8I;
+-	} else if ((priv->ir_type_value != Y12I) &&
+-		   (fourcc == V4L2_PIX_FMT_Y12I)) {
++			priv->ir_type_value = V4L2_PIX_FMT_Y8I;
++	} else if ((priv->ir_type_value != V4L2_PIX_FMT_Y12I) &&
++	           (fourcc == V4L2_PIX_FMT_Y12I)) {
+ 		// Pipe Z
+ 		err = max9296_set_registers(dev, map_pipe_z_y12i_control,
+ 					ARRAY_SIZE(map_pipe_z_y12i_control));
+ 		if (err == 0)
+-			priv->ir_type_value = Y12I;
++			priv->ir_type_value = V4L2_PIX_FMT_Y12I;
+ 	}
+ 
+ 	return err;
+@@ -1091,8 +1113,8 @@ static ssize_t max9296_dev_dump_show(struct device *dev,
+ 	count += data_size;
+ 	data_addr += data_size;
+ 
+-	data_size = max9296_get_dump(dev, data_addr, map_pipe_z_y8_y8i_control,
+-				     ARRAY_SIZE(map_pipe_z_y8_y8i_control));
++	data_size = max9296_get_dump(dev, data_addr, map_pipe_z_y8_control,
++				     ARRAY_SIZE(map_pipe_z_y8_control));
+ 	count += data_size;
+ 	data_addr += data_size;
+ 
+@@ -1260,7 +1282,7 @@ static int max9296_probe(struct i2c_client *client,
+ 
+ 	dev_set_drvdata(&client->dev, priv);
+ 
+-	priv->ir_type_value = Y8_Y8I;
++	priv->ir_type_value = V4L2_PIX_FMT_GREY;
+ 
+ #ifdef CONFIG_SYSFS
+ 	err = sysfs_create_group(&client->dev.kobj, &max9296_attr_group);
+diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
+index 098a1e079..7fd9800c0 100644
+--- a/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -2414,6 +2414,8 @@ static int tegra_metadata_get_format(struct file *file, void *fh,
+ {
+ 	struct v4l2_fh *vfh = file->private_data;
+ 	struct v4l2_meta_format *fmt = &format->fmt.meta;
++	struct tegra_channel *chan = container_of(vfh->vdev,
++				struct tegra_channel, embedded.video);
+ 
+ 	if (format->type != vfh->vdev->queue->type)
+ 		return -EINVAL;
+@@ -2421,7 +2423,7 @@ static int tegra_metadata_get_format(struct file *file, void *fh,
+ 	memset(fmt, 0, sizeof(*fmt));
+ 
+ 	fmt->dataformat = V4L2_META_FMT_D4XX_CSI2;
+-	fmt->buffersize = 255;
++	fmt->buffersize = chan->embedded.width;
+ 
+ 	return 0;
+ }
+@@ -2464,14 +2466,14 @@ static int tegra_metadata_queue_setup(struct vb2_queue *vq,
+ 		if (*nplanes != 1)
+ 			return -EINVAL;
+ 
+-		if (sizes[0] < 255)
++		if (sizes[0] < chan->embedded.width)
+ 			return -EINVAL;
+ 
+ 		return 0;
+ 	}
+ 
+ 	*nplanes = 1;
+-	sizes[0] = 255;
++	sizes[0] = chan->embedded.width;
+ 	alloc_devs[0] = chan->vi->dev;
+ 
+ 
+@@ -2480,10 +2482,12 @@ static int tegra_metadata_queue_setup(struct vb2_queue *vq,
+ 
+ static int tegra_metadata_buffer_prepare(struct vb2_buffer *vb)
+ {
++	struct tegra_channel *chan = vb2_get_drv_priv(vb->vb2_queue);
++
+ 	if (vb->num_planes != 1)
+ 		return -EINVAL;
+ 
+-	if (vb2_plane_size(vb, 0) < 255)
++	if (vb2_plane_size(vb, 0) < chan->embedded.width)
+ 		return -EINVAL;
+ 
+ 	return 0;
+@@ -2541,7 +2545,7 @@ static const struct vb2_ops tegra_metadata_qops = {
+ 	.stop_streaming		= tegra_metadata_stop_streaming,
+ };
+ 
+-static int tegra_channel_video_init_embedded(struct tegra_channel *chan)
++int tegra_channel_init_video_embedded(struct tegra_channel *chan)
+ {
+ 	struct video_device *video = &chan->embedded.video;
+ 	struct vb2_queue *queue = &chan->embedded.queue;
+@@ -2757,16 +2761,6 @@ int tegra_channel_init(struct tegra_channel *chan)
+ 		goto deskew_ctx_err;
+ 	}
+ 
+-	/*FIXME: init embedded channel only if embedded is set in DT*/
+-	/*if (chan->embedded.height) {*/
+-	if (chan->id == 0 || chan->id == 1) {
+-		ret =tegra_channel_video_init_embedded(chan);
+-		if (ret < 0)
+-			dev_err(chan->vi->dev, "failed to initialize embedded channel\n");
+-			/*FIXME: should we fail channel init?*/
+-	}
+-	/*}*/
+-
+ 	chan->init_done = true;
+ 
+ 	return 0;
+diff --git a/drivers/media/platform/tegra/camera/vi/graph.c b/drivers/media/platform/tegra/camera/vi/graph.c
+index 6544f884f..08f21c8bf 100644
+--- a/drivers/media/platform/tegra/camera/vi/graph.c
++++ b/drivers/media/platform/tegra/camera/vi/graph.c
+@@ -369,8 +369,11 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
+ 	struct tegra_channel *chan =
+ 		container_of(notifier, struct tegra_channel, notifier);
+ 	struct tegra_vi_graph_entity *entity;
++	struct camera_common_data *s_data;
++	struct device_node *node;
++	struct sensor_mode_properties *sensor_mode = NULL;
++	int idx;
+ 	int ret;
+-	int emb_ret;
+ 
+ 	dev_err(chan->vi->dev, "notify complete, all subdevs registered\n");
+ 
+@@ -389,45 +392,61 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
+ 		goto register_device_error;
+ 	}
+ 
+-	if (chan->id == 0 || chan->id == 1) {
+-		emb_ret = video_register_device(&chan->embedded.video,
+-				VFL_TYPE_GRABBER, -1);
+-		if (emb_ret < 0) {
+-			dev_err(&chan->video->dev, "%s(): register embedded %s: %d\n",
+-				__func__, chan->embedded.video.name, emb_ret);
+-			goto register_embedded_device_error;
+-		}
+-		dev_err(&chan->video->dev, "%s(): register embedded %s: %d\n",
+-					__func__, chan->embedded.video.name, emb_ret);
+-	}
+-
+ 	/* Create links for every entity. */
+ 	list_for_each_entry(entity, &chan->entities, list) {
+ 		if (entity->entity != NULL) {
+ 			ret = tegra_vi_graph_build_one(chan, entity);
+ 			if (ret < 0)
+-				goto graph_error;
++				goto link_error;
+ 		}
+ 	}
+ 
+ 	/* Create links for channels */
+ 	ret = tegra_vi_graph_build_links(chan);
+ 	if (ret < 0)
+-		goto graph_error;
++		goto link_error;
++
++	s_data = to_camera_common_data(chan->subdev_on_csi->dev);
++	node = chan->subdev_on_csi->dev->of_node;
++	if (s_data && node) {
++		idx = s_data->mode_prop_idx;
++		if (idx < s_data->sensor_props.num_modes)
++			sensor_mode = &s_data->sensor_props.sensor_modes[idx];
++	}
++
++	if (sensor_mode &&
++	    sensor_mode->image_properties.embedded_metadata_height > 0) {
++		ret = tegra_channel_init_video_embedded(chan);
++		if (ret < 0) {
++			dev_err(chan->vi->dev,
++				"failed to initialize embedded channel\n");
++			goto register_embedded_device_error;
++		}
++
++		ret = video_register_device(&chan->embedded.video,
++				VFL_TYPE_GRABBER, -1);
++		if (ret < 0) {
++			dev_err(&chan->video->dev, "failed to register embedded %s: %d\n",
++				chan->embedded.video.name, ret);
++			goto register_embedded_device_error;
++		}
++	}
+ 
+ 	ret = v4l2_device_register_subdev_nodes(&chan->vi->v4l2_dev);
+ 	if (ret < 0) {
+ 		dev_err(chan->vi->dev, "failed to register subdev nodes\n");
+-		goto graph_error;
++		goto register_nodes_error;
+ 	}
+ 
+ 	chan->link_status++;
+ 
+ 	return 0;
+ 
+-graph_error:
++register_nodes_error:
+ 	video_unregister_device(&chan->embedded.video);
+ register_embedded_device_error:
++	tegra_vi_graph_remove_links(chan);
++link_error:
+ 	video_unregister_device(chan->video);
+ register_device_error:
+ 	video_device_release(chan->video);
+diff --git a/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index 9d043a9c8..662cd3b74 100644
+--- a/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -310,7 +310,7 @@ static void vi5_setup_surface(struct tegra_channel *chan,
+ 
+ 	if (chan->embedded.height > 0) {
+ 		desc->ch_cfg.embdata_enable = 1;
+-		desc->ch_cfg.frame.embed_x = chan->embedded.width * BPP_MEM;
++		desc->ch_cfg.frame.embed_x = chan->embedded.width;
+ 		desc->ch_cfg.frame.embed_y = chan->embedded.height;
+ 
+ 		desc_memoryinfo->surface[VI_ATOMP_SURFACE_EMBEDDED].base_address
+@@ -319,54 +319,59 @@ static void vi5_setup_surface(struct tegra_channel *chan,
+ 			= desc->ch_cfg.frame.embed_x * desc->ch_cfg.frame.embed_y;
+ 
+ 		desc->ch_cfg.atomp.surface_stride[VI_ATOMP_SURFACE_EMBEDDED]
+-			= chan->embedded.width * BPP_MEM;
++			= chan->embedded.width;
+ 	}
+ 
+ 	chan->capture_descr_sequence += 1;
+ }
+ 
++static void vi5_release_metadata_buffer(struct tegra_channel *chan,
++	struct vb2_v4l2_buffer *vbuf)
++{
++	struct vb2_buffer *evb = NULL;
++	struct vb2_v4l2_buffer *evbuf;
++	void* frm_buffer;
++
++	spin_lock(&chan->embedded.spin_lock);
++	if (0 < chan->embedded.num_buffers) {
++		evb = chan->embedded.buffers[chan->embedded.tail];
++		chan->embedded.buffers[chan->embedded.tail] = NULL;
++		chan->embedded.tail++;
++		if (chan->embedded.tail > 15)
++			chan->embedded.tail = chan->embedded.tail - 16;
++		chan->embedded.num_buffers--;
++	}
++	spin_unlock(&chan->embedded.spin_lock);
++
++	if (!evb)
++		return;
++
++	frm_buffer = vb2_plane_vaddr(evb, 0);
++	if (!frm_buffer)
++		return;
++
++	memcpy(frm_buffer, chan->vi->emb_buf_addr[chan->id], chan->embedded.width);
++	evbuf = to_vb2_v4l2_buffer(evb);
++	evbuf->sequence = vbuf->sequence;
++	vb2_set_plane_payload(evb, 0, chan->embedded.width);
++	evb->timestamp = vbuf->vb2_buf.timestamp;
++	vb2_buffer_done(evb, VB2_BUF_STATE_DONE);
++}
++
+ static void vi5_release_buffer(struct tegra_channel *chan,
+ 	struct tegra_channel_buffer *buf)
+ {
+ 	struct vb2_v4l2_buffer *vbuf = &buf->buf;
+-	struct vb2_buffer *evb;
+-	struct vb2_v4l2_buffer *evbuf;
+ 
+ 	vbuf->sequence = chan->sequence++;
+ 	vbuf->field = V4L2_FIELD_NONE;
+ 	vb2_set_plane_payload(&vbuf->vb2_buf, 0, chan->format.sizeimage);
+ 
+-	evb = NULL;
+-	if ((chan->embedded.height == 1)) {
+-		void* frm_buffer;
+-		spin_lock(&chan->embedded.spin_lock);
+-		if (0 < chan->embedded.num_buffers ){
+-			evb = chan->embedded.buffers[chan->embedded.tail];
+-			chan->embedded.buffers[chan->embedded.tail] = NULL;
+-			chan->embedded.tail++;
+-			if (chan->embedded.tail > 15)
+-				chan->embedded.tail = chan->embedded.tail - 16;
+-			chan->embedded.num_buffers--;
+-		}
+-		spin_unlock(&chan->embedded.spin_lock);
+-
+-		if(evb) {
+-			frm_buffer = vb2_plane_vaddr(evb, 0);
+-			if(frm_buffer != NULL) {
+-				memcpy(frm_buffer,chan->vi->emb_buf_addr[chan->id], 255);
+-			}
+-		}
+-	}
+-
+ 	vb2_buffer_done(&vbuf->vb2_buf, buf->vb2_state);
+-	if (chan->embedded.height == 1 && evb) {
+-		evbuf = to_vb2_v4l2_buffer(evb);
+-		evbuf->sequence = vbuf->sequence;
+-		/*FIXME: define 236 68 bytes metadata*/
+-		vb2_set_plane_payload(evb, 0, 68);
+-		evb->timestamp = vbuf->vb2_buf.timestamp;
+-		vb2_buffer_done(evb, VB2_BUF_STATE_DONE);
+-	}
++
++	if (chan->embedded.height == 1 &&
++	    buf->vb2_state == VB2_BUF_STATE_DONE)
++		vi5_release_metadata_buffer(chan, vbuf);
+ }
+ 
+ static void vi5_capture_enqueue(struct tegra_channel *chan,
+@@ -780,15 +785,21 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
+ 						chan->embedded.height =
+ 							sensor_mode->image_properties.\
+ 							embedded_metadata_height;
+-						if (chan->id != 0 && chan->id != 1)
++						/*
++						 * IR channel Y12I format stream
++						 * doesn't have metadata, it must
++						 * be disabled otherwise it will
++						 * cause stream errors
++						 */
++						if (chan->id == 2 &&
++						    chan->fmtinfo->fourcc == V4L2_PIX_FMT_Y12I)
+ 							chan->embedded.height = 0;
+ 						/* rounding up to page size */
+ 						emb_buf_size =
+ 							round_up(chan->\
+ 							embedded.width *
+ 								chan->\
+-								embedded.height *
+-								BPP_MEM,
++								embedded.height,
+ 								PAGE_SIZE);
+ 					}
+ 				}
+diff --git a/include/media/mc_common.h b/include/media/mc_common.h
+index acfdadbe5..fd166593b 100644
+--- a/include/media/mc_common.h
++++ b/include/media/mc_common.h
+@@ -421,6 +421,7 @@ struct tegra_channel_buffer *dequeue_inflight(struct tegra_channel *chan);
+ int tegra_channel_set_power(struct tegra_channel *chan, bool on);
+ 
+ int tegra_channel_init_video(struct tegra_channel *chan);
++int tegra_channel_init_video_embedded(struct tegra_channel *chan);
+ int tegra_channel_cleanup_video(struct tegra_channel *chan);
+ 
+ struct tegra_vi_fops {
+-- 
+2.25.1
+
