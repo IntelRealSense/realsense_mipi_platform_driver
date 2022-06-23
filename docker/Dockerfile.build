@@ -1,0 +1,28 @@
+FROM local/d4xx-env as base
+ARG GIT_REPO_ROOT
+WORKDIR /build/Linux_for_Tegra/source/public
+RUN mkdir -p /src/perc_hw_ds5u_android-jetson_tx2
+
+COPY ./ /src/perc_hw_ds5u_android-jetson_tx2/
+
+### Apply D457 patches and build the kernel image, dtb and D457 driver.
+# get and apply our patches
+RUN \
+if [ -d /src/perc_hw_ds5u_android-jetson_tx2/.git ]; \
+ then \
+  git clone /src/perc_hw_ds5u_android-jetson_tx2 perc_hw_ds5u_android-jetson_tx2; \
+ else \
+  git clone https://github.com/IntelRealSense/perc_hw_ds5u_android-jetson_tx2.git; \
+ fi
+
+WORKDIR perc_hw_ds5u_android-jetson_tx2
+
+# or, if using direct download method
+RUN ./apply_patches_ext.sh ..
+
+# build kernel, dtb and D457 driver
+RUN ./build_all.sh
+RUN XZ_OPT='-T0 -2' tar -cJf  modules.tar.xz -C images/modules .
+
+LABEL version="0.0.1"
+MAINTAINER "dmitry.perchanov@intel.com"
