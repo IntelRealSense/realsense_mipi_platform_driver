@@ -50,6 +50,9 @@ Then the necessary files are at
 - kernel image `images/arch/arm64/boot/Image`
 - dtb `images/arch/arm64/boot/dts/tegra194-p2888-0001-p2822-0000.dtb`
 - D457 driver `images/drivers/media/i2c/d4xx.ko`
+- UVC Video driver `images/drivers/media/usb/uvc/uvcvideo.ko`
+- V4L2 Core Video driver `images/drivers/media/v4l2-core/videobuf-core.ko`
+- V4L2 VMalloc Video driver `images/drivers/media/v4l2-core/videobuf-vmalloc.ko`
 
 ## Install kernel and D457 driver to Jetson AGX Xavier
 
@@ -71,6 +74,9 @@ sudo cp Image /boot
 sudo cp tegra194-p2888-0001-p2822-0000.dtb /boot/dtb
 sudo cp d4xx.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/i2c/
 echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf
+sudo cp uvcvideo.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/usb/uvc/
+sudo cp videobuf-core.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/v4l2-core/
+sudo cp videobuf-vmalloc.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/v4l2-core/
 sudo depmod
 ```
 
