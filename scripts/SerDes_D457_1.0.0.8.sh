@@ -1,6 +1,6 @@
 #D457 SerDes script: 
 # D457_MAX9295A_MAX9296A_Intel.cpp
-# Version: 1.0.0.9
+# Version: 1.0.0.8
 # Compatible Driver Version: 1.0.1.0+
 # Compatible FW Version: 5.13.0.150+
 # Depth (with Metadata)  +   RGB (with Metadata) + IR (Y8/Y8I) + IMU
@@ -176,13 +176,13 @@ sudo i2cset -f -y 2 0x48 0x01 0x2336 w # SEQ_MISS_EN Pipe U: Disabled / DIS_PKT_
 # SerDes Depth Trigger Path MFP7 > MFP8 
 sudo i2cset -f -y 2 0x48 0x02 0x82c5 w #MFP7
 sudo i2cset -f -y 2 0x48 0x02 0x1fc6 w
-sudo i2cset -f -y 2 0x40 0x02 0x84c1 w #MFP1
-sudo i2cset -f -y 2 0x40 0x02 0x20c2 w #OUT_TYPE bit to 1 (no pullup)
-sudo i2cset -f -y 2 0x40 0x02 0x1fc3 w
+sudo i2cset -f -y 2 0x40 0x02 0x84d6 w #MFP8
+sudo i2cset -f -y 2 0x40 0x02 0x60d7 w #OUT_TYPE bit to 1
+sudo i2cset -f -y 2 0x40 0x02 0x1fd8 w
 
 # SerDes RGB Trigger Path MFP9 > MFP0
 sudo i2cset -f -y 2 0x48 0x02 0x82cb w #MFP9
 sudo i2cset -f -y 2 0x48 0x02 0x1bcc w
 sudo i2cset -f -y 2 0x40 0x02 0x84be w #MFP0
-sudo i2cset -f -y 2 0x40 0x02 0x20bf w #OUT_TYPE bit to 1 (no pullup)
+sudo i2cset -f -y 2 0x40 0x02 0x60bf w #OUT_TYPE bit to 1
 sudo i2cset -f -y 2 0x40 0x02 0x1bc0 w
