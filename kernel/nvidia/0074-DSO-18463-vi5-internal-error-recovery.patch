@@ -1,0 +1,191 @@
+From ada4d996bc3c6f76ee9cd1e2e519d86f88e9723a Mon Sep 17 00:00:00 2001
+From: Dmitry Perchanov <dmitry.perchanov@intel.com>
+Date: Wed, 31 Aug 2022 14:42:57 +0300
+Subject: [PATCH] vi5 internal error recovery without v4l2
+
+---
+ drivers/media/i2c/max9295.c                   |  2 +-
+ drivers/media/i2c/max9296.c                   |  2 +-
+ .../media/platform/tegra/camera/vi/channel.c  |  4 +-
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 99 +++++++++++++++++--
+ 4 files changed, 95 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index 7edd95f..6b37ea0 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -670,7 +670,7 @@ int max9295_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ 		return 0;
+ 	}
+ 
+-	dev_info(dev, "%s st %d, fourcc %u\n", __func__, sensor_type, fourcc);
++	dev_dbg(dev, "%s st %d, fourcc %u\n", __func__, sensor_type, fourcc);
+ 
+ 	if (!init_done) {
+ 		dev_info(dev, "%s, SerDes device may not exist\n", __func__);
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index c97ad6b..2bc78a5 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -991,7 +991,7 @@ int max9296_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ 		return 0;
+ 	}
+ 
+-	dev_info(dev, "%s st %d, fourcc %u\n", __func__, sensor_type, fourcc);
++	dev_dbg(dev, "%s st %d, fourcc %u\n", __func__, sensor_type, fourcc);
+ 
+ 	if (!init_done) {
+ 		dev_info(dev, "%s, SerDes device may not exist\n", __func__);
+diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
+index 30c2198..862b328 100644
+--- a/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -1969,7 +1969,7 @@ __tegra_channel_set_format(struct tegra_channel *chan,
+ 
+ 	if (vi->ser_dev) {
+ 		ret = max9295_update_pipe(vi->ser_dev, chan->id, vfmt->fourcc);
+-		dev_info(vi->ser_dev, "%s, chan id %d, data_type %x\n",
++		dev_dbg(vi->ser_dev, "%s, chan id %d, data_type %x\n",
+ 			 __func__, chan->id, vfmt->img_dt);
+ 		if (ret < 0)
+ 			return ret;
+@@ -1977,7 +1977,7 @@ __tegra_channel_set_format(struct tegra_channel *chan,
+ 
+ 	if (vi->dser_dev) {
+ 		ret = max9296_update_pipe(vi->dser_dev, chan->id, vfmt->fourcc);
+-		dev_info(vi->dser_dev, "%s, chan id %d, data_type %x\n",
++		dev_dbg(vi->dser_dev, "%s, chan id %d, data_type %x\n",
+ 			 __func__, chan->id, vfmt->img_dt);
+ 		if (ret < 0)
+ 			return ret;
+diff --git a/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+index bac8783..3d3bfeb 100644
+--- a/drivers/media/platform/tegra/camera/vi/vi5_fops.c
++++ b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
+@@ -419,6 +419,77 @@ uncorr_err:
+ 	spin_unlock_irqrestore(&chan->capture_state_lock, flags);
+ }
+ 
++static int vi5_channel_error_recover_internal(struct tegra_channel *chan)
++{
++	int err = 0;
++	int vi_port = 0;
++	struct tegra_channel_buffer *buf;
++	struct v4l2_subdev *csi_subdev;
++
++	/* stop vi channel */
++	for(vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
++		vi_channel_close_ex(chan->id, chan->tegra_vi_channel[vi_port]);
++	}
++
++	/* release all previously-enqueued capture buffers */
++	while (!list_empty(&chan->capture)) {
++		buf = dequeue_buffer(chan, false);
++		if (!buf)
++			break;
++		spin_lock(&chan->release_lock);
++		list_add_tail(&buf->queue, &chan->release);
++		spin_unlock(&chan->release_lock);
++	}
++	while (!list_empty(&chan->dequeue)) {
++		buf = dequeue_dequeue_buffer(chan);
++		if (!buf)
++			break;
++		spin_lock(&chan->release_lock);
++		list_add_tail(&buf->queue, &chan->release);
++		spin_unlock(&chan->release_lock);
++	}
++
++	/* reset nvcsi stream */
++	csi_subdev = tegra_channel_find_linked_csi_subdev(chan);
++	if (!csi_subdev) {
++		dev_err(chan->vi->dev, "unable to find linked csi subdev\n");
++		err = -1;
++		goto done;
++	}
++
++	v4l2_subdev_call(csi_subdev, core, sync,
++		V4L2_SYNC_EVENT_SUBDEV_ERROR_RECOVER);
++
++	/* restart vi channel */
++	for(vi_port = 0; vi_port < chan->valid_ports; vi_port++) {
++		chan->tegra_vi_channel[vi_port] = vi_channel_open_ex(chan->id + vi_port, false);
++		if (IS_ERR(chan->tegra_vi_channel[vi_port])) {
++			err = PTR_ERR(chan);
++			goto done;
++		}
++		err = tegra_channel_capture_setup(chan, vi_port);
++		if (err < 0)
++			goto done;
++	}
++
++	chan->sequence = 0;
++	tegra_channel_init_ring_buffer(chan);
++	chan->capture_reqs_enqueued = 0;
++
++	chan->capture_state = CAPTURE_IDLE;
++
++	while (!list_empty(&chan->release)) {
++		buf = list_entry(chan->release.next, struct tegra_channel_buffer,
++			queue);
++		list_del_init(&buf->queue);
++		buf->vb2_state = VB2_BUF_STATE_ACTIVE;
++		vi5_capture_enqueue(chan, buf);
++	}
++
++done:
++	return err;
++}
++
+ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 	struct tegra_channel_buffer *buf)
+ {
+@@ -464,17 +535,29 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 			else {
+ 				dev_warn(vi->dev,
+ 					"corr_err: discarding frame %d, flags: %d, "
+-					"err_data %d\n",
++					"err_data %d, vc: %d\n",
+ 					descr->status.frame_id, descr->status.flags,
+-					descr->status.err_data);
++					descr->status.err_data, chan->virtual_channel);
+ 				buf->vb2_state = VB2_BUF_STATE_REQUEUEING;
++
+ 			/* D457: err_data 131072 (20000h) & 512 (200h) leading to channel
+-			 * timeout. This happens when first frame is corrupted - no md
++			 * timeout (look include/soc/tegra/camrtc-capture.h).
++			 * This happens when first frame is corrupted - no md
+ 			 * and less lines than requested. Channel reset time is 6ms */
+-				if (descr->status.err_data & 0x20200)
+-					goto uncorr_err;
+-				else
+-					goto done;
++				if (descr->status.err_data & \
++						(CAPTURE_CHANNEL_ERROR_EMBED_MISSING_LE | \
++								CAPTURE_CHANNEL_ERROR_COLLISION)) {
++					spin_lock_irqsave(&chan->capture_state_lock, flags);
++					chan->capture_state = CAPTURE_ERROR;
++					spin_unlock_irqrestore(&chan->capture_state_lock, flags);
++					buf->vb2_state = VB2_BUF_STATE_ERROR;
++					vi5_channel_error_recover_internal(chan);
++				}
++				/* REQUEUE */
++				buf->vb2_state = VB2_BUF_STATE_ACTIVE;
++				vi5_capture_enqueue(chan, buf);
++
++				return;
+ 			}
+ 		} else if (!vi_port) {
+ 			gang_prev_frame_id = descr->status.frame_id;
+@@ -509,7 +592,7 @@ static void vi5_capture_dequeue(struct tegra_channel *chan,
+ 	ts = ns_to_timespec((s64)descr->status.eof_timestamp);
+ 	trace_tegra_channel_capture_frame("eof", ts);
+ 
+-done:
++
+ 	goto rel_buf;
+ 
+ uncorr_err:
+-- 
+2.37.1
+
