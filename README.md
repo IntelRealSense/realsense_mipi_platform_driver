@@ -54,14 +54,30 @@ Apply D457 patches and build the kernel image, dtb and D457 driver.
 # ./apply_patches_ext.sh ./Linux_for_tegra/source/public [JetPack_version]
 
 # build kernel, dtb and D457 driver
-sudo apt install build-essential bc
+# install dependencies
+sudo apt install build-essential bc flex bison
+# method 1: build kernel Debian packages
+./build_all_deb.sh [--no-dbg-pkg] [JetPack_version] [JetPack_source_dir]
+# method 2: build kernel and modules only
 ./build_all.sh [JetPack_version] [JetPack_source_dir]
 
 # remove our patches from JetPack kernel source code if using setup script
 # ./apply_patches.sh reset [JetPack_version]
 ```
 
-Then the necessary files are at
+Debian packages will be generated in `images` folder.
+
+## Install kernel and D457 driver to Jetson AGX Xavier
+
+1. Install the kernel and modules
+
+1.1 If building with `build_all_deb.sh`
+
+Copy the Debian package `linux-image-5.10.104-d457_5.10.104-d457-1_arm64.deb` to the Jetson AGX Xavier board and install with `sudo dpkg -i linux-image-5.10.104-d457_5.10.104-d457-1_arm64.deb`. The header, libc-dev, dbg and firmware packages are optional.
+
+1.2 If building with `build_all.sh`
+
+The necessary files are at
 - kernel image `images/<JetPack_version>/arch/arm64/boot/Image`
 - dtb `images/<JetPack_version>/arch/arm64/boot/dts/nvidia/tegra194-p2888-0001-p2822-0000.dtb`, or `images/4.6.1/arch/arm64/boot/dts/tegra194-p2888-0001-p2822-0000.dtb` for JetPack 4.6.1.
 - D457 driver `images/<JetPack_version>/drivers/media/i2c/d4xx.ko`
@@ -69,35 +85,33 @@ Then the necessary files are at
 - V4L2 Core Video driver `images/<JetPack_version>/drivers/media/v4l2-core/videobuf-core.ko`
 - V4L2 VMalloc Video driver `images/<JetPack_version>/drivers/media/v4l2-core/videobuf-vmalloc.ko`
 
-## Install kernel and D457 driver to Jetson AGX Xavier
-
-Please copy the 3 files to the Jetson AGX Xavier board, and do the following:
-
-Edit `/boot/extlinux/extlinux.conf` primary boot option's LINUX/FDT lines to use built kernel image and dtb file:
-
-- LINUX /boot/Image
-- FDT /boot/dtb/tegra194-p2888-0001-p2822-0000.dtb
-
-FDT entry doesn't exist by default, add it.
-
-It's recommended to save the original kernel image as backup boot option. `sudo cp /boot/Image /boot/Image.backup` and use it in the backup boot option in `/boot/extlinux/extlinux.conf`.
-
-Then move the images in place and enable driver autoload at kernel boot.
-
+And copy them to the right places:
 ```
 sudo cp Image /boot
 sudo cp tegra194-p2888-0001-p2822-0000.dtb /boot/dtb
 sudo cp d4xx.ko /lib/modules/5.10.104-tegra/kernel/drivers/media/i2c/
-echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf
 sudo cp uvcvideo.ko /lib/modules/5.10.104-tegra/kernel/drivers/media/usb/uvc/
 sudo cp videobuf-core.ko /lib/modules/5.10.104-tegra/kernel/drivers/media/v4l2-core/
 sudo cp videobuf-vmalloc.ko /lib/modules/5.10.104-tegra/kernel/drivers/media/v4l2-core/
 sudo depmod
 ```
 
-Please change the kernel version in path accordingly, for example for JetPack 4.6.1 the version is `4.9.253-tegra`.
+2. Edit `/boot/extlinux/extlinux.conf` primary boot option's LINUX/FDT lines to use built kernel image and dtb file:
+
+```
+LINUX /boot/Image-5.10.104-d457
+FDT /usr/lib/linux-image-5.10.104-d457/tegra194-p2888-0001-p2822-0000.dtb
+```
+
+3. Make D457 I2C module autoload at boot time: `echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf`
 
 After rebooting Jetson, the D457 driver should work.
+
+**NOTE**
+
+- Each JetPack version's kernel may be different, the user needs to change the kernel version in file names and paths accordingly, for example for JetPack 4.6.1 the version is `4.9.253-d457`.
+- For JetPack 4.6.1, the dtb file is not included in the deb package. User needs to manually copy `images/4.6.1/arch/arm64/boot/dts/tegra194-p2888-0001-p2822-0000.dtb` file to board and edit `extlinux.conf` to point to it.
+- It's recommended to save the original kernel image as backup boot option in `/boot/extlinux/extlinux.conf`.
 
 ## Available directives on max9295/max9296 register setting
 

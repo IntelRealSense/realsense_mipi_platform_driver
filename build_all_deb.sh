@@ -3,9 +3,15 @@
 set -e
 
 if [[ "$1" == "-h" ]]; then
-    echo "build_all.sh [JetPack_version] [JetPack_Linux_source]"
+    echo "build_all.sh [--no-dbg-pkg] [JetPack_version] [JetPack_Linux_source]"
     echo "build_all.sh -h"
     exit 1
+fi
+
+DBGPKG=1
+if [[ "$1" == "--no-dbg-pkg" ]]; then
+    DBGPKG=0
+    shift
 fi
 
 export DEVDIR=$(cd `dirname $0` && pwd)
@@ -30,5 +36,7 @@ export KERNEL_MODULES_OUT=$TEGRA_KERNEL_OUT/modules
 cd $SRCS/$KERNEL_DIR
 
 make ARCH=arm64 O=$TEGRA_KERNEL_OUT tegra_defconfig
-make ARCH=arm64 O=$TEGRA_KERNEL_OUT -j`nproc`
-make ARCH=arm64 O=$TEGRA_KERNEL_OUT modules_install INSTALL_MOD_PATH=$KERNEL_MODULES_OUT -j`nproc`
+if [[ "$DBGPKG" == "0" ]]; then
+    scripts/config --file $TEGRA_KERNEL_OUT/.config --disable DEBUG_INFO
+fi
+make ARCH=arm64 O=$TEGRA_KERNEL_OUT bindeb-pkg -j`nproc`
