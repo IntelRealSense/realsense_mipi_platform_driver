@@ -2,20 +2,42 @@
 
 ## Jetson AGX Xavier board setup
 
-Please follow the [instruction](https://docs.nvidia.com/sdk-manager/install-with-sdkm-jetson/index.html) to flash JetPack 4.6.1 to the Jetson AGX Xavier with NVIDIA SDK Manager. Currently SDK Manager requires the host to be Ubuntu 18.04 only.
+Please follow the [instruction](https://docs.nvidia.com/sdk-manager/install-with-sdkm-jetson/index.html) to flash JetPack to the Jetson AGX Xavier with NVIDIA SDK Manager or other methods NVIDIA provides. Make sure the board is ready to use.
 
-Please make sure the board is ready to use.
+Currently Supported JetPack versions are:
+
+- 5.0.2 (default)
+- 4.6.1
 
 ## Build kernel, dtb and D457 driver
 
-In previous step to flash Jetson board with NVIDIA SDK Manager, the JetPack 4.6.1 folder should already be downloaded to your home directory at `~/nvidia/nvidia_sdk/JetPack_4.6.1_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra`. Get JetPack kernel source code using existing script in JetPack 4.6.1, or download directly from [JetPack 4.6.1 BSP sources](https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2).
+The developers can set up the source code with NVIDIA's Jetson git repositories by using the provided setup script:
 
 ```
-# SDK Manager method, download kernel source code
-cd ~/nvidia/nvidia_sdk/JetPack_4.6.1_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra
-./source_sync.sh -t tegra-l4t-r32.7.1
+# Using setup script, recommended for developers. If JetPack version is not given, default version will be chosen.
+./setup_workspace.sh [JetPack_version]
+```
 
-# direct download method
+Or download Jetson Linux source code tarball from [JetPack 5.0.2 BSP sources](https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/sources/public_sources.tbz2), [JetPack 4.6.1 BSP sources](https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2).
+
+```
+# JetPack 5.0.2
+mkdir l4t-gcc/5.0.2
+cd ./l4t-gcc/5.0.2
+wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93 -O aarch64--glibc--stable-final.tar.gz
+tar xf aarch64--glibc--stable-final.tar.gz
+cd ..
+wget https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/sources/public_sources.tbz2
+tar xjf public_sources.tbz2
+cd Linux_for_Tegra/source/public
+tar xjf kernel_src.tbz2
+
+# or JetPack 4.6.1
+mkdir l4t-gcc/4.6.1
+cd ./l4t-gcc/4.6.1
+wget http://releases.linaro.org/components/toolchain/binaries/7.3-2018.05/aarch64-linux-gnu/gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu.tar.xz
+tar xf gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu.tar.xz --strip-components 1
+cd ..
 wget https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2
 tar xjf public_sources.tbz2
 cd Linux_for_Tegra/source/public
@@ -25,34 +47,27 @@ tar xjf kernel_src.tbz2
 Apply D457 patches and build the kernel image, dtb and D457 driver.
 
 ```
-# NVIDIA SDK Manager method
-cd ~/nvidia/nvidia_sdk/JetPack_4.6.1_Linux_JETSON_AGX_XAVIER_TARGETS/Linux_for_Tegra/sources
+# if using setup script
+./apply_patches.sh apply [JetPack_version]
 
-# direct download method
-cd Linux_for_Tegra/source/public
-
-# get and apply our patches
-git clone https://github.com/IntelRealSense/perc_hw_ds5u_android-jetson_tx2.git
-cd perc_hw_ds5u_android-jetson_tx2
-./apply_patches.sh apply
 # or, if using direct download method
-# ./apply_patches_ext.sh ..
+# ./apply_patches_ext.sh ./Linux_for_tegra/source/public [JetPack_version]
 
 # build kernel, dtb and D457 driver
-sudo apt install gcc-aarch64-linux-gnu build-essential bc
-./build_all.sh
+sudo apt install build-essential bc
+./build_all.sh [JetPack_version] [JetPack_source_dir]
 
-# remove our patches from JetPack kernel source code if using NVIDIA SDK Manager method
-# ./apply_patches.sh reset
+# remove our patches from JetPack kernel source code if using setup script
+# ./apply_patches.sh reset [JetPack_version]
 ```
 
 Then the necessary files are at
-- kernel image `images/arch/arm64/boot/Image`
-- dtb `images/arch/arm64/boot/dts/tegra194-p2888-0001-p2822-0000.dtb`
-- D457 driver `images/drivers/media/i2c/d4xx.ko`
-- UVC Video driver `images/drivers/media/usb/uvc/uvcvideo.ko`
-- V4L2 Core Video driver `images/drivers/media/v4l2-core/videobuf-core.ko`
-- V4L2 VMalloc Video driver `images/drivers/media/v4l2-core/videobuf-vmalloc.ko`
+- kernel image `images/<JetPack_version>/arch/arm64/boot/Image`
+- dtb `images/<JetPack_version>/arch/arm64/boot/dts/nvidia/tegra194-p2888-0001-p2822-0000.dtb`, or `images/4.6.1/arch/arm64/boot/dts/tegra194-p2888-0001-p2822-0000.dtb` for JetPack 4.6.1.
+- D457 driver `images/<JetPack_version>/drivers/media/i2c/d4xx.ko`
+- UVC Video driver `images/<JetPack_version>/drivers/media/usb/uvc/uvcvideo.ko`
+- V4L2 Core Video driver `images/<JetPack_version>/drivers/media/v4l2-core/videobuf-core.ko`
+- V4L2 VMalloc Video driver `images/<JetPack_version>/drivers/media/v4l2-core/videobuf-vmalloc.ko`
 
 ## Install kernel and D457 driver to Jetson AGX Xavier
 
@@ -72,13 +87,15 @@ Then move the images in place and enable driver autoload at kernel boot.
 ```
 sudo cp Image /boot
 sudo cp tegra194-p2888-0001-p2822-0000.dtb /boot/dtb
-sudo cp d4xx.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/i2c/
+sudo cp d4xx.ko /lib/modules/5.10.104-tegra/kernel/drivers/media/i2c/
 echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf
-sudo cp uvcvideo.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/usb/uvc/
-sudo cp videobuf-core.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/v4l2-core/
-sudo cp videobuf-vmalloc.ko /lib/modules/4.9.253-tegra/kernel/drivers/media/v4l2-core/
+sudo cp uvcvideo.ko /lib/modules/5.10.104-tegra/kernel/drivers/media/usb/uvc/
+sudo cp videobuf-core.ko /lib/modules/5.10.104-tegra/kernel/drivers/media/v4l2-core/
+sudo cp videobuf-vmalloc.ko /lib/modules/5.10.104-tegra/kernel/drivers/media/v4l2-core/
 sudo depmod
 ```
+
+Please change the kernel version in path accordingly, for example for JetPack 4.6.1 the version is `4.9.253-tegra`.
 
 After rebooting Jetson, the D457 driver should work.
 

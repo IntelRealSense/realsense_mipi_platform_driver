@@ -1,0 +1,20 @@
+#!/bin/bash
+
+export JETPACK_VERSION="$1"
+export L4T_VERSION="jetson_35.1"
+export KERNEL_DIR="kernel/kernel-5.10"
+
+if [[ -z "$1" ]]; then
+    JETPACK_VERSION="5.0.2"
+fi
+
+if [[ $JETPACK_VERSION == "5.0.2" ]]; then
+    L4T_VERSION="jetson_35.1"
+    KERNEL_DIR="kernel/kernel-5.10"
+elif [[ $JETPACK_VERSION == "4.6.1" ]]; then
+    L4T_VERSION="tegra-l4t-r32.7.1"
+    KERNEL_DIR="kernel/kernel-4.9"
+else
+    echo "Wrong JetPack version ($JETPACK_VERSION)! Only 5.0.2 and 4.6.1 supported."
+    exit 1
+fi
