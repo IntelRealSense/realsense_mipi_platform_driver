@@ -35,6 +35,9 @@
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-mediabus.h>
 
+#include <media/max9295.h>
+#include <media/max9296.h>
+
 //#define DS5_DRIVER_NAME "DS5 RealSense camera driver"
 #define DS5_DRIVER_NAME "d4xx"
 #define DS5_DRIVER_NAME_AWG "d4xx-awg"
@@ -417,6 +420,10 @@ struct ds5 {
 	int is_imu;
 	u16 fw_version;
 	u16 fw_build;
+
+	struct gmsl_link_ctx g_ctx;
+	struct device		*ser_dev;
+	struct device		*dser_dev;
 };
 
 struct ds5_counters {
@@ -2238,6 +2245,271 @@ static const struct v4l2_subdev_internal_ops ds5_sensor_internal_ops = {
 	.close = ds5_mux_close,
 };
 
+static int ds5_board_setup(struct ds5 *state)
+{
+	struct device *dev = &state->client->dev;
+	struct device_node *node = dev->of_node;
+	struct device_node *ser_node;
+	struct i2c_client *ser_i2c = NULL;
+	struct device_node *dser_node;
+	struct i2c_client *dser_i2c = NULL;
+	struct device_node *gmsl;
+	int value = 0xFFFF;
+	const char *str_value;
+	int err;
+
+	err = of_property_read_u32(node, "reg", &state->g_ctx.sdev_reg);
+	if (err < 0) {
+		dev_err(dev, "reg not found\n");
+		goto error;
+	}
+
+	err = of_property_read_u32(node, "def-addr",
+					&state->g_ctx.sdev_def);
+	if (err < 0) {
+		dev_err(dev, "def-addr not found\n");
+		goto error;
+	}
+
+	ser_node = of_parse_phandle(node, "nvidia,gmsl-ser-device", 0);
+	if (ser_node == NULL) {
+		dev_err(dev, "missing %s handle\n", "nvidia,gmsl-ser-device");
+		goto error;
+	}
+
+	err = of_property_read_u32(ser_node, "reg", &state->g_ctx.ser_reg);
+	dev_info(dev,  "serializer reg: 0x%x\n", state->g_ctx.ser_reg);
+	if (err < 0) {
+		dev_err(dev, "serializer reg not found\n");
+		goto error;
+	}
+
+	ser_i2c = of_find_i2c_device_by_node(ser_node);
+	of_node_put(ser_node);
+
+	if (ser_i2c == NULL) {
+		err = -EPROBE_DEFER;
+		goto error;
+	}
+	if (ser_i2c->dev.driver == NULL) {
+		dev_err(dev, "missing serializer driver\n");
+		goto error;
+	}
+
+	state->ser_dev = &ser_i2c->dev;
+
+	dser_node = of_parse_phandle(node, "nvidia,gmsl-dser-device", 0);
+	if (dser_node == NULL) {
+		dev_err(dev, "missing %s handle\n", "nvidia,gmsl-dser-device");
+		goto error;
+	}
+
+	dser_i2c = of_find_i2c_device_by_node(dser_node);
+	of_node_put(dser_node);
+
+	if (dser_i2c == NULL) {
+		err = -EPROBE_DEFER;
+		goto error;
+	}
+	if (dser_i2c->dev.driver == NULL) {
+		dev_err(dev, "missing deserializer driver\n");
+		goto error;
+	}
+
+	state->dser_dev = &dser_i2c->dev;
+
+	/* populate g_ctx from DT */
+	gmsl = of_get_child_by_name(node, "gmsl-link");
+	if (gmsl == NULL) {
+		dev_err(dev, "missing gmsl-link device node\n");
+		err = -EINVAL;
+		goto error;
+	}
+
+	err = of_property_read_string(gmsl, "dst-csi-port", &str_value);
+	if (err < 0) {
+		dev_err(dev, "No dst-csi-port found\n");
+		goto error;
+	}
+	state->g_ctx.dst_csi_port =
+		(!strcmp(str_value, "a")) ? GMSL_CSI_PORT_A : GMSL_CSI_PORT_B;
+
+	err = of_property_read_string(gmsl, "src-csi-port", &str_value);
+	if (err < 0) {
+		dev_err(dev, "No src-csi-port found\n");
+		goto error;
+	}
+	state->g_ctx.src_csi_port =
+		(!strcmp(str_value, "a")) ? GMSL_CSI_PORT_A : GMSL_CSI_PORT_B;
+
+	err = of_property_read_string(gmsl, "csi-mode", &str_value);
+	if (err < 0) {
+		dev_err(dev, "No csi-mode found\n");
+		goto error;
+	}
+
+	if (!strcmp(str_value, "1x4")) {
+		state->g_ctx.csi_mode = GMSL_CSI_1X4_MODE;
+	} else if (!strcmp(str_value, "2x4")) {
+		state->g_ctx.csi_mode = GMSL_CSI_2X4_MODE;
+	} else if (!strcmp(str_value, "4x2")) {
+		state->g_ctx.csi_mode = GMSL_CSI_4X2_MODE;
+	} else if (!strcmp(str_value, "2x2")) {
+		state->g_ctx.csi_mode = GMSL_CSI_2X2_MODE;
+	} else {
+		dev_err(dev, "invalid csi mode\n");
+		goto error;
+	}
+
+	err = of_property_read_string(gmsl, "serdes-csi-link", &str_value);
+	if (err < 0) {
+		dev_err(dev, "No serdes-csi-link found\n");
+		goto error;
+	}
+	state->g_ctx.serdes_csi_link =
+		(!strcmp(str_value, "a")) ?
+			GMSL_SERDES_CSI_LINK_A : GMSL_SERDES_CSI_LINK_B;
+
+	err = of_property_read_u32(gmsl, "st-vc", &value);
+	if (err < 0) {
+		dev_err(dev, "No st-vc info\n");
+		goto error;
+	}
+	state->g_ctx.st_vc = value;
+
+	err = of_property_read_u32(gmsl, "vc-id", &value);
+	if (err < 0) {
+		dev_err(dev, "No vc-id info\n");
+		goto error;
+	}
+	state->g_ctx.dst_vc = value;
+
+	err = of_property_read_u32(gmsl, "num-lanes", &value);
+	if (err < 0) {
+		dev_err(dev, "No num-lanes info\n");
+		goto error;
+	}
+	state->g_ctx.num_csi_lanes = value;
+
+	state->g_ctx.num_streams =
+			of_property_count_strings(gmsl, "streams");
+	if (state->g_ctx.num_streams <= 0) {
+		dev_err(dev, "No streams found\n");
+		err = -EINVAL;
+		goto error;
+	}
+
+	state->g_ctx.s_dev = dev;
+
+	return 0;
+
+error:
+	return err;
+}
+
+static struct mutex serdes_lock__;
+
+static int ds5_gmsl_serdes_setup(struct ds5 *state)
+{
+	int err = 0;
+	int des_err = 0;
+	struct device *dev;
+
+	if (!state || !state->ser_dev || !state->dser_dev || !state->client)
+		return -EINVAL;
+
+	dev = &state->client->dev;
+
+	mutex_lock(&serdes_lock__);
+
+	/* For now no separate power on required for serializer device */
+	// max9296_power_on(state->dser_dev);
+
+	/* setup serdes addressing and control pipeline */
+	err = max9296_setup_link(state->dser_dev, &state->client->dev);
+	if (err) {
+		dev_err(dev, "gmsl deserializer link config failed\n");
+		goto error;
+	}
+
+	err = max9295_setup_control(state->ser_dev);
+
+	/* proceed even if ser setup failed, to setup deser correctly */
+	if (err)
+		dev_err(dev, "gmsl serializer setup failed\n");
+
+	des_err = max9296_setup_control(state->dser_dev, &state->client->dev);
+	if (des_err) {
+		dev_err(dev, "gmsl deserializer setup failed\n");
+		/* overwrite err only if deser setup also failed */
+		err = des_err;
+	}
+
+error:
+	mutex_unlock(&serdes_lock__);
+	return err;
+}
+
+static int ds5_serdes_setup(struct ds5 *state)
+{
+	int ret = 0;
+	struct i2c_client *c = state->client;
+
+	ret = ds5_board_setup(state);
+	if (ret) {
+		dev_err(&c->dev, "board setup failed\n");
+		return ret;
+	}
+
+	/* Pair sensor to serializer dev */
+	ret = max9295_sdev_pair(state->ser_dev, &state->g_ctx);
+	if (ret) {
+		dev_err(&c->dev, "gmsl ser pairing failed\n");
+		return ret;
+	}
+
+	/* Register sensor to deserializer dev */
+	ret = max9296_sdev_register(state->dser_dev, &state->g_ctx);
+	if (ret) {
+		dev_err(&c->dev, "gmsl deserializer register failed\n");
+		return ret;
+	}
+
+	ret = ds5_gmsl_serdes_setup(state);
+	if (ret) {
+		dev_err(&c->dev, "%s gmsl serdes setup failed\n", __func__);
+		return ret;
+	}
+
+	ret = max9295_init_settings(state->ser_dev);
+	if (ret) {
+		dev_warn(&c->dev, "%s, failed to init max9295 settings \n",
+			 __func__);
+		return ret;
+	}
+
+	ret = max9296_init_settings(state->dser_dev);
+	if (ret) {
+		dev_warn(&c->dev, "%s, failed to init max9296 settings \n",
+			 __func__);
+		return ret;
+	}
+
+	ret = max9295_sdev_unpair(state->ser_dev, state->g_ctx.s_dev);
+	if (ret) {
+		dev_warn(&c->dev, "%s, failed to sdev unpair \n", __func__);
+		return ret;
+	}
+
+	ret = max9296_sdev_unregister(state->dser_dev, state->g_ctx.s_dev);
+	if (ret) {
+		dev_warn(&c->dev, "%s, failed to sdev unregister \n", __func__);
+		return ret;
+	}
+
+	return ret;
+}
+
 static int ds5_ctrl_init(struct ds5 *state)
 {
 	const struct v4l2_ctrl_ops *ops = &ds5_ctrl_ops;
@@ -3879,12 +4151,18 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 			return ret;
 		}
 	}
+
+	ret = ds5_serdes_setup(state);
+	if (ret < 0)
+		goto e_regulator;
+
 	state->regmap = devm_regmap_init_i2c(c, &ds5_regmap_config);
 	if (IS_ERR(state->regmap)) {
 		ret = PTR_ERR(state->regmap);
 		dev_err(&c->dev, "regmap init failed: %d\n", ret);
 		goto e_regulator;
 	}
+
 	ret = ds5_chrdev_init(c, state);
 	if (ret < 0)
 		goto e_regulator;

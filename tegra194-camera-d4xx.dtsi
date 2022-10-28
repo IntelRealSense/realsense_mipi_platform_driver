@@ -7,8 +7,6 @@
 / {
 	tegra-capture-vi {
 		num-channels = <6>;
-		nvidia,gmsl-ser-device = <&ser_prim>;
-		nvidia,gmsl-dser-device = <&dser>;
 
 		ports {
 			#address-cells = <0x1>;
@@ -146,13 +144,27 @@
 					is-prim-ser;
 				};
 
+				ser_a: max9295_a@42 {
+					compatible = "maxim,max9295";
+					reg = <0x42>;
+					nvidia,gmsl-dser-device = <&dser>;
+				};
+
+				//ser_b: max9295_b@60 {
+				//	compatible = "maxim,max9295";
+				//	reg = <0x60>;
+				//	nvidia,gmsl-dser-device = <&dser>;
+				//};
 
 				d4m0: d4m@10 {
 					status = "ok";
+					def-addr = <0x10>;
 					reg = <0x10>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "Depth";
+					nvidia,gmsl-ser-device = <&ser_a>;
+					nvidia,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -190,6 +202,16 @@
 						default_framerate = "5";
 						vc_id = "0";
 					};
+					gmsl-link {
+						src-csi-port = "b";
+						dst-csi-port = "a";
+						serdes-csi-link = "a";
+						csi-mode = "1x4";
+						st-vc = <0>;
+						vc-id = <0>;
+						num-lanes = <2>;
+						streams = "grey_y16";
+					};
 				};
 			};
 			i2c@1 {
@@ -201,10 +223,13 @@
 
 				d4m1: d4m@10 {
 					status = "ok";
+					def-addr = <0x10>;
 					reg = <0x10>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "RGB";
+					nvidia,gmsl-ser-device = <&ser_a>;
+					nvidia,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -239,6 +264,16 @@
 						default_framerate = "5";
 						vc_id = "1";
 					};
+					gmsl-link {
+						src-csi-port = "b";
+						dst-csi-port = "a";
+						serdes-csi-link = "a";
+						csi-mode = "1x4";
+						st-vc = <0>;
+						vc-id = <1>;
+						num-lanes = <2>;
+						streams = "grey_y16";
+					};
 				};
 			};
 			i2c@2 {
@@ -249,10 +284,13 @@
 
 				d4m2: d4m@10 {
 					status = "ok";
+					def-addr = <0x10>;
 					reg = <0x10>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "Y8";
+					nvidia,gmsl-ser-device = <&ser_a>;
+					nvidia,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -290,6 +328,16 @@
 						default_framerate = "30";
 						vc_id = "2";
 					};
+					gmsl-link {
+						src-csi-port = "b";
+						dst-csi-port = "a";
+						serdes-csi-link = "a";
+						csi-mode = "1x4";
+						st-vc = <0>;
+						vc-id = <2>;
+						num-lanes = <2>;
+						streams = "grey_y16";
+					};
 				};
 			};
 			i2c@3 {
@@ -300,10 +348,13 @@
 
 				d4m3: d4m@10 {
 					status = "ok";
+					def-addr = <0x10>;
 					reg = <0x10>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "IMU";
+					nvidia,gmsl-ser-device = <&ser_a>;
+					nvidia,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -340,6 +391,16 @@
 						max_framerate = "30";
 						default_framerate = "30";
 						vc_id = "3";
+					};
+					gmsl-link {
+						src-csi-port = "b";
+						dst-csi-port = "a";
+						serdes-csi-link = "a";
+						csi-mode = "1x4";
+						st-vc = <0>;
+						vc-id = <3>;
+						num-lanes = <2>;
+						streams = "grey_y16";
 					};
 				};
 			};
