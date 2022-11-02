@@ -126,7 +126,7 @@
 			force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
 			vcc_lp = "vcc";
 			i2c@0 {
-				reg = <0x0>;	// line 4 of the I2C switch
+				reg = <0x0>;
 				#address-cells = <0x1>;
 				i2c-mux,deselect-on-exit;
 				#size-cells = <0x0>;
@@ -135,13 +135,6 @@
 					status = "ok";
 					reg = <0x48>;
 					compatible = "maxim,max9296";
-					#address-cells = <1>;
-					#size-cells = <0>;
-					skip_mux_detect = "yes";
-					vcc-supply = <&p2822_vdd_1v8_cvb>;
-					/*vcc-pullup-supply = <&battery_reg>;*/
-					force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
-					vcc_lp = "vcc";
 					csi-mode = "2x4";
 					max-src = <1>;
 				};
@@ -150,13 +143,6 @@
 					status = "ok";
 					reg = <0x40>;
 					compatible = "maxim,max9295";
-					#address-cells = <1>;
-					#size-cells = <0>;
-					skip_mux_detect = "yes";
-					vcc-supply = <&p2822_vdd_1v8_cvb>;
-					/*vcc-pullup-supply = <&battery_reg>;*/
-					force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
-					vcc_lp = "vcc";
 					is-prim-ser;
 				};
 
@@ -166,7 +152,6 @@
 					reg = <0x10>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
-					/*reset-gpios = <&tegra_main_gpio CAM0_RST_L GPIO_ACTIVE_HIG>;*/
 					cam-type = "Depth";
 					ports {
 						#address-cells = <1>;
@@ -185,7 +170,6 @@
 							};
 						};
 					};
-					/* mode0: Y8, mode1: depth D16 */
 					mode0 {
 						pixel_t = "grey_y16";
 						num_lanes = "2";
@@ -194,9 +178,6 @@
 						active_h = "720";
 						tegra_sinterface = "serial_a";
 						mclk_khz = "24000";
-						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
-						/*pix_clk_hz = "37125000";*/
-						/*pix_clk_hz = "375000000";*/
 						pix_clk_hz = "74250000";
 						discontinuous_clk = "no";
 						dpcm_enable = "false";
@@ -211,9 +192,9 @@
 					};
 				};
 			};
-			i2c@1 { //RGB0
+			i2c@1 {
 				status = "ok";
-				reg = <0x3>; 	// line 18-19 of the I2C switch
+				reg = <0x1>;
 				#address-cells = <0x1>;
 				i2c-mux,deselect-on-exit;
 				#size-cells = <0x0>;
@@ -223,7 +204,6 @@
 					reg = <0x10>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
-					/*reset-gpios = <&tegra_main_gpio CAM0_RST_L GPIO_ACTIVE_HIG>;*/
 					cam-type = "RGB";
 					ports {
 						#address-cells = <1>;
@@ -239,7 +219,6 @@
 							};
 						};
 					};
-					/*mode0: RGB D16 */
 					mode0 {
 						pixel_t = "grey_y8";
 						num_lanes = "2";
@@ -248,9 +227,7 @@
 						active_h = "1080";
 						tegra_sinterface = "serial_e";
 						mclk_khz = "24000";
-						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
 						pix_clk_hz = "74250000";
-						/*pix_clk_hz = "375000000";*/
 						discontinuous_clk = "no";
 						dpcm_enable = "false";
 						cil_settletime = "0";
@@ -265,7 +242,7 @@
 				};
 			};
 			i2c@2 {
-				reg = <0x4>;	// line 4 of the I2C switch
+				reg = <0x2>;
 				#address-cells = <0x1>;
 				i2c-mux,deselect-on-exit;
 				#size-cells = <0x0>;
@@ -275,7 +252,6 @@
 					reg = <0x10>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
-					/*reset-gpios = <&tegra_main_gpio CAM0_RST_L GPIO_ACTIVE_HIG>;*/
 					cam-type = "Y8";
 					ports {
 						#address-cells = <1>;
@@ -294,7 +270,6 @@
 							};
 						};
 					};
-					/* mode0: Y8, mode1: depth D16 */
 					mode0 {
 						pixel_t = "grey_y8";
 						num_lanes = "2";
@@ -303,9 +278,6 @@
 						active_h = "720";
 						tegra_sinterface = "serial_b";
 						mclk_khz = "24000";
-						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
-						/*pix_clk_hz = "37125000";*/
-						/*pix_clk_hz = "375000000";*/
 						pix_clk_hz = "74250000";
 						discontinuous_clk = "no";
 						dpcm_enable = "false";
@@ -321,7 +293,7 @@
 				};
 			};
 			i2c@3 {
-				reg = <0x5>;	// line 4 of the I2C switch
+				reg = <0x3>;
 				#address-cells = <0x1>;
 				i2c-mux,deselect-on-exit;
 				#size-cells = <0x0>;
@@ -331,7 +303,6 @@
 					reg = <0x10>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
-					/*reset-gpios = <&tegra_main_gpio CAM0_RST_L GPIO_ACTIVE_HIG>;*/
 					cam-type = "IMU";
 					ports {
 						#address-cells = <1>;
@@ -358,9 +329,6 @@
 						active_h = "480";
 						tegra_sinterface = "serial_b";
 						mclk_khz = "24000";
-						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
-						/*pix_clk_hz = "37125000";*/
-						/*pix_clk_hz = "375000000";*/
 						pix_clk_hz = "74250000";
 						discontinuous_clk = "no";
 						dpcm_enable = "false";
