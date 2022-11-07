@@ -2245,6 +2245,20 @@ static const struct v4l2_subdev_internal_ops ds5_sensor_internal_ops = {
 	.close = ds5_mux_close,
 };
 
+/*
+ * FIXME
+ * temporary solution before changing GMSL data structure or merging all 4 D457
+ * sensors into one i2c device. Only first sensor node per max9295 sets up the
+ * link.
+ *
+ * max 24 number from this link:
+ * https://docs.nvidia.com/jetson/archives/r35.1/DeveloperGuide/text/
+ * SD/CameraDevelopment/JetsonVirtualChannelWithGmslCameraFramework.html
+ * #jetson-agx-xavier-series
+ */
+#define MAX_DEV_NUM 24
+static struct ds5 *serdes_inited[MAX_DEV_NUM];
+
 static int ds5_board_setup(struct ds5 *state)
 {
 	struct device *dev = &state->client->dev;
@@ -2257,6 +2271,7 @@ static int ds5_board_setup(struct ds5 *state)
 	int value = 0xFFFF;
 	const char *str_value;
 	int err;
+	int i;
 
 	err = of_property_read_u32(node, "reg", &state->g_ctx.sdev_reg);
 	if (err < 0) {
@@ -2401,7 +2416,16 @@ static int ds5_board_setup(struct ds5 *state)
 
 	state->g_ctx.s_dev = dev;
 
-	return 0;
+	for (i = 0; i < MAX_DEV_NUM; i++) {
+		if (!serdes_inited[i]) {
+			serdes_inited[i] = state;
+			return 0;
+		} else if (serdes_inited[i]->ser_dev == state->ser_dev) {
+			return -ENOTSUPP;
+		}
+	}
+	err = -EINVAL;
+	dev_err(dev, "cannot handle more than %d D457 cameras\n", MAX_DEV_NUM);
 
 error:
 	return err;
@@ -2457,6 +2481,8 @@ static int ds5_serdes_setup(struct ds5 *state)
 
 	ret = ds5_board_setup(state);
 	if (ret) {
+		if (ret == -ENOTSUPP)
+			return 0;
 		dev_err(&c->dev, "board setup failed\n");
 		return ret;
 	}
@@ -2492,18 +2518,6 @@ static int ds5_serdes_setup(struct ds5 *state)
 	if (ret) {
 		dev_warn(&c->dev, "%s, failed to init max9296 settings \n",
 			 __func__);
-		return ret;
-	}
-
-	ret = max9295_sdev_unpair(state->ser_dev, state->g_ctx.s_dev);
-	if (ret) {
-		dev_warn(&c->dev, "%s, failed to sdev unpair \n", __func__);
-		return ret;
-	}
-
-	ret = max9296_sdev_unregister(state->dser_dev, state->g_ctx.s_dev);
-	if (ret) {
-		dev_warn(&c->dev, "%s, failed to sdev unregister \n", __func__);
 		return ret;
 	}
 
@@ -4234,9 +4248,31 @@ e_regulator:
 static int ds5_remove(struct i2c_client *c)
 {
 	struct ds5 *state = container_of(i2c_get_clientdata(c), struct ds5, mux.sd.subdev);
+	int i, ret;
 
 	dev_info(&c->dev, "D4XX remove %s\n",
 			ds5_get_sensor_name(state));
+
+	for (i = 0; i < MAX_DEV_NUM; i++) {
+		if (serdes_inited[i] && serdes_inited[i] == state) {
+			serdes_inited[i] = NULL;
+			mutex_lock(&serdes_lock__);
+
+                        ret = max9295_sdev_unpair(state->ser_dev,
+                                                  state->g_ctx.s_dev);
+                        if (ret)
+                            dev_warn(&c->dev, "failed to unpair sdev\n");
+                        ret = max9296_sdev_unregister(state->dser_dev,
+                                                      state->g_ctx.s_dev);
+                        if (ret)
+                            dev_warn(&c->dev,
+                                     "failed to sdev unregister sdev\n");
+
+			mutex_unlock(&serdes_lock__);
+			break;
+		}
+	}
+
 	if (state->vcc)
 		regulator_disable(state->vcc);
 //	gpio_free(state->pwdn_gpio);
@@ -4245,6 +4281,7 @@ static int ds5_remove(struct i2c_client *c)
 		sysfs_remove_group(&c->dev.kobj, &ds5_attr_group);
 		ds5_mux_remove(state);
 	}
+
 	return 0;
 }
 
