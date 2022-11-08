@@ -19,6 +19,7 @@ index 814c808..8aa9c1f 100644
 +	/* dmipx: fixing G_PARM EINVAL error */
 +//	ret = v4l2_subdev_call(sd, video, g_frame_interval, &interval);
 +	ret = sd->ops->video->g_frame_interval(sd, &interval);
+
  	a->parm.capture.timeperframe.numerator = interval.interval.numerator;
  	a->parm.capture.timeperframe.denominator = interval.interval.denominator;
  
