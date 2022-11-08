@@ -110,6 +110,7 @@
 #define DS5_EXPOSURE_ROI_BOTTOM		0x0018
 #define DS5_EXPOSURE_ROI_RIGHT		0x001C
 #define DS5_MANUAL_LASER_POWER		0x0024
+#define DS5_PWM_FREQUENCY		0x0028
 
 #define DS5_DEPTH_CONFIG_STATUS		0x4800
 #define DS5_RGB_CONFIG_STATUS		0x4802
@@ -1316,6 +1317,9 @@ static int ds5_hw_set_exposure(struct ds5 *state, u32 base, s32 val)
 #define DS5_CAMERA_CID_ERB			(DS5_CAMERA_CID_BASE+13)
 #define DS5_CAMERA_CID_EWB			(DS5_CAMERA_CID_BASE+14)
 #define DS5_CAMERA_CID_HWMC			(DS5_CAMERA_CID_BASE+15)
+
+#define DS5_CAMERA_CID_PWM			(DS5_CAMERA_CID_BASE+22)
+
 /* the HWMC will remain for legacy tools compatibility,
  * HWMC_RW used for UVC compatibility*/
 #define DS5_CAMERA_CID_HWMC_RW		(DS5_CAMERA_CID_BASE+32)
@@ -1719,6 +1723,10 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 					(struct hwm_cmd *)ctrl->p_new.p_u8, false, NULL);
 		}
 		break;
+	case DS5_CAMERA_CID_PWM:
+		if (state->is_depth)
+			ret = ds5_write(state, base | DS5_PWM_FREQUENCY, ctrl->val);
+		break;
 	}
 
 	mutex_unlock(&state->lock);
@@ -1973,6 +1981,10 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 	case DS5_CAMERA_CID_HWMC_RW:
 		ds5_get_hwmc(state, ctrl->p_new.p_u8);
 		break;
+	case DS5_CAMERA_CID_PWM:
+		if (state->is_depth)
+			ds5_read(state, base | DS5_PWM_FREQUENCY, ctrl->p_new.p_u16);
+		break;
 	}
 
 	return ret;
@@ -2188,6 +2200,18 @@ static const struct v4l2_ctrl_config ds5_ctrl_hwmc_rw = {
 	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
 };
 
+static const struct v4l2_ctrl_config ds5_ctrl_pwm = {
+	.ops = &ds5_ctrl_ops,
+	.id = DS5_CAMERA_CID_PWM,
+	.name = "PWM Frequency Selector",
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.min = 0,
+	.max = 1,
+	.step = 1,
+	.def = 1,
+	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
+};
+
 static int ds5_mux_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 {
 	struct ds5 *state = v4l2_get_subdevdata(sd);
@@ -2321,6 +2345,10 @@ static int ds5_ctrl_init(struct ds5 *state)
 	ctrls->ewb = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ewb, NULL);
 	ctrls->hwmc = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_hwmc, NULL);
 	v4l2_ctrl_new_custom(hdl, &ds5_ctrl_hwmc_rw, NULL);
+
+	if (state->is_depth)
+		v4l2_ctrl_new_custom(hdl, &ds5_ctrl_pwm, NULL);
+
 	state->mux.sd.subdev.ctrl_handler = hdl;
 
 	return 0;
@@ -3349,7 +3377,7 @@ static int ds5_dfu_wait_for_get_dfu_status(struct ds5 *state,
 static int ds5_dfu_get_dev_info(struct ds5 *state, struct __fw_status *buf)
 {
 	int ret;
-	u16 len;
+	u16 len = 0;
 
 	ret = ds5_write(state, 0x5008, 0x0002); //Upload DFU cmd
 	if (!ret)
