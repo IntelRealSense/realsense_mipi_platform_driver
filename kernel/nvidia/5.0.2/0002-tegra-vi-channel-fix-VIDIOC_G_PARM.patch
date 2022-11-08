@@ -1,0 +1,27 @@
+From bda590c5ff73db14dedf3cf401c83bac3d07a203 Mon Sep 17 00:00:00 2001
+From: Dmitry Perchanov <dmitry.perchanov@intel.com>
+Date: Tue, 8 Nov 2022 11:34:14 +0200
+Subject: [PATCH] tegra: vi: channel: fix VIDIOC_G_PARM
+
+---
+ drivers/media/platform/tegra/camera/vi/channel.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
+index 814c808..8aa9c1f 100644
+--- a/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -2258,7 +2258,9 @@ __tegra_channel_get_parm(struct tegra_channel *chan,
+ 	int ret = 0;
+ 	struct v4l2_subdev_frame_interval interval;
+ 
+-	ret = v4l2_subdev_call(sd, video, g_frame_interval, &interval);
++	/* dmipx: fixing G_PARM EINVAL error */
++//	ret = v4l2_subdev_call(sd, video, g_frame_interval, &interval);
++	ret = sd->ops->video->g_frame_interval(sd, &interval);
+ 	a->parm.capture.timeperframe.numerator = interval.interval.numerator;
+ 	a->parm.capture.timeperframe.denominator = interval.interval.denominator;
+ 
+-- 
+2.37.1
+
