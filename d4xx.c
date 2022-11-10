@@ -1084,6 +1084,7 @@ static int ds5_configure(struct ds5 *state)
 	u16 dt_addr, md_addr, override_addr, fps_addr, width_addr, height_addr;
 	int ret;
 
+	vc_id = state->g_ctx.dst_vc;
 	if (state->is_depth) {
 		sensor = &state->depth.sensor;
 		dt_addr = DS5_DEPTH_STREAM_DT;
@@ -1092,8 +1093,6 @@ static int ds5_configure(struct ds5 *state)
 		fps_addr = DS5_DEPTH_FPS;
 		width_addr = DS5_DEPTH_RES_WIDTH;
 		height_addr = DS5_DEPTH_RES_HEIGHT;
-		// TODO: read VC from device tree
-		vc_id = 0;
 		md_fmt = 0x12;
 	} else if (state->is_rgb) {
 		sensor = &state->rgb.sensor;
@@ -1103,7 +1102,6 @@ static int ds5_configure(struct ds5 *state)
 		fps_addr = DS5_RGB_FPS;
 		width_addr = DS5_RGB_RES_WIDTH;
 		height_addr = DS5_RGB_RES_HEIGHT;
-		vc_id = 1;
 		md_fmt = 0x12;
 	} else if (state->is_y8) {
 		sensor = &state->motion_t.sensor;
@@ -1113,7 +1111,6 @@ static int ds5_configure(struct ds5 *state)
 		fps_addr = DS5_IR_FPS;
 		width_addr = DS5_IR_RES_WIDTH;
 		height_addr = DS5_IR_RES_HEIGHT;
-		vc_id = 2;
 		md_fmt = 0x12;
 	} else if (state->is_imu) {
 		sensor = &state->imu.sensor;
@@ -1123,7 +1120,6 @@ static int ds5_configure(struct ds5 *state)
 		fps_addr = DS5_IMU_FPS;
 		width_addr = DS5_IMU_RES_WIDTH;
 		height_addr = DS5_IMU_RES_HEIGHT;
-		vc_id = 3;
 		md_fmt = 0x0;
 	} else {
 		return -EINVAL;
