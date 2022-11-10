@@ -84,6 +84,7 @@
 
 			};
 		};
+#if 0
 		sources {
 			source@0 {
 				remote-source = <&src_depth0>;
@@ -107,6 +108,7 @@
 			//	remote-source = <&src_y2>;
 			//};
 		};
+#endif
 	};
 
 	i2c@3180000 {
@@ -134,7 +136,7 @@
 					reg = <0x48>;
 					compatible = "maxim,max9296";
 					csi-mode = "2x4";
-					max-src = <1>;
+					max-src = <2>;
 				};
 
 				ser_prim: max9295_prim@40 {
@@ -150,12 +152,12 @@
 					nvidia,gmsl-dser-device = <&dser>;
 				};
 
-				//ser_b: max9295_b@60 {
-				//	compatible = "maxim,max9295";
-				//	reg = <0x60>;
-				//	nvidia,gmsl-dser-device = <&dser>;
-				//};
-
+				ser_b: max9295_b@60 {
+					compatible = "maxim,max9295";
+					reg = <0x60>;
+					nvidia,gmsl-dser-device = <&dser>;
+				};
+#if 0
 				d4m0: d4m@10 {
 					status = "ok";
 					def-addr = <0x10>;
@@ -213,6 +215,61 @@
 						streams = "grey_y16";
 					};
 				};
+#endif
+				d4m0: d4m@1a {
+					status = "ok";
+					def-addr = <0x10>;
+					reg = <0x1a>;
+					compatible = "intel,d4xx";
+					vcc-supply = <&p2822_vdd_1v8_cvb>;
+					cam-type = "RGB";
+					nvidia,gmsl-ser-device = <&ser_a>;
+					nvidia,gmsl-dser-device = <&dser>;
+					ports {
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						port@0 {
+							reg = <0>;
+							d4m0_out: endpoint {
+								port-index = <1>;
+								bus-width = <2>;
+								vc-id = <0>;
+								remote-endpoint = <&csi_in0>;
+							};
+						};
+					};
+					mode0 {
+						pixel_t = "grey_y8";
+						num_lanes = "2";
+						csi_pixel_bit_depth = "8";
+						active_w = "1920";
+						active_h = "1080";
+						tegra_sinterface = "serial_e";
+						mclk_khz = "24000";
+						pix_clk_hz = "74250000";
+						discontinuous_clk = "no";
+						dpcm_enable = "false";
+						cil_settletime = "0";
+						line_length = "1280"; /* 2200 */
+						mclk_multiplier = "15.625";
+						embedded_metadata_height = "1";
+						min_framerate = "5";
+						max_framerate = "30";
+						default_framerate = "5";
+						vc_id = "0";
+					};
+					gmsl-link {
+						src-csi-port = "b";
+						dst-csi-port = "a";
+						serdes-csi-link = "a";
+						csi-mode = "1x4";
+						st-vc = <0>;
+						vc-id = <0>;
+						num-lanes = <2>;
+						streams = "grey_y16";
+					};
+				};
 			};
 			i2c@1 {
 				status = "ok";
@@ -221,14 +278,14 @@
 				i2c-mux,deselect-on-exit;
 				#size-cells = <0x0>;
 
-				d4m1: d4m@10 {
+				d4m1: d4m@1b {
 					status = "ok";
 					def-addr = <0x10>;
-					reg = <0x10>;
+					reg = <0x1b>;
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "RGB";
-					nvidia,gmsl-ser-device = <&ser_a>;
+					nvidia,gmsl-ser-device = <&ser_b>;
 					nvidia,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
@@ -267,7 +324,7 @@
 					gmsl-link {
 						src-csi-port = "b";
 						dst-csi-port = "a";
-						serdes-csi-link = "a";
+						serdes-csi-link = "b";
 						csi-mode = "1x4";
 						st-vc = <0>;
 						vc-id = <1>;
@@ -276,6 +333,7 @@
 					};
 				};
 			};
+#if 0
 			i2c@2 {
 				reg = <0x2>;
 				#address-cells = <0x1>;
@@ -404,7 +462,7 @@
 					};
 				};
 			};
-
+#endif
 		};
 	};
 
@@ -491,7 +549,7 @@
 							status = "ok";
 							port-index = <0>;
 							bus-width = <2>;
-							remote-endpoint = <&d4m2_out>;
+							//remote-endpoint = <&d4m2_out>;
 						};
 					};
 					port@1 {
@@ -520,7 +578,7 @@
 							status = "ok";
 							port-index = <0>;
 							bus-width = <2>;
-							remote-endpoint = <&d4m3_out>;
+							//remote-endpoint = <&d4m3_out>;
 						};
 					};
 					port@1 {
