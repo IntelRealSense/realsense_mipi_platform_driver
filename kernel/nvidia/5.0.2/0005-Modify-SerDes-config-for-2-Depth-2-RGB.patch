@@ -1,0 +1,83 @@
+From b53fdfc0675d210bc49e607a09bbd43356d7cc8f Mon Sep 17 00:00:00 2001
+From: Junze Wu <junze.wu@intel.com>
+Date: Fri, 11 Nov 2022 18:10:03 +0800
+Subject: [PATCH] Modify SerDes config for 2 Depth + 2 RGB
+
+Signed-off-by: Junze Wu <junze.wu@intel.com>
+---
+ drivers/media/i2c/max9295.c |  7 ++++---
+ drivers/media/i2c/max9296.c | 18 ++++++++++--------
+ 2 files changed, 14 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index c2f7f286e..07ca12598 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -540,8 +540,8 @@ static struct reg_pair map_pipe_y_control[] = {
+ 
+ static struct reg_pair map_pipe_z_y8_y8i_control[] = {
+ 	/* addr, val */
+-	{0x0318, 0x6A}, // Pipe Z pulls Y8 (DT 0x2A)
+-	{0x0319, 0x5E}, // Pipe Z pulls Y8I (DT 0x1E)
++	{0x0318, 0x5E}, // Pipe Z pulls Depth (DT 0x1E)
++	{0x0319, 0x52}, // Pipe Z pulls EMB8 (DT 0x12)
+ 	{0x030D, 0x04}, // Pipe Z pulls VC2
+ 	{0x030E, 0x00},
+ 	{0x031E, 0x30}, // BPP = 16 in pipe Z
+@@ -563,7 +563,8 @@ static struct reg_pair map_pipe_z_y12i_control[] = {
+ 
+ static struct reg_pair map_pipe_u_control[] = {
+ 	/* addr, val */
+-	{0x031A, 0x6A}, // Pipe U pulls IMU (DT 0x2A)
++	{0x031A, 0x5E}, // Pipe U pulls RGB (DT 0x1E)
++	{0x031B, 0x52}, // Pipe U pulls EMB8 (DT 0x12)
+ 	{0x030F, 0x08}, // Pipe U pulls VC3
+ 	{0x0310, 0x00},
+ 	{0x031F, 0x30}, // BPP = 16 in pipe U
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 2affd8d6b..38def0454 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -852,14 +852,14 @@ static struct reg_pair map_pipe_y_control[] = {
+ static struct reg_pair map_pipe_z_y8_y8i_control[] = {
+ 	/* addr, val */
+ 	{0x048B, 0x0F}, // Enable 4 mappings for Pipe Z
+-	{0x048D, 0xAA}, // Map Y8 VC2
+-	{0x048E, 0xAA},
++	{0x048D, 0x9E}, // Map Depth VC2
++	{0x048E, 0x9E},
+ 	{0x048F, 0x80}, // Map frame start  VC2
+ 	{0x0490, 0x80},
+ 	{0x0491, 0x81}, // Map frame end  VC2
+ 	{0x0492, 0x81},
+-	{0x0493, 0x9E}, // Map Y8I, VC2
+-	{0x0494, 0x9E},
++	{0x0493, 0x92}, // Map EMB8, VC2
++	{0x0494, 0x92},
+ 	{0x04AD, 0x55}, // Map to PHY1 (master for port A)
+ 
+ 	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+@@ -885,14 +885,16 @@ static struct reg_pair map_pipe_z_y12i_control[] = {
+ 
+ static struct reg_pair map_pipe_u_control[] = {
+ 	/* addr, val */
+-	{0x04CB, 0x07}, // Enable 3 mappings for Pipe U
+-	{0x04CD, 0xEA}, // Map IMUI VC3
+-	{0x04CE, 0xEA},
++	{0x04CB, 0x0F}, // Enable 4 mappings for Pipe U
++	{0x04CD, 0xDE}, // Map RGB VC3
++	{0x04CE, 0xDE},
+ 	{0x04CF, 0xC0}, // Map frame start  VC3
+ 	{0x04D0, 0xC0},
+ 	{0x04D1, 0xC1}, // Map frame end  VC3
+ 	{0x04D2, 0xC1},
+-	{0x04ED, 0x15}, // Map to PHY1 (master for port A)
++	{0x04D3, 0xD2}, // Map EMB8, VC3
++	{0x04D4, 0xD2},
++	{0x04ED, 0x55}, // Map to PHY1 (master for port A)
+ 
+ 	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+ 	{0x0136, 0x23}, // pipe U
+-- 
+2.17.1
+
