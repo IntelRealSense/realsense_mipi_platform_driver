@@ -24,4 +24,4 @@ apply_external_patches() {
 apply_external_patches $1 kernel/nvidia
 apply_external_patches $1 kernel/kernel-4.9
 apply_external_patches $1 hardware/nvidia/platform/t19x/galen/kernel-dts
-
+cp d4xx.c ../kernel/nvidia/drivers/media/i2c/
