@@ -1,0 +1,409 @@
+From 33b3f193b16b9d23c6fa6f03e42aabdd78aa5e00 Mon Sep 17 00:00:00 2001
+From: Kaili Xu <kaili.xu@intel.com>
+Date: Fri, 18 Nov 2022 18:07:41 +0800
+Subject: [PATCH] Remove dump reg and all module params in 9295/9296
+
+Signed-off-by: Kaili Xu <kaili.xu@intel.com>
+---
+ drivers/media/i2c/max9295.c | 157 ------------------------------------
+ drivers/media/i2c/max9296.c | 148 ---------------------------------
+ 2 files changed, 305 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index 07ca12598..4de304360 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -20,8 +20,6 @@
+ #include <linux/module.h>
+ #include <media/max9295.h>
+ 
+-#define MAX9295_MODULE_VERSION "1.0.0.9"
+-
+ /* register specifics */
+ #define MAX9295_MIPI_RX0_ADDR 0x330
+ #define MAX9295_MIPI_RX1_ADDR 0x331
+@@ -484,15 +482,6 @@ static  struct regmap_config max9295_regmap_config = {
+ 	.cache_type = REGCACHE_RBTREE,
+ };
+ 
+-static bool max9295_dynamic_update = true;
+-module_param(max9295_dynamic_update, bool, 0664);
+-MODULE_PARM_DESC(max9295_dynamic_update, "Update max9295 settings dynamically");
+-
+-
+-static char *max9295_setting_verison = MAX9295_MODULE_VERSION;
+-module_param(max9295_setting_verison, charp, 0444);
+-MODULE_PARM_DESC(max9295_setting_verison, "Print max9295 setting version");
+-
+ struct reg_pair {
+ 	u16 addr;
+ 	u8 val;
+@@ -669,11 +658,6 @@ int max9295_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ 	if (!probe_done)
+ 		return 0;
+ 
+-	if (!max9295_dynamic_update) {
+-		dev_info(dev, "%s, don't update dynamically\n", __func__);
+-		return 0;
+-	}
+-
+ 	dev_dbg(dev, "%s st %d, fourcc %u\n", __func__, sensor_type, fourcc);
+ 
+ 	if (!init_done) {
+@@ -711,135 +695,6 @@ int max9295_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ }
+ EXPORT_SYMBOL(max9295_update_pipe);
+ 
+-static int max9295_get_dump(struct device *dev, char *data_addr,
+-			    struct reg_pair *pair, u32 pair_size)
+-{
+-	struct max9295 *priv = dev_get_drvdata(dev);
+-	int err;
+-	u32 val = 0;
+-	char *addr = data_addr;
+-	int data_size = 0;
+-	int cnt = 0;
+-	u32 j = 0;
+-
+-	mutex_lock(&priv->lock);
+-
+-	for (j = 0; j < pair_size; j++) {
+-		val = 0;
+-		err = regmap_read(priv->regmap, pair[j].addr, &val);
+-
+-		if (!err) {
+-			cnt = snprintf(addr, 100 - data_size, "0x%04x:0x%x\n",
+-				       pair[j].addr, val);
+-			addr += cnt;
+-			data_size += cnt;
+-			dev_info(dev,
+-				"%s:i2c read, addr 0x%x, value %x\n",
+-				__func__, pair[j].addr, val);
+-		} else {
+-			dev_warn(dev,
+-				"%s:i2c read, err %x, addr 0x%x, value %x\n",
+-				__func__, err, pair[j].addr, val);
+-		}
+-	};
+-
+-	mutex_unlock(&priv->lock);
+-
+-	return data_size;
+-}
+-
+-#ifdef CONFIG_SYSFS
+-
+-static ssize_t max9295_dev_dump_show(struct device *dev,
+-				     struct device_attribute *attr, char *buf)
+-{
+-	char *data_addr = buf;
+-	int data_size = 0;
+-	int count = 0;
+-
+-	if (!buf)
+-		return -ENOMEM;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_cmu_regulator,
+-				     ARRAY_SIZE(map_cmu_regulator));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_pipe_opt,
+-				     ARRAY_SIZE(map_pipe_opt));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_pipe_y8_opt,
+-				     ARRAY_SIZE(map_pipe_y8_opt));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_pipe_x_control,
+-				     ARRAY_SIZE(map_pipe_x_control));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_pipe_y_control,
+-				     ARRAY_SIZE(map_pipe_y_control));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_pipe_z_y8_y8i_control,
+-				     ARRAY_SIZE(map_pipe_z_y8_y8i_control));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_pipe_u_control,
+-				     ARRAY_SIZE(map_pipe_u_control));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_depth_trigger,
+-				     ARRAY_SIZE(map_depth_trigger));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9295_get_dump(dev, data_addr, map_rgb_trigger,
+-				     ARRAY_SIZE(map_rgb_trigger));
+-	count += data_size;
+-	data_addr += data_size;
+-	*data_addr = '0';
+-
+-	dev_info(dev, "%s, buf %p, count %d, \n", __func__, buf, count);
+-
+-	return count;
+-}
+-
+-static DEVICE_ATTR(register_dump, 0444, max9295_dev_dump_show, NULL);
+-
+-static ssize_t refresh_setting_store(struct device *dev,
+-				     struct device_attribute *attr,
+-				     const char *buf, size_t count)
+-{
+-	int ret;
+-
+-	ret = max9295_init_settings(dev);
+-	if (ret)
+-		return ret;
+-
+-	return count;
+-}
+-static DEVICE_ATTR_WO(refresh_setting);
+-
+-static struct attribute *max9295_attributes[] = {
+-	&dev_attr_register_dump.attr,
+-	&dev_attr_refresh_setting.attr,
+-	NULL
+-};
+-
+-static const struct attribute_group max9295_attr_group = {
+-	.attrs = max9295_attributes,
+-};
+-
+-#endif /* CONFIG_SYSFS */
+-
+-
+ static int max9295_probe(struct i2c_client *client,
+ 				const struct i2c_device_id *id)
+ {
+@@ -881,13 +736,6 @@ static int max9295_probe(struct i2c_client *client,
+ 
+ 	priv->ir_type_value = Y8_Y8I;
+ 
+-#ifdef CONFIG_SYSFS
+-	err = sysfs_create_group(&client->dev.kobj, &max9295_attr_group);
+-	if (err)
+-		dev_warn(&client->dev, "%s, failed to create sysfs, err %d\n",
+-			 __func__, err);
+-#endif /* CONFIG_SYSFS */
+-
+ 	probe_done = true;
+ 
+ 	/* dev communication gets validated when GMSL link setup is done */
+@@ -903,10 +751,6 @@ static int max9295_remove(struct i2c_client *client)
+ 	if (client != NULL) {
+ 		priv = dev_get_drvdata(&client->dev);
+ 
+-#ifdef CONFIG_SYSFS
+-		sysfs_remove_group(&client->dev.kobj, &max9295_attr_group);
+-#endif /* CONFIG_SYSFS */
+-
+ 		mutex_destroy(&priv->lock);
+ 		i2c_unregister_device(client);
+ 		client = NULL;
+@@ -953,5 +797,4 @@ module_exit(max9295_exit);
+ MODULE_DESCRIPTION("GMSL Serializer driver max9295");
+ MODULE_AUTHOR("Sudhir Vyas <svyas@nvidia.com>");
+ MODULE_AUTHOR("Dmitry Perchanov <dmitry.perchanov@intel.com>");
+-MODULE_VERSION(MAX9295_MODULE_VERSION);
+ MODULE_LICENSE("GPL v2");
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 38def0454..161cf3acd 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -787,15 +787,6 @@ ret:
+ }
+ EXPORT_SYMBOL(max9296_setup_streaming);
+ 
+-static bool max9296_dynamic_update = true;
+-module_param(max9296_dynamic_update, bool, 0664);
+-MODULE_PARM_DESC(max9296_dynamic_update, "Update max9296 settings dynamically");
+-
+-
+-static char *max9296_setting_verison = "1.0.0.8";
+-module_param(max9296_setting_verison, charp, 0444);
+-MODULE_PARM_DESC(max9296_setting_verison, "Print max9296 setting version");
+-
+ static struct reg_pair map_cmu_regulator[] = {
+ 	{0x0302, 0x10}, // Increase CMU regulator voltage
+ };
+@@ -989,11 +980,6 @@ int max9296_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ 	if (!probe_done)
+ 		return 0;
+ 
+-	if (!max9296_dynamic_update) {
+-		dev_info(dev, "%s, don't update dynamically\n", __func__);
+-		return 0;
+-	}
+-
+ 	dev_dbg(dev, "%s st %d, fourcc %u\n", __func__, sensor_type, fourcc);
+ 
+ 	if (!init_done) {
+@@ -1035,129 +1021,6 @@ int max9296_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ }
+ EXPORT_SYMBOL(max9296_update_pipe);
+ 
+-static int max9296_get_dump(struct device *dev, char *data_addr,
+-			    struct reg_pair *pair, u32 pair_size)
+-{
+-	struct max9296 *priv = dev_get_drvdata(dev);
+-	int err;
+-	u32 val = 0;
+-	char *addr = data_addr;
+-	int data_size = 0;
+-	int cnt = 0;
+-	u32 j = 0;
+-
+-	mutex_lock(&priv->lock);
+-
+-	for (j = 0; j < pair_size; j++) {
+-		val = 0;
+-		err = regmap_read(priv->regmap, pair[j].addr, &val);
+-
+-		if (!err) {
+-			cnt = snprintf(addr, PAGE_SIZE, "0x%04x:0x%x\n",
+-				       pair[j].addr, val);
+-			addr += cnt;
+-			data_size += cnt;
+-			dev_info(dev,
+-				"%s:i2c read, addr 0x%x, value %x\n",
+-				__func__, pair[j].addr, val);
+-		} else {
+-			dev_warn(dev,
+-				"%s:i2c read, err %x, addr 0x%x, value %x\n",
+-				__func__, err, pair[j].addr, val);
+-		}
+-	};
+-
+-	mutex_unlock(&priv->lock);
+-
+-	return data_size;
+-}
+-
+-#ifdef CONFIG_SYSFS
+-
+-static ssize_t max9296_dev_dump_show(struct device *dev,
+-				     struct device_attribute *attr, char *buf)
+-{
+-	char *data_addr = buf;
+-	int data_size = 0;
+-	int count = 0;
+-
+-	if (!buf)
+-		return -ENOMEM;
+-
+-	data_size = max9296_get_dump(dev, data_addr, map_cmu_regulator,
+-				     ARRAY_SIZE(map_cmu_regulator));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9296_get_dump(dev, data_addr, map_pipe_opt,
+-				     ARRAY_SIZE(map_pipe_opt));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9296_get_dump(dev, data_addr, map_pipe_x_control,
+-				     ARRAY_SIZE(map_pipe_x_control));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9296_get_dump(dev, data_addr, map_pipe_y_control,
+-				     ARRAY_SIZE(map_pipe_y_control));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9296_get_dump(dev, data_addr, map_pipe_z_y8_y8i_control,
+-				     ARRAY_SIZE(map_pipe_z_y8_y8i_control));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9296_get_dump(dev, data_addr, map_pipe_u_control,
+-				     ARRAY_SIZE(map_pipe_u_control));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9296_get_dump(dev, data_addr, map_depth_trigger,
+-				     ARRAY_SIZE(map_depth_trigger));
+-	count += data_size;
+-	data_addr += data_size;
+-
+-	data_size = max9296_get_dump(dev, data_addr, map_rgb_trigger,
+-				     ARRAY_SIZE(map_rgb_trigger));
+-	count += data_size;
+-	data_addr += data_size;
+-	*data_addr = '0';
+-
+-	dev_info(dev, "%s, buf %p, count %d, \n", __func__, buf, count);
+-
+-	return count;
+-}
+-
+-static DEVICE_ATTR(register_dump, 0444, max9296_dev_dump_show, NULL);
+-
+-static ssize_t refresh_setting_store(struct device *dev,
+-				     struct device_attribute *attr,
+-				     const char *buf, size_t count)
+-{
+-	int ret;
+-
+-	ret = max9296_init_settings(dev);
+-	if (ret)
+-		return ret;
+-
+-	return count;
+-}
+-static DEVICE_ATTR_WO(refresh_setting);
+-
+-static struct attribute *max9296_attributes[] = {
+-	&dev_attr_register_dump.attr,
+-	&dev_attr_refresh_setting.attr,
+-	NULL
+-};
+-
+-static const struct attribute_group max9296_attr_group = {
+-	.attrs = max9296_attributes,
+-};
+-
+-#endif /* CONFIG_SYSFS */
+-
+ static const struct of_device_id max9296_of_match[] = {
+ 	{ .compatible = "maxim,max9296", },
+ 	{ },
+@@ -1275,13 +1138,6 @@ static int max9296_probe(struct i2c_client *client,
+ 
+ 	priv->ir_type_value = Y8_Y8I;
+ 
+-#ifdef CONFIG_SYSFS
+-	err = sysfs_create_group(&client->dev.kobj, &max9296_attr_group);
+-	if (err)
+-		dev_warn(&client->dev, "%s, failed to create sysfs, err %d",
+-			 __func__, err);
+-#endif /* CONFIG_SYSFS */
+-
+ 	probe_done = true;
+ 
+ 	/* dev communication gets validated when GMSL link setup is done */
+@@ -1298,10 +1154,6 @@ static int max9296_remove(struct i2c_client *client)
+ 	if (client != NULL) {
+ 		priv = dev_get_drvdata(&client->dev);
+ 
+-#ifdef CONFIG_SYSFS
+-		sysfs_remove_group(&client->dev.kobj, &max9296_attr_group);
+-#endif /* CONFIG_SYSFS */
+-
+ 		mutex_destroy(&priv->lock);
+ 		i2c_unregister_device(client);
+ 		client = NULL;
+-- 
+2.25.1
+
