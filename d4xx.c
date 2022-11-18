@@ -132,12 +132,6 @@
 #define DEF_DEPTH_EXP			33000
 #define DEF_RGB_EXP			1660
 
-/* Currently both depth and IR use VC 0 */
-#define DS5_DEPTH_VCHAN_N		0
-#define DS5_MOTION_T_VCHAN_N		0
-//#define DS5_DEBUG_VCHAN_N		1
-//#define DS5_MOTION_T_VCHAN_N		2
-
 enum ds5_mux_pad {
 	DS5_MUX_PAD_EXTERNAL,
 	DS5_MUX_PAD_DEPTH,
@@ -729,17 +723,17 @@ static const struct ds5_resolution ds5_size_imu[] = {
 static const struct ds5_format ds5_depth_formats_d43x[] = {
 	{
 		// TODO: 0x31 is replaced with 0x1e since it caused low FPS in Jetson.
-		.data_type = 0x1e,	/* Z16 */
+		.data_type = GMSL_CSI_DT_YUV422_8,	/* Z16 */
 		.mbus_code = MEDIA_BUS_FMT_UYVY8_1X16,
 		.n_resolutions = ARRAY_SIZE(d43x_depth_sizes),
 		.resolutions = d43x_depth_sizes,
 	}, {
-		.data_type = 0x2a,	/* Y8 */
+		.data_type = GMSL_CSI_DT_RAW_8,	/* Y8 */
 		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
 		.n_resolutions = ARRAY_SIZE(d43x_depth_sizes),
 		.resolutions = d43x_depth_sizes,
 	}, {
-		.data_type = 0x24,	/* 24-bit Calibration */
+		.data_type = GMSL_CSI_DT_RGB_888,	/* 24-bit Calibration */
 		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
 		.n_resolutions = ARRAY_SIZE(d43x_calibration_sizes),
 		.resolutions = d43x_calibration_sizes,
@@ -749,18 +743,18 @@ static const struct ds5_format ds5_depth_formats_d43x[] = {
 static const struct ds5_format ds5_depth_formats_d46x[] = {
 	{
 		// TODO: 0x31 is replaced with 0x1e since it caused low FPS in Jetson.
-		.data_type = 0x1e,	/* Z16 */
+		.data_type = GMSL_CSI_DT_YUV422_8,	/* Z16 */
 		.mbus_code = MEDIA_BUS_FMT_UYVY8_1X16,
 		.n_resolutions = ARRAY_SIZE(d46x_depth_sizes),
 		.resolutions = d46x_depth_sizes,
 	}, {
 		/* First format: default */
-		.data_type = 0x2a,	/* Y8 */
+		.data_type = GMSL_CSI_DT_RAW_8,	/* Y8 */
 		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
 		.n_resolutions = ARRAY_SIZE(d46x_depth_sizes),
 		.resolutions = d46x_depth_sizes,
 	}, {
-		.data_type = 0x24,	/* 24-bit Calibration */
+		.data_type = GMSL_CSI_DT_RGB_888,	/* 24-bit Calibration */
 		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
 		.n_resolutions = ARRAY_SIZE(d46x_calibration_sizes),
 		.resolutions = d46x_calibration_sizes,
@@ -772,17 +766,17 @@ static const struct ds5_format ds5_depth_formats_d46x[] = {
 static const struct ds5_format ds5_y_formats_ds5u[] = {
 	{
 		/* First format: default */
-		.data_type = 0x2a,	/* Y8 */
+		.data_type = GMSL_CSI_DT_RAW_8,	/* Y8 */
 		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
 		.n_resolutions = ARRAY_SIZE(y8_sizes),
 		.resolutions = y8_sizes,
 	}, {
-		.data_type = 0x1e,	/* Y8I */
+		.data_type = GMSL_CSI_DT_YUV422_8,	/* Y8I */
 		.mbus_code = MEDIA_BUS_FMT_VYUY8_1X16,
 		.n_resolutions = ARRAY_SIZE(y8_sizes),
 		.resolutions = y8_sizes,
 	}, {
-		.data_type = 0x24,	/* 24-bit Calibration */
+		.data_type = GMSL_CSI_DT_RGB_888,	/* 24-bit Calibration */
 		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
 		.n_resolutions = ARRAY_SIZE(d43x_calibration_sizes),
 		.resolutions = d43x_calibration_sizes,
@@ -790,7 +784,7 @@ static const struct ds5_format ds5_y_formats_ds5u[] = {
 };
 
 static const struct ds5_format ds5_rlt_rgb_format = {
-	.data_type = 0x1e,	/* UYVY */
+	.data_type = GMSL_CSI_DT_YUV422_8,	/* UYVY */
 	.mbus_code = MEDIA_BUS_FMT_YUYV8_1X16,
 	.n_resolutions = ARRAY_SIZE(ds5_rlt_rgb_sizes),
 	.resolutions = ds5_rlt_rgb_sizes,
@@ -798,7 +792,7 @@ static const struct ds5_format ds5_rlt_rgb_format = {
 #define DS5_RLT_RGB_N_FORMATS 1
 
 static const struct ds5_format ds5_onsemi_rgb_format = {
-	.data_type = 0x1e,	/* UYVY */
+	.data_type = GMSL_CSI_DT_YUV422_8,	/* UYVY */
 	.mbus_code = MEDIA_BUS_FMT_YUYV8_1X16,
 	.n_resolutions = ARRAY_SIZE(ds5_onsemi_rgb_sizes),
 	.resolutions = ds5_onsemi_rgb_sizes,
@@ -815,7 +809,7 @@ static const struct ds5_variant ds5_variants[] = {
 static const struct ds5_format ds5_imu_formats[] = {
 	{
 		/* First format: default */
-		.data_type = 0x2a,	/* IMU DT */
+		.data_type = GMSL_CSI_DT_RAW_8,	/* IMU DT */
 		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
 		.n_resolutions = ARRAY_SIZE(ds5_size_imu),
 		.resolutions = ds5_size_imu,
@@ -1080,7 +1074,7 @@ static int ds5_sensor_set_fmt(struct v4l2_subdev *sd,
 static int ds5_configure(struct ds5 *state)
 {
 	struct ds5_sensor *sensor;
-	u16 fmt, md_fmt, vc_id;
+	u16 fmt, md_fmt, vc_id, data_type1, data_type2;
 	u16 dt_addr, md_addr, override_addr, fps_addr, width_addr, height_addr;
 	int ret;
 
@@ -1093,7 +1087,7 @@ static int ds5_configure(struct ds5 *state)
 		fps_addr = DS5_DEPTH_FPS;
 		width_addr = DS5_DEPTH_RES_WIDTH;
 		height_addr = DS5_DEPTH_RES_HEIGHT;
-		md_fmt = 0x12;
+		md_fmt = GMSL_CSI_DT_EMBED;
 	} else if (state->is_rgb) {
 		sensor = &state->rgb.sensor;
 		dt_addr = DS5_RGB_STREAM_DT;
@@ -1102,7 +1096,7 @@ static int ds5_configure(struct ds5 *state)
 		fps_addr = DS5_RGB_FPS;
 		width_addr = DS5_RGB_RES_WIDTH;
 		height_addr = DS5_RGB_RES_HEIGHT;
-		md_fmt = 0x12;
+		md_fmt = GMSL_CSI_DT_EMBED;
 	} else if (state->is_y8) {
 		sensor = &state->motion_t.sensor;
 		dt_addr = DS5_IR_STREAM_DT;
@@ -1111,7 +1105,7 @@ static int ds5_configure(struct ds5 *state)
 		fps_addr = DS5_IR_FPS;
 		width_addr = DS5_IR_RES_WIDTH;
 		height_addr = DS5_IR_RES_HEIGHT;
-		md_fmt = 0x12;
+		md_fmt = GMSL_CSI_DT_EMBED;
 	} else if (state->is_imu) {
 		sensor = &state->imu.sensor;
 		dt_addr = DS5_IMU_STREAM_DT;
@@ -1125,6 +1119,28 @@ static int ds5_configure(struct ds5 *state)
 		return -EINVAL;
 	}
 
+	data_type1 = sensor->config.format->data_type;
+	data_type2 = md_fmt;
+	if (state->is_y8) {
+		if (data_type1 == GMSL_CSI_DT_RAW_8) {
+			data_type2 = GMSL_CSI_DT_YUV422_8;
+		} else if (data_type1 == GMSL_CSI_DT_YUV422_8) {
+			data_type1 = GMSL_CSI_DT_RAW_8;
+			data_type2 = GMSL_CSI_DT_YUV422_8;
+		} else if (data_type1 == GMSL_CSI_DT_RGB_888) {
+			data_type2 = 0x00;
+		}
+	}
+	ret = max9295_set_pipe(state->ser_dev, vc_id,
+			       data_type1, data_type2, vc_id);
+	if (ret < 0)
+		return ret;
+
+	ret = max9296_set_pipe(state->dser_dev, vc_id,
+			       data_type1, data_type2, vc_id);
+	if (ret < 0)
+		return ret;
+
 	fmt = sensor->streaming ? sensor->config.format->data_type : 0;
 
 	/*
@@ -1134,7 +1150,7 @@ static int ds5_configure(struct ds5 *state)
 	if (state->is_depth && fmt != 0)
 		ret = ds5_write(state, dt_addr, 0x31);
 	else if (state->is_y8 && fmt != 0 &&
-		 sensor->config.format->data_type == 0x1e)
+		 sensor->config.format->data_type == GMSL_CSI_DT_YUV422_8)
 		ret = ds5_write(state, dt_addr, 0x32);
 	else
 		ret = ds5_write(state, dt_addr, fmt);
@@ -2505,14 +2521,14 @@ static int ds5_serdes_setup(struct ds5 *state)
 
 	ret = max9295_init_settings(state->ser_dev);
 	if (ret) {
-		dev_warn(&c->dev, "%s, failed to init max9295 settings \n",
+		dev_warn(&c->dev, "%s, failed to init max9295 settings\n",
 			 __func__);
 		return ret;
 	}
 
 	ret = max9296_init_settings(state->dser_dev);
 	if (ret) {
-		dev_warn(&c->dev, "%s, failed to init max9296 settings \n",
+		dev_warn(&c->dev, "%s, failed to init max9296 settings\n",
 			 __func__);
 		return ret;
 	}
@@ -4194,16 +4210,19 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 	state->is_rgb = 0;
 	state->is_imu = 0;
 
-	err = of_property_read_string(c->dev.of_node, "cam-type",
-			&str);
-	if (!err && !strncmp(str, "Depth", strlen("Depth")))
+	ret = of_property_read_string(c->dev.of_node, "cam-type", &str);
+	if (!ret && !strncmp(str, "Depth", strlen("Depth"))) {
 		state->is_depth = 1;
-	if (!err && !strncmp(str, "Y8", strlen("Y8")))
+	}
+	if (!ret && !strncmp(str, "Y8", strlen("Y8"))) {
 		state->is_y8 = 1;
-	if (!err && !strncmp(str, "RGB", strlen("RGB")))
+	}
+	if (!ret && !strncmp(str, "RGB", strlen("RGB"))) {
 		state->is_rgb = 1;
-	if (!err && !strncmp(str, "IMU", strlen("IMU")))
+	}
+	if (!ret && !strncmp(str, "IMU", strlen("IMU"))) {
 		state->is_imu = 1;
+	}
 
 	ds5_read_with_check(state, DS5_FW_VERSION, &state->fw_version);
 	ds5_read_with_check(state, DS5_FW_BUILD, &state->fw_build);
@@ -4253,6 +4272,16 @@ static int ds5_remove(struct i2c_client *c)
 		if (serdes_inited[i] && serdes_inited[i] == state) {
 			serdes_inited[i] = NULL;
 			mutex_lock(&serdes_lock__);
+
+                        ret = max9295_reset_control(state->ser_dev);
+                        if (ret)
+                            dev_warn(&c->dev,
+                                     "failed in 9295 reset control\n");
+                        ret = max9296_reset_control(state->dser_dev,
+                                                  state->g_ctx.s_dev);
+                        if (ret)
+                            dev_warn(&c->dev,
+                                     "failed in 9296 reset control\n");
 
                         ret = max9295_sdev_unpair(state->ser_dev,
                                                   state->g_ctx.s_dev);
