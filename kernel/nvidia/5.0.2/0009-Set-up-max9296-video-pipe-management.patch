@@ -1,0 +1,77 @@
+From b2013b8f0d7faa1be4bfbb6636305a7749cb6d46 Mon Sep 17 00:00:00 2001
+From: Junze Wu <junze.wu@intel.com>
+Date: Wed, 30 Nov 2022 13:50:09 +0800
+Subject: [PATCH] Set up max9296 video pipe management
+
+* Allow streams with same vc-ids to share a pipe
+
+Signed-off-by: Junze Wu <junze.wu@intel.com>
+---
+ drivers/media/i2c/max9296.c | 35 +++++++++++++++++++++++++++++++++++
+ include/media/max9296.h     |  2 ++
+ 2 files changed, 37 insertions(+)
+
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 2a61c9c74..74868770f 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -903,6 +903,41 @@ static int max9296_set_registers(struct device *dev, struct reg_pair *map,
+ 	return err;
+ }
+ 
++int max9296_get_available_pipe_id(struct device *dev, int vc_id)
++{
++	int i;
++	int pipe_id = -ENOMEM;
++	struct max9296 *priv = dev_get_drvdata(dev);
++
++	mutex_lock(&priv->lock);
++	for (i = 0; i < MAX9296_MAX_PIPES; i++) {
++		if (i == vc_id && !priv->pipe[i].st_count) {
++			priv->pipe[i].st_count++;
++			pipe_id = i;
++			break;
++		}
++	}
++	mutex_unlock(&priv->lock);
++
++	return pipe_id;
++}
++EXPORT_SYMBOL(max9296_get_available_pipe_id);
++
++int max9296_release_pipe(struct device *dev, int pipe_id)
++{
++	struct max9296 *priv = dev_get_drvdata(dev);
++
++	if (pipe_id < 0 || pipe_id >= MAX9296_MAX_PIPES)
++		return -EINVAL;
++
++	mutex_lock(&priv->lock);
++	priv->pipe[pipe_id].st_count = 0;
++	mutex_unlock(&priv->lock);
++
++	return 0;
++}
++EXPORT_SYMBOL(max9296_release_pipe);
++
+ int max9296_init_settings(struct device *dev)
+ {
+ 	int err = 0;
+diff --git a/include/media/max9296.h b/include/media/max9296.h
+index cfe977e00..e8a214754 100644
+--- a/include/media/max9296.h
++++ b/include/media/max9296.h
+@@ -36,8 +36,10 @@
+  * @{
+  */
+ 
++int max9296_get_available_pipe_id(struct device *dev, int vc_id);
+ int max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
+ 		     u8 data_type2, u32 vc_id);
++int max9296_release_pipe(struct device *dev, int pipe_id);
+ 
+ /**
+  * Puts a deserializer device in single exclusive link mode, so link-specific
+-- 
+2.17.1
+

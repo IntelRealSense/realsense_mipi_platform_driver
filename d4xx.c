@@ -416,8 +416,10 @@ struct ds5 {
 	u16 fw_build;
 
 	struct gmsl_link_ctx g_ctx;
-	struct device		*ser_dev;
-	struct device		*dser_dev;
+	struct device *ser_dev;
+	struct device *dser_dev;
+
+	int pipe_id;
 };
 
 struct ds5_counters {
@@ -1071,6 +1073,24 @@ static int ds5_sensor_set_fmt(struct v4l2_subdev *sd,
 	return __ds5_sensor_set_fmt(state, sensor, cfg, fmt);
 }
 
+static int ds5_setup_pipeline(struct ds5 *state, u8 data_type1, u8 data_type2,
+			      int pipe_id, u32 vc_id)
+{
+	int ret = 0;
+
+	ret |= max9295_set_pipe(state->ser_dev, pipe_id,
+				data_type1, data_type2, vc_id);
+	ret |= max9296_set_pipe(state->dser_dev, pipe_id,
+				data_type1, data_type2, vc_id);
+	if (ret)
+		dev_warn(&state->client->dev,
+			 "failed to set pipe %d, data_type1: 0x%x, \
+			 data_type2: 0x%x, vc_id: %u\n",
+			 pipe_id, data_type1, data_type2, vc_id);
+
+	return ret;
+}
+
 static int ds5_configure(struct ds5 *state)
 {
 	struct ds5_sensor *sensor;
@@ -1078,7 +1098,6 @@ static int ds5_configure(struct ds5 *state)
 	u16 dt_addr, md_addr, override_addr, fps_addr, width_addr, height_addr;
 	int ret;
 
-	vc_id = state->g_ctx.dst_vc;
 	if (state->is_depth) {
 		sensor = &state->depth.sensor;
 		dt_addr = DS5_DEPTH_STREAM_DT;
@@ -1131,13 +1150,11 @@ static int ds5_configure(struct ds5 *state)
 			data_type2 = 0x00;
 		}
 	}
-	ret = max9295_set_pipe(state->ser_dev, vc_id,
-			       data_type1, data_type2, vc_id);
-	if (ret < 0)
-		return ret;
 
-	ret = max9296_set_pipe(state->dser_dev, vc_id,
-			       data_type1, data_type2, vc_id);
+	vc_id = state->g_ctx.dst_vc;
+
+	ret = ds5_setup_pipeline(state, data_type1, data_type2, state->pipe_id,
+				 vc_id);
 	if (ret < 0)
 		return ret;
 
@@ -3156,6 +3173,16 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 	state->mux.last_set->streaming = on;
 
 	if (on) {
+		state->pipe_id =
+			max9296_get_available_pipe_id(state->dser_dev,
+						      (int)state->g_ctx.dst_vc);
+		if (state->pipe_id < 0) {
+			dev_err(&state->client->dev,
+				"No free pipe in max9296\n");
+			ret = state->pipe_id;
+			goto restore_s_state;
+		}
+
 		ret = ds5_configure(state);
 		if (ret)
 			goto restore_s_state;
@@ -3193,6 +3220,10 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 				DS5_STREAM_STOP | stream_id);
 		if (ret < 0)
 			goto restore_s_state;
+
+		if (max9296_release_pipe(state->dser_dev, state->pipe_id) < 0)
+			dev_warn(&state->client->dev, "release pipe failed\n");
+		state->pipe_id = -1;
 	}
 
 	ds5_read(state, config_status_base, &status);
@@ -3207,6 +3238,12 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 	return ret;
 
 restore_s_state:
+	if (on && state->pipe_id >= 0) {
+		if (max9296_release_pipe(state->dser_dev, state->pipe_id) < 0)
+			dev_warn(&state->client->dev, "release pipe failed\n");
+		state->pipe_id = -1;
+	}
+
 	ds5_read(state, config_status_base, &status);
 	dev_err(&state->client->dev,
 			"%s stream toggle failed! %x status 0x%04x\n",
