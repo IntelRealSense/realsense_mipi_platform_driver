@@ -137,6 +137,7 @@
 					compatible = "maxim,max9296";
 					csi-mode = "2x4";
 					max-src = <2>;
+					reset-gpios = <&tegra_main_gpio CAM0_RST_L GPIO_ACTIVE_HIGH>;
 				};
 
 				ser_prim: max9295_prim@40 {
