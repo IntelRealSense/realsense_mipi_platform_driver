@@ -2458,8 +2458,9 @@ static int ds5_gmsl_serdes_setup(struct ds5 *state)
 
 	mutex_lock(&serdes_lock__);
 
+	max9296_power_off(state->dser_dev);
 	/* For now no separate power on required for serializer device */
-	// max9296_power_on(state->dser_dev);
+	max9296_power_on(state->dser_dev);
 
 	/* setup serdes addressing and control pipeline */
 	err = max9296_setup_link(state->dser_dev, &state->client->dev);
@@ -4292,6 +4293,7 @@ static int ds5_remove(struct i2c_client *c)
                         if (ret)
                             dev_warn(&c->dev,
                                      "failed to sdev unregister sdev\n");
+			max9296_power_off(state->dser_dev);
 
 			mutex_unlock(&serdes_lock__);
 			break;
