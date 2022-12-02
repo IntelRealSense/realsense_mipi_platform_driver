@@ -190,16 +190,8 @@
 						tegra_sinterface = "serial_a";
 						mclk_khz = "24000";
 						pix_clk_hz = "74250000";
-						discontinuous_clk = "no";
-						dpcm_enable = "false";
-						cil_settletime = "0";
 						line_length = "1280"; /* 2200 */
-						mclk_multiplier = "15.625";
 						embedded_metadata_height = "1";
-						min_framerate = "5";
-						max_framerate = "30";
-						default_framerate = "5";
-						vc_id = "0";
 					};
 					gmsl-link {
 						src-csi-port = "b";
@@ -244,24 +236,16 @@
 						};
 					};
 					mode0 {
-						pixel_t = "grey_y8";
+						pixel_t = "grey_y16";
 						num_lanes = "2";
-						csi_pixel_bit_depth = "8";
+						csi_pixel_bit_depth = "16";
 						active_w = "1920";
 						active_h = "1080";
 						tegra_sinterface = "serial_e";
 						mclk_khz = "24000";
 						pix_clk_hz = "74250000";
-						discontinuous_clk = "no";
-						dpcm_enable = "false";
-						cil_settletime = "0";
 						line_length = "1280"; /* 2200 */
-						mclk_multiplier = "15.625";
 						embedded_metadata_height = "1";
-						min_framerate = "5";
-						max_framerate = "30";
-						default_framerate = "5";
-						vc_id = "1";
 					};
 					gmsl-link {
 						src-csi-port = "b";
@@ -305,27 +289,16 @@
 					};
 					/* mode0: Y8, mode1: depth D16 */
 					mode0 {
-						pixel_t = "grey_y8";
+						pixel_t = "grey_y16";
 						num_lanes = "2";
 						csi_pixel_bit_depth = "16";
 						active_w = "1280";
 						active_h = "720";
 						tegra_sinterface = "serial_b";
 						mclk_khz = "24000";
-						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
-						/*pix_clk_hz = "37125000";*/
-						/*pix_clk_hz = "375000000";*/
 						pix_clk_hz = "74250000";
-						discontinuous_clk = "no";
-						dpcm_enable = "false";
-						cil_settletime = "0";
 						line_length = "1280"; /* 2200 */
-						mclk_multiplier = "15.625";
 						embedded_metadata_height = "0";
-						min_framerate = "5";
-						max_framerate = "30";
-						default_framerate = "30";
-						vc_id = "2";
 					};
 					gmsl-link {
 						src-csi-port = "b";
@@ -368,27 +341,16 @@
 						};
 					};
 					mode0 {
-						pixel_t = "grey_y8";
+						pixel_t = "grey_y16";
 						num_lanes = "2";
 						csi_pixel_bit_depth = "16";
 						active_w = "640";
 						active_h = "480";
 						tegra_sinterface = "serial_b";
 						mclk_khz = "24000";
-						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
-						/*pix_clk_hz = "37125000";*/
-						/*pix_clk_hz = "375000000";*/
 						pix_clk_hz = "74250000";
-						discontinuous_clk = "no";
-						dpcm_enable = "false";
-						cil_settletime = "0";
 						line_length = "1280"; /* 2200 */
-						mclk_multiplier = "15.625";
 						embedded_metadata_height = "0";
-						min_framerate = "5";
-						max_framerate = "30";
-						default_framerate = "30";
-						vc_id = "3";
 					};
 					gmsl-link {
 						src-csi-port = "b";
@@ -440,16 +402,8 @@
 						tegra_sinterface = "serial_a";
 						mclk_khz = "24000";
 						pix_clk_hz = "74250000";
-						discontinuous_clk = "no";
-						dpcm_enable = "false";
-						cil_settletime = "0";
 						line_length = "1280"; /* 2200 */
-						mclk_multiplier = "15.625";
 						embedded_metadata_height = "1";
-						min_framerate = "5";
-						max_framerate = "30";
-						default_framerate = "5";
-						vc_id = "2";
 					};
 					gmsl-link {
 						src-csi-port = "b";
@@ -493,24 +447,16 @@
 						};
 					};
 					mode0 {
-						pixel_t = "grey_y8";
+						pixel_t = "grey_y16";
 						num_lanes = "2";
-						csi_pixel_bit_depth = "8";
+						csi_pixel_bit_depth = "16";
 						active_w = "1920";
 						active_h = "1080";
 						tegra_sinterface = "serial_e";
 						mclk_khz = "24000";
 						pix_clk_hz = "74250000";
-						discontinuous_clk = "no";
-						dpcm_enable = "false";
-						cil_settletime = "0";
 						line_length = "1280"; /* 2200 */
-						mclk_multiplier = "15.625";
 						embedded_metadata_height = "1";
-						min_framerate = "5";
-						max_framerate = "30";
-						default_framerate = "5";
-						vc_id = "3";
 					};
 					gmsl-link {
 						src-csi-port = "b";
@@ -555,27 +501,16 @@
 					};
 					/* mode0: Y8, mode1: depth D16 */
 					mode0 {
-						pixel_t = "grey_y8";
+						pixel_t = "grey_y16";
 						num_lanes = "2";
 						csi_pixel_bit_depth = "16";
 						active_w = "1280";
 						active_h = "720";
 						tegra_sinterface = "serial_b";
 						mclk_khz = "24000";
-						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
-						/*pix_clk_hz = "37125000";*/
-						/*pix_clk_hz = "375000000";*/
 						pix_clk_hz = "74250000";
-						discontinuous_clk = "no";
-						dpcm_enable = "false";
-						cil_settletime = "0";
 						line_length = "1280"; /* 2200 */
-						mclk_multiplier = "15.625";
 						embedded_metadata_height = "0";
-						min_framerate = "5";
-						max_framerate = "30";
-						default_framerate = "30";
-						vc_id = "0";
 					};
 					gmsl-link {
 						src-csi-port = "b";
@@ -618,27 +553,16 @@
 						};
 					};
 					mode0 {
-						pixel_t = "grey_y8";
+						pixel_t = "grey_y16";
 						num_lanes = "2";
 						csi_pixel_bit_depth = "16";
 						active_w = "640";
 						active_h = "480";
 						tegra_sinterface = "serial_b";
 						mclk_khz = "24000";
-						/*pix_clk_hz = "148500000";*/ /* for 2 streams? */
-						/*pix_clk_hz = "37125000";*/
-						/*pix_clk_hz = "375000000";*/
 						pix_clk_hz = "74250000";
-						discontinuous_clk = "no";
-						dpcm_enable = "false";
-						cil_settletime = "0";
 						line_length = "1280"; /* 2200 */
-						mclk_multiplier = "15.625";
 						embedded_metadata_height = "0";
-						min_framerate = "5";
-						max_framerate = "30";
-						default_framerate = "30";
-						vc_id = "1";
 					};
 					gmsl-link {
 						src-csi-port = "b";
