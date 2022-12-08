@@ -35,8 +35,14 @@
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-mediabus.h>
 
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 #include <media/max9295.h>
 #include <media/max9296.h>
+#elif
+#define GMSL_CSI_DT_YUV422_8 0x1E
+#define GMSL_CSI_DT_RGB_888 0x24
+#define GMSL_CSI_DT_RAW_8 0x2A
+#endif
 
 //#define DS5_DRIVER_NAME "DS5 RealSense camera driver"
 #define DS5_DRIVER_NAME "d4xx"
@@ -415,11 +421,13 @@ struct ds5 {
 	u16 fw_version;
 	u16 fw_build;
 
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 	struct gmsl_link_ctx g_ctx;
 	struct device *ser_dev;
 	struct device *dser_dev;
 
 	int pipe_id;
+#endif
 };
 
 struct ds5_counters {
@@ -1073,6 +1081,7 @@ static int ds5_sensor_set_fmt(struct v4l2_subdev *sd,
 	return __ds5_sensor_set_fmt(state, sensor, cfg, fmt);
 }
 
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 static int ds5_setup_pipeline(struct ds5 *state, u8 data_type1, u8 data_type2,
 			      int pipe_id, u32 vc_id)
 {
@@ -1090,11 +1099,15 @@ static int ds5_setup_pipeline(struct ds5 *state, u8 data_type1, u8 data_type2,
 
 	return ret;
 }
+#endif
 
 static int ds5_configure(struct ds5 *state)
 {
 	struct ds5_sensor *sensor;
-	u16 fmt, md_fmt, vc_id, data_type1, data_type2;
+	u16 fmt, md_fmt, vc_id;
+#ifdef CONFIG_VIDEO_D4XX_SERDES
+	u16 data_type1, data_type2;
+#endif
 	u16 dt_addr, md_addr, override_addr, fps_addr, width_addr, height_addr;
 	int ret;
 
@@ -1107,6 +1120,7 @@ static int ds5_configure(struct ds5 *state)
 		width_addr = DS5_DEPTH_RES_WIDTH;
 		height_addr = DS5_DEPTH_RES_HEIGHT;
 		md_fmt = GMSL_CSI_DT_EMBED;
+		vc_id = 0;
 	} else if (state->is_rgb) {
 		sensor = &state->rgb.sensor;
 		dt_addr = DS5_RGB_STREAM_DT;
@@ -1116,6 +1130,7 @@ static int ds5_configure(struct ds5 *state)
 		width_addr = DS5_RGB_RES_WIDTH;
 		height_addr = DS5_RGB_RES_HEIGHT;
 		md_fmt = GMSL_CSI_DT_EMBED;
+		vc_id = 1;
 	} else if (state->is_y8) {
 		sensor = &state->motion_t.sensor;
 		dt_addr = DS5_IR_STREAM_DT;
@@ -1125,6 +1140,7 @@ static int ds5_configure(struct ds5 *state)
 		width_addr = DS5_IR_RES_WIDTH;
 		height_addr = DS5_IR_RES_HEIGHT;
 		md_fmt = GMSL_CSI_DT_EMBED;
+		vc_id = 2;
 	} else if (state->is_imu) {
 		sensor = &state->imu.sensor;
 		dt_addr = DS5_IMU_STREAM_DT;
@@ -1134,10 +1150,12 @@ static int ds5_configure(struct ds5 *state)
 		width_addr = DS5_IMU_RES_WIDTH;
 		height_addr = DS5_IMU_RES_HEIGHT;
 		md_fmt = 0x0;
+		vc_id = 3;
 	} else {
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 	data_type1 = sensor->config.format->data_type;
 	data_type2 = md_fmt;
 	if (state->is_y8) {
@@ -1157,6 +1175,7 @@ static int ds5_configure(struct ds5 *state)
 				 vc_id);
 	if (ret < 0)
 		return ret;
+#endif
 
 	fmt = sensor->streaming ? sensor->config.format->data_type : 0;
 
@@ -2274,6 +2293,8 @@ static const struct v4l2_subdev_internal_ops ds5_sensor_internal_ops = {
 	.close = ds5_mux_close,
 };
 
+#ifdef CONFIG_VIDEO_D4XX_SERDES
+
 /*
  * FIXME
  * temporary solution before changing GMSL data structure or merging all 4 D457
@@ -2553,6 +2574,7 @@ static int ds5_serdes_setup(struct ds5 *state)
 
 	return ret;
 }
+#endif
 
 static int ds5_ctrl_init(struct ds5 *state)
 {
@@ -3173,6 +3195,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 	state->mux.last_set->streaming = on;
 
 	if (on) {
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 		state->pipe_id =
 			max9296_get_available_pipe_id(state->dser_dev,
 						      (int)state->g_ctx.dst_vc);
@@ -3182,6 +3205,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 			ret = state->pipe_id;
 			goto restore_s_state;
 		}
+#endif
 
 		ret = ds5_configure(state);
 		if (ret)
@@ -3221,9 +3245,11 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 		if (ret < 0)
 			goto restore_s_state;
 
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 		if (max9296_release_pipe(state->dser_dev, state->pipe_id) < 0)
 			dev_warn(&state->client->dev, "release pipe failed\n");
 		state->pipe_id = -1;
+#endif
 	}
 
 	ds5_read(state, config_status_base, &status);
@@ -3238,11 +3264,13 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 	return ret;
 
 restore_s_state:
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 	if (on && state->pipe_id >= 0) {
 		if (max9296_release_pipe(state->dser_dev, state->pipe_id) < 0)
 			dev_warn(&state->client->dev, "release pipe failed\n");
 		state->pipe_id = -1;
 	}
+#endif
 
 	ds5_read(state, config_status_base, &status);
 	dev_err(&state->client->dev,
@@ -4216,9 +4244,11 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 		}
 	}
 
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 	ret = ds5_serdes_setup(state);
 	if (ret < 0)
 		goto e_regulator;
+#endif
 
 	state->regmap = devm_regmap_init_i2c(c, &ds5_regmap_config);
 	if (IS_ERR(state->regmap)) {
