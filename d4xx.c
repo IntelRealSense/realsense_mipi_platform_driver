@@ -1157,22 +1157,15 @@ static int ds5_configure(struct ds5 *state)
 
 #ifdef CONFIG_VIDEO_D4XX_SERDES
 	data_type1 = sensor->config.format->data_type;
-	data_type2 = md_fmt;
-	if (state->is_y8) {
-		if (data_type1 == GMSL_CSI_DT_RAW_8) {
-			data_type2 = GMSL_CSI_DT_YUV422_8;
-		} else if (data_type1 == GMSL_CSI_DT_YUV422_8) {
-			data_type1 = GMSL_CSI_DT_RAW_8;
-			data_type2 = GMSL_CSI_DT_YUV422_8;
-		} else if (data_type1 == GMSL_CSI_DT_RGB_888) {
-			data_type2 = 0x00;
-		}
-	}
+	data_type2 = state->is_y8 ? 0x00 : md_fmt;
 
 	vc_id = state->g_ctx.dst_vc;
 
 	ret = ds5_setup_pipeline(state, data_type1, data_type2, state->pipe_id,
 				 vc_id);
+	// reset data path when switching to Y12I
+	if (state->is_y8 && data_type1 == GMSL_CSI_DT_RGB_888)
+		max9296_reset_oneshot(state->dser_dev);
 	if (ret < 0)
 		return ret;
 #endif
@@ -3246,6 +3239,12 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 			goto restore_s_state;
 
 #ifdef CONFIG_VIDEO_D4XX_SERDES
+		// reset data path when Y12I streaming is done
+		if (state->is_y8 &&
+			state->motion_t.sensor.config.format->data_type ==
+			GMSL_CSI_DT_RGB_888) {
+			max9296_reset_oneshot(state->dser_dev);
+		}
 		if (max9296_release_pipe(state->dser_dev, state->pipe_id) < 0)
 			dev_warn(&state->client->dev, "release pipe failed\n");
 		state->pipe_id = -1;
