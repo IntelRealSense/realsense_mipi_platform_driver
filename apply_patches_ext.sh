@@ -2,8 +2,15 @@
 set -e
 
 if [[ $# < 1 ]]; then
-    echo "apply_patches_ext.sh source_dir [JetPack_version]"
+    echo "apply_patches_ext.sh [--one-cam] source_dir [JetPack_version]"
     exit 1
+fi
+
+# Default to dual camera DT for JetPack 5.0.2
+JP5_D4XX_DTSI="tegra194-camera-d4xx.dtsi"
+if [[ "$1" == "--one-cam" ]]; then
+    JP5_D4XX_DTSI="tegra194-camera-d4xx-single.dtsi"
+    shift
 fi
 
 DEVDIR=$(cd `dirname $0` && pwd)
@@ -28,4 +35,4 @@ apply_external_patches $1 hardware/nvidia/platform/t19x/galen/kernel-dts
 
 # For a common driver for JP4 + JP5 we override the i2c driver and ignore the previous that was created from patches
 cp $DEVDIR/d4xx.c $DEVDIR/$1/kernel/nvidia/drivers/media/i2c/
-cp $DEVDIR/tegra194-camera-d4xx.dtsi $DEVDIR/$1/hardware/nvidia/platform/t19x/galen/kernel-dts/common/
+cp $DEVDIR/$JP5_D4XX_DTSI $DEVDIR/$1/hardware/nvidia/platform/t19x/galen/kernel-dts/common/tegra194-camera-d4xx.dtsi

@@ -48,10 +48,12 @@ Apply D457 patches and build the kernel image, dtb and D457 driver.
 
 ```
 # if using setup script
-./apply_patches.sh apply [JetPack_version]
+./apply_patches.sh [--one-cam] apply [JetPack_version]
 
 # or, if using direct download method
-# ./apply_patches_ext.sh ./Linux_for_tegra/source/public [JetPack_version]
+# ./apply_patches_ext.sh [--one-cam] ./Linux_for_tegra/source/public [JetPack_version]
+
+Note: The `--one-cam` option applies only for JetPack 5.0.2. By setting the option it builds DT with only camera on GMSL link A. Without it the default is to build dual camera configuration.
 
 # build kernel, dtb and D457 driver
 # install dependencies
