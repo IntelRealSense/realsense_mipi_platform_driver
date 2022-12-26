@@ -201,7 +201,6 @@
 						st-vc = <0>;
 						vc-id = <0>;
 						num-lanes = <2>;
-						streams = "grey_y16";
 					};
 				};
 			};
@@ -255,7 +254,6 @@
 						st-vc = <0>;
 						vc-id = <1>;
 						num-lanes = <2>;
-						streams = "grey_y16";
 					};
 				};
 			};
@@ -308,7 +306,6 @@
 						st-vc = <0>;
 						vc-id = <2>;
 						num-lanes = <2>;
-						streams = "grey_y16";
 					};
 				};
 			};
@@ -360,7 +357,6 @@
 						st-vc = <0>;
 						vc-id = <3>;
 						num-lanes = <2>;
-						streams = "grey_y16";
 					};
 				};
 			};
@@ -413,7 +409,6 @@
 						st-vc = <0>;
 						vc-id = <2>;
 						num-lanes = <2>;
-						streams = "grey_y16";
 					};
 				};
 			};
@@ -466,7 +461,6 @@
 						st-vc = <0>;
 						vc-id = <3>;
 						num-lanes = <2>;
-						streams = "grey_y16";
 					};
 				};
 			};
@@ -520,7 +514,6 @@
 						st-vc = <0>;
 						vc-id = <0>;
 						num-lanes = <2>;
-						streams = "grey_y16";
 					};
 				};
 			};
@@ -572,7 +565,6 @@
 						st-vc = <0>;
 						vc-id = <1>;
 						num-lanes = <2>;
-						streams = "grey_y16";
 					};
 				};
 			};

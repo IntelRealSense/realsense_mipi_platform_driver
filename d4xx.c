@@ -2448,15 +2448,6 @@ static int ds5_board_setup(struct ds5 *state)
 		goto error;
 	}
 	state->g_ctx.num_csi_lanes = value;
-
-	state->g_ctx.num_streams =
-			of_property_count_strings(gmsl, "streams");
-	if (state->g_ctx.num_streams <= 0) {
-		dev_err(dev, "No streams found\n");
-		err = -EINVAL;
-		goto error;
-	}
-
 	state->g_ctx.s_dev = dev;
 
 	for (i = 0; i < MAX_DEV_NUM; i++) {
