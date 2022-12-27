@@ -175,7 +175,7 @@
 						port@0 {
 							reg = <0>;
 							d4m0_out: endpoint {
-								port-index = <1>;
+								port-index = <0>;
 								bus-width = <2>;
 								remote-endpoint = <&csi_in0>;
 							};
@@ -279,7 +279,7 @@
 						port@0 {
 							reg = <0>;
 							d4m2_out: endpoint {
-								port-index = <1>;
+								port-index = <2>;
 								bus-width = <2>;
 								remote-endpoint = <&csi_in2>;
 							};
@@ -331,7 +331,7 @@
 						port@0 {
 							reg = <0>;
 							d4m3_out: endpoint {
-								port-index = <1>;
+								port-index = <3>;
 								bus-width = <2>;
 								remote-endpoint = <&csi_in3>;
 							};
@@ -383,7 +383,7 @@
 						port@0 {
 							reg = <0>;
 							d4m4_out: endpoint {
-								port-index = <1>;
+								port-index = <4>;
 								bus-width = <2>;
 								remote-endpoint = <&csi_in4>;
 							};
@@ -435,7 +435,7 @@
 						port@0 {
 							reg = <0>;
 							d4m5_out: endpoint {
-								port-index = <1>;
+								port-index = <5>;
 								bus-width = <2>;
 								remote-endpoint = <&csi_in5>;
 							};
@@ -487,7 +487,7 @@
 						port@0 {
 							reg = <0>;
 							d4m6_out: endpoint {
-								port-index = <1>;
+								port-index = <6>;
 								bus-width = <2>;
 								remote-endpoint = <&csi_in6>;
 							};
@@ -539,7 +539,7 @@
 						port@0 {
 							reg = <0>;
 							d4m7_out: endpoint {
-								port-index = <1>;
+								port-index = <7>;
 								bus-width = <2>;
 								remote-endpoint = <&csi_in7>;
 							};
