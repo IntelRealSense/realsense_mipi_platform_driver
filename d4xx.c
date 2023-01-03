@@ -777,8 +777,8 @@ static const struct ds5_format ds5_y_formats_ds5u[] = {
 	}, {
 		.data_type = 0x24,	/* 24-bit Calibration */
 		.mbus_code = MEDIA_BUS_FMT_RGB888_1X24,	/* FIXME */
-		.n_resolutions = ARRAY_SIZE(d46x_calibration_sizes),
-		.resolutions = d46x_calibration_sizes,
+		.n_resolutions = ARRAY_SIZE(d43x_calibration_sizes),
+		.resolutions = d43x_calibration_sizes,
 	},
 };
 
@@ -3419,16 +3419,20 @@ static ssize_t ds5_dfu_device_read(struct file *flip,
 		char __user *buffer, size_t len, loff_t *offset)
 {
 	struct ds5 *state = flip->private_data;
-	u16 fw_ver;
-	char msg[20];
+	u16 fw_ver, fw_build;
+	char msg[32];
 	int ret = 0;
 
 	if (mutex_lock_interruptible(&state->lock))
 		return -ERESTARTSYS;
-	ret = ds5_read(state, DS5_FW_VERSION, &fw_ver);
+	ret |= ds5_read(state, DS5_FW_VERSION, &fw_ver);
+	ret |= ds5_read(state, DS5_FW_BUILD, &fw_build);
 	if (ret < 0)
 		goto e_dfu_read_failed;
-	snprintf(msg, sizeof(msg) ,"DFU info: \tver: (0x%x)\n", fw_ver);
+	snprintf(msg, sizeof(msg) ,"DFU info: \tver:  %d.%d.%d.%d\n",
+			(fw_ver >> 8) & 0xff, fw_ver & 0xff,
+			(fw_build >> 8) & 0xff, fw_build & 0xff);
+
 	if (copy_to_user(buffer, msg, strlen(msg)))
 		ret = -EFAULT;
 	else {
@@ -3521,8 +3525,11 @@ static ssize_t ds5_dfu_device_write(struct file *flip,
 	return len;
 
 dfu_write_error:
-	//TODO: Reset device here
 	state->dfu_dev.dfu_state_flag = DS5_DFU_ERROR;
+	// Reset DFU device to IDLE states
+	ret = ds5_write(state, 0x5010, 0x0);
+	if (!ret)
+		state->dfu_dev.dfu_state_flag = DS5_DFU_IDLE;
 	mutex_unlock(&state->lock);
 	return ret;
 };
