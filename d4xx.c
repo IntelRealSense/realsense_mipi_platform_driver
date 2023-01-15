@@ -832,7 +832,7 @@ static const char *ds5_get_sensor_name(struct ds5 *state)
 	static const char *sensor_name[] = {"unknown", "RGB", "DEPTH", "Y8", "IMU"};
 	int sensor_id = state->is_rgb * 1 + state->is_depth * 2 + \
 			state->is_y8 * 3 + state->is_imu * 4;
-	if (sensor_id > (sizeof(sensor_name)/sizeof(*sensor_name)))
+	if (sensor_id >= (sizeof(sensor_name)/sizeof(*sensor_name)))
 		sensor_id = 0;
 
 	return sensor_name[sensor_id];
