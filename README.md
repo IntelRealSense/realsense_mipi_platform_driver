@@ -22,22 +22,22 @@ Or download Jetson Linux source code tarball from [JetPack 5.0.2 BSP sources](ht
 
 ```
 # JetPack 5.0.2
-mkdir l4t-gcc/5.0.2
+mkdir -p l4t-gcc/5.0.2
 cd ./l4t-gcc/5.0.2
 wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93 -O aarch64--glibc--stable-final.tar.gz
 tar xf aarch64--glibc--stable-final.tar.gz
-cd ..
+cd ../..
 wget https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/sources/public_sources.tbz2
 tar xjf public_sources.tbz2
 cd Linux_for_Tegra/source/public
 tar xjf kernel_src.tbz2
 
 # or JetPack 4.6.1
-mkdir l4t-gcc/4.6.1
+mkdir -p l4t-gcc/4.6.1
 cd ./l4t-gcc/4.6.1
 wget http://releases.linaro.org/components/toolchain/binaries/7.3-2018.05/aarch64-linux-gnu/gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu.tar.xz
 tar xf gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu.tar.xz --strip-components 1
-cd ..
+cd ../..
 wget https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2
 tar xjf public_sources.tbz2
 cd Linux_for_Tegra/source/public

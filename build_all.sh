@@ -12,8 +12,9 @@ export DEVDIR=$(cd `dirname $0` && pwd)
 
 . $DEVDIR/scripts/setup-common "$1"
 
-if [[ -z "$2" ]]; then
-    SRCS="$DEVDIR/sources_$JETPACK_VERSION"
+SRCS="$DEVDIR/sources_$JETPACK_VERSION"
+if [[ -n "$2" ]]; then
+    SRCS="$2"
 fi
 
 if [[ "$JETPACK_VERSION" == "5.0.2" ]]; then
