@@ -26,8 +26,10 @@ export LOCALVERSION=-tegra
 export TEGRA_KERNEL_OUT=$DEVDIR/images/$JETPACK_VERSION
 mkdir -p $TEGRA_KERNEL_OUT
 export KERNEL_MODULES_OUT=$TEGRA_KERNEL_OUT/modules
-# Unset BUILD_NUMBER as it will add a postfix to the kernel name (normally it happens on CI who have BUILD_NUMBER defined)
-unset BUILD_NUMBER
+
+# Check if BUILD_NUMBER is set as it will add a postfix to the kernel name "vermagic" (normally it happens on CI who have BUILD_NUMBER defined)
+[[ -n "${BUILD_NUMBER}" ]] && echo "Warning! You have BUILD_NUMBER set to ${BUILD_NUMBER}, This will affect your vermagic"
+
 cd $SRCS/$KERNEL_DIR
 
 make ARCH=arm64 O=$TEGRA_KERNEL_OUT tegra_defconfig
