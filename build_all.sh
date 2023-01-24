@@ -26,6 +26,7 @@ export LOCALVERSION=-tegra
 export TEGRA_KERNEL_OUT=$DEVDIR/images/$JETPACK_VERSION
 mkdir -p $TEGRA_KERNEL_OUT
 export KERNEL_MODULES_OUT=$TEGRA_KERNEL_OUT/modules
+# Unset BUILD_NUMBER as it will add a postfix to the kernel name (normally it happens on CI who have BUILD_NUMBER defined)
 unset BUILD_NUMBER
 cd $SRCS/$KERNEL_DIR
 
