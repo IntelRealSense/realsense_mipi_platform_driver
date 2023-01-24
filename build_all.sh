@@ -26,7 +26,7 @@ export LOCALVERSION=-tegra
 export TEGRA_KERNEL_OUT=$DEVDIR/images/$JETPACK_VERSION
 mkdir -p $TEGRA_KERNEL_OUT
 export KERNEL_MODULES_OUT=$TEGRA_KERNEL_OUT/modules
-
+unset BUILD_NUMBER
 cd $SRCS/$KERNEL_DIR
 
 make ARCH=arm64 O=$TEGRA_KERNEL_OUT tegra_defconfig
