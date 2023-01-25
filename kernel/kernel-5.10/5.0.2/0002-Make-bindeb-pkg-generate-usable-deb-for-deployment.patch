@@ -1,0 +1,40 @@
+From 988c2ffce024cdba934c5e632a524875e32b9e9d Mon Sep 17 00:00:00 2001
+From: Xin Zhang <xin.x.zhang@intel.com>
+Date: Wed, 19 Oct 2022 11:56:10 +0800
+Subject: [PATCH] Make bindeb-pkg generate usable deb for deployment
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+---
+ Makefile                 | 3 ++-
+ scripts/package/builddeb | 1 +
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index a8e715d72c74..265d8dbe6a19 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1398,7 +1398,8 @@ endif
+ dtbs_check: dtbs
+ 
+ dtbs_install:
+-	$(Q)$(MAKE) $(dtbinst)=$(dtstree) dst=$(INSTALL_DTBS_PATH)
++	mkdir -p $(INSTALL_DTBS_PATH)
++	cp -rf $(dtstree)/nvidia/*.dtb $(INSTALL_DTBS_PATH)
+ 
+ ifdef CONFIG_OF_EARLY_FLATTREE
+ all: dtbs
+diff --git a/scripts/package/builddeb b/scripts/package/builddeb
+index 91a502bb97e8..6ed7d9a38b87 100755
+--- a/scripts/package/builddeb
++++ b/scripts/package/builddeb
+@@ -146,6 +146,7 @@ if [ "$ARCH" = "um" ] ; then
+ else
+ 	cp System.map "$tmpdir/boot/System.map-$version"
+ 	cp $KCONFIG_CONFIG "$tmpdir/boot/config-$version"
++	cp "arch/$SRCARCH/boot/Image" "$tmpdir/boot/Image-$version"
+ fi
+ cp "$($MAKE -s -f $srctree/Makefile image_name)" "$tmpdir/$installed_image_path"
+ 
+-- 
+2.30.2
+
