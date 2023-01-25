@@ -26,6 +26,4 @@ apply_external_patches $1 kernel/nvidia
 apply_external_patches $1 $KERNEL_DIR
 apply_external_patches $1 hardware/nvidia/platform/t19x/galen/kernel-dts
 
-if [[ $JETPACK_VERSION =~ 5.* ]]; then
-    cp $DEVDIR/d4xx.c $DEVDIR/$1/kernel/nvidia/drivers/media/i2c/
-fi
+cp $DEVDIR/d4xx.c $DEVDIR/$1/kernel/nvidia/drivers/media/i2c/
