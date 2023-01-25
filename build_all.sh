@@ -22,7 +22,7 @@ if [[ "$JETPACK_VERSION" == "5.0.2" ]]; then
 elif [[ "$JETPACK_VERSION" == "4.6.1" ]]; then
     export CROSS_COMPILE=$DEVDIR/l4t-gcc/$JETPACK_VERSION/bin/aarch64-linux-gnu-
 fi
-export LOCALVERSION=-d457
+export LOCALVERSION=-tegra
 export TEGRA_KERNEL_OUT=$DEVDIR/images/$JETPACK_VERSION
 mkdir -p $TEGRA_KERNEL_OUT
 export KERNEL_MODULES_OUT=$TEGRA_KERNEL_OUT/modules
