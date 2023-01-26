@@ -2,6 +2,25 @@
 
 set -e
 
+function DisplayNvidiaLicense {
+
+    # verify that curl is installed
+    if  ! which curl > /dev/null  ; then
+      echo "curl is not installed."
+      echo "curl can be installed by 'sudo apt-get install curl'."
+      exit 1
+    fi
+    
+    echo -e "\nPlease notice: This script will download the kernel source (from nv-tegra, NVIDIA's public git repository) which is subject to the following license:\n\nhttps://developer.nvidia.com/embedded/l4t/r35_release_v1.0/release/tegra_software_license_agreement-tegra-linux.txt\n"
+
+    license="$(curl -L -s https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/release/tegra_software_license_agreement-tegra-linux.txt)\n\n"
+    ## display the page ##
+    echo -e "${license}"
+
+    read -t 30 -n 1 -s -r -e -p 'Press any key to continue (or wait 30 seconds..)'
+}
+
+
 if [[ "$1" == "-h" ]]; then
     echo "setup_workspace.sh [JetPack_version]"
     echo "setup_workspace.sh -h"
@@ -12,6 +31,9 @@ export DEVDIR=$(cd `dirname $0` && pwd)
 
 . $DEVDIR/scripts/setup-common "$1"
 echo "Setup JetPack $JETPACK_VERSION to sources_$JETPACK_VERSION"
+
+# Display NVIDIA license
+DisplayNvidiaLicense ""
 
 # Install L4T gcc if not installed
 if [[ ! -d "$DEVDIR/l4t-gcc/$JETPACK_VERSION/bin/" ]]; then
@@ -29,3 +51,4 @@ fi
 # Clone L4T kernel source repo
 cd $DEVDIR
 ./scripts/source_sync_$JETPACK_VERSION.sh -t $L4T_VERSION -d sources_$JETPACK_VERSION
+
