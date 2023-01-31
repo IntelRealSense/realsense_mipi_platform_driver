@@ -83,7 +83,8 @@ int main(int argc, char **argv)
     while ((c = getopt_long(argc, argv, "d:t:f:r:w:h:s:", opts, NULL)) != -1) {
         switch (c) {
         case 'd':
-            nodeNumber = static_cast<uint8_t>(*optarg) - '0';
+            sOptArg = string(optarg);
+            nodeNumber = std::stoi(sOptArg);
             break;
         case 't':
             sOptArg = string(optarg);

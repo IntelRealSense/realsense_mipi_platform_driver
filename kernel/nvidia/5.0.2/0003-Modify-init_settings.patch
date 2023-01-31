@@ -1,0 +1,124 @@
+From d80b8215de072e77de88bb3afb0ec8f188f4d6f7 Mon Sep 17 00:00:00 2001
+From: Junze Wu <junze.wu@intel.com>
+Date: Fri, 28 Oct 2022 16:28:31 +0800
+Subject: [PATCH] Modify init_settings
+
+* Modify max9295_init_settings and max9296_init_settings to be non-static
+* Remove calls to init_settings in probe
+
+Signed-off-by: Junze Wu <junze.wu@intel.com>
+---
+ drivers/media/i2c/max9295.c | 11 ++---------
+ drivers/media/i2c/max9296.c | 13 +++----------
+ include/media/max9295.h     |  1 +
+ include/media/max9296.h     |  1 +
+ 4 files changed, 7 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index 03040ccb9..c2f7f286e 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -612,7 +612,7 @@ static int max9295_set_registers(struct device *dev, struct reg_pair *map,
+ 	return err;
+ }
+ 
+-static int max9295_init_settings(struct device *dev)
++int max9295_init_settings(struct device *dev)
+ {
+ 	int err = 0;
+ 	struct max9295 *priv = dev_get_drvdata(dev);
+@@ -658,6 +658,7 @@ static int max9295_init_settings(struct device *dev)
+ 
+ 	return err;
+ }
++EXPORT_SYMBOL(max9295_init_settings);
+ 
+ int max9295_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ {
+@@ -886,14 +887,6 @@ static int max9295_probe(struct i2c_client *client,
+ 			 __func__, err);
+ #endif /* CONFIG_SYSFS */
+ 
+-	/* don't break probe stage */
+-	err = max9295_init_settings(&client->dev);
+-	if (err) {
+-		dev_warn(&client->dev, "%s, failed to init settings \n",
+-			 __func__);
+-		err = 0;
+-	}
+-
+ 	probe_done = true;
+ 
+ 	/* dev communication gets validated when GMSL link setup is done */
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 6ee2d9bc8..2affd8d6b 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -805,7 +805,7 @@ static struct reg_pair map_pipe_opt[] = {
+ 	{0x1459, 0x68}, // PHY A Optimization
+ 	{0x1558, 0x28}, // PHY B Optimization
+ 	{0x1559, 0x68}, // PHY B Optimization
+-	{0x0010, 0x31}, // One-shot reset  enable auto-link
++	//{0x0010, 0x31}, // One-shot reset  enable auto-link
+ 
+ 	{0x044A, 0x50}, // 4 lanes on port A, write 0x50 for 2 lanes
+ 	{0x0320, 0x2F}, // 1500Mbps/lane on port A
+@@ -933,7 +933,7 @@ static int max9296_set_registers(struct device *dev, struct reg_pair *map,
+ 	return err;
+ }
+ 
+-static int max9296_init_settings(struct device *dev)
++int max9296_init_settings(struct device *dev)
+ {
+ 	int err = 0;
+ 	struct max9296 *priv = dev_get_drvdata(dev);
+@@ -977,6 +977,7 @@ static int max9296_init_settings(struct device *dev)
+ 
+ 	return err;
+ }
++EXPORT_SYMBOL(max9296_init_settings);
+ 
+ int max9296_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
+ {
+@@ -1279,14 +1280,6 @@ static int max9296_probe(struct i2c_client *client,
+ 			 __func__, err);
+ #endif /* CONFIG_SYSFS */
+ 
+-	/* don't break probe stage */
+-	err = max9296_init_settings(&client->dev);
+-	if (err) {
+-		dev_warn(&client->dev, "%s, failed to init settings \n",
+-			 __func__);
+-		err = 0;
+-	}
+-
+ 	probe_done = true;
+ 
+ 	/* dev communication gets validated when GMSL link setup is done */
+diff --git a/include/media/max9295.h b/include/media/max9295.h
+index d25f43fc0..4572f432b 100644
+--- a/include/media/max9295.h
++++ b/include/media/max9295.h
+@@ -97,6 +97,7 @@ int max9295_sdev_unpair(struct device *dev, struct device *s_dev);
+  */
+ int max9295_setup_streaming(struct device *dev);
+ 
++int max9295_init_settings(struct device *dev);
+ /** @} */
+ 
+ #endif  /* __MAX9295_H__ */
+diff --git a/include/media/max9296.h b/include/media/max9296.h
+index 69ada8a5e..644c8d37f 100644
+--- a/include/media/max9296.h
++++ b/include/media/max9296.h
+@@ -162,6 +162,7 @@ int max9296_power_on(struct device *dev);
+  */
+ void max9296_power_off(struct device *dev);
+ 
++int max9296_init_settings(struct device *dev);
+ /** @} */
+ 
+ #endif  /* __MAX9296_H__ */
+-- 
+2.30.2
+

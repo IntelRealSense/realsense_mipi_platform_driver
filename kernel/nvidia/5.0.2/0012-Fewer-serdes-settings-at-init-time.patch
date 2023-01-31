@@ -1,0 +1,536 @@
+From a02c82a673ee2bb3ecbb03e46ac6fa722e5ffcc0 Mon Sep 17 00:00:00 2001
+From: Xin Zhang <xin.x.zhang@intel.com>
+Date: Thu, 22 Dec 2022 12:19:59 +0800
+Subject: [PATCH] Fewer serdes settings at init time
+
+- Remove some serdes address settings since the original 9295/9296 code
+  doesn't set them, and removing them doesn't impact D457 usage.
+- Still need to set pipes at init time to make it work, but reuse existing
+  code to reduce duplicated lines.
+- Use existing address macros instead of hardcode value.
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+---
+ drivers/media/i2c/max9295.c | 193 +++++++++--------------------
+ drivers/media/i2c/max9296.c | 240 +++++++++++-------------------------
+ 2 files changed, 136 insertions(+), 297 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index b2e29b640..4b03b1ef8 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -480,79 +480,6 @@ struct reg_pair {
+ 	u8 val;
+ };
+ 
+-static struct reg_pair map_cmu_regulator[] = {
+-	{0x0302, 0x10}, // Increase CMU regulator voltage
+-};
+-
+-static struct reg_pair map_pipe_opt[] = {
+-	{0x0002, 0xF3}, // # Enable all pipes
+-
+-	{0x0331, 0x11}, // Write 0x33 for 4 lanes
+-	{0x0308, 0x6F}, // All pipes pull clock from port B
+-	{0x0311, 0xF0}, // All pipes pull data from port B
+-};
+-
+-static struct reg_pair map_bpp8dbl[] = {
+-	{0x0312, 0x0F}, // Double 8-bit data on pipe X, Y, Z & U
+-};
+-
+-static struct reg_pair map_pipe_x_control[] = {
+-	/* addr, val */
+-	{0x0314, 0x5E}, // Pipe X pulls Depth (DT 0x1E)
+-	{0x0315, 0x52}, // Pipe X pulls EMB8 (DT 0x12)
+-	{0x0309, 0x01}, // # Pipe X pulls VC0
+-	{0x030A, 0x00},
+-	{0x031C, 0x30}, // BPP = 16 in pipe X
+-	{0x0102, 0x0E}, // LIM_HEART Pipe X: Disabled
+-};
+-
+-static struct reg_pair map_pipe_y_control[] = {
+-	/* addr, val */
+-	{0x0316, 0x5E}, // Pipe Y pulls RGB (DT 0x1E)
+-	{0x0317, 0x52}, // Pipe Y pulls EMB8 (DT 0x12)
+-	{0x030B, 0x02}, // Pipe Y pulls VC1
+-	{0x030C, 0x00},
+-	{0x031D, 0x30}, // BPP = 16 in pipe Y
+-	{0x010A, 0x0E}, // LIM_HEART Pipe Y: Disabled
+-};
+-
+-static struct reg_pair map_pipe_z_control[] = {
+-	/* addr, val */
+-	{0x0318, 0x5E}, // Pipe Z pulls Depth (DT 0x1E)
+-	{0x0319, 0x52}, // Pipe Z pulls EMB8 (DT 0x12)
+-	{0x030D, 0x04}, // Pipe Z pulls VC2
+-	{0x030E, 0x00},
+-	{0x031E, 0x30}, // BPP = 16 in pipe Z
+-	{0x0112, 0x0E}, // LIM_HEART Pipe Z: Disabled
+-};
+-
+-static struct reg_pair map_pipe_u_control[] = {
+-	/* addr, val */
+-	{0x031A, 0x5E}, // Pipe U pulls RGB (DT 0x1E)
+-	{0x031B, 0x52}, // Pipe U pulls EMB8 (DT 0x12)
+-	{0x030F, 0x08}, // Pipe U pulls VC3
+-	{0x0310, 0x00},
+-	{0x031F, 0x30}, // BPP = 16 in pipe U
+-
+-	{0x0315, 0xD2}, // Enable independent VC's
+-	{0x011A, 0x0E}, // LIM_HEART Pipe U: Disabled
+-};
+-
+-static struct reg_pair map_depth_trigger[] = {
+-//	{0x02D6, 0x84}, // #MFP8
+-//	{0x02D7, 0x60}, // #OUT_TYPE bit to 1
+-//	{0x02D8, 0x1F},
+-	{0x02C1, 0x84}, // #MFP1
+-	{0x02C2, 0x20}, // #OUT_TYPE bit to 1 (no pullup)
+-	{0x02C3, 0x1F},
+-};
+-
+-static struct reg_pair map_rgb_trigger[] = {
+-	{0x02BE, 0x84}, // #MFP0
+-	{0x02BF, 0x20}, // #OUT_TYPE bit to 1  (no pullup)
+-	{0x02C0, 0x1B},
+-};
+-
+ static int max9295_set_registers(struct device *dev, struct reg_pair *map,
+ 				 u32 count)
+ {
+@@ -569,63 +496,21 @@ static int max9295_set_registers(struct device *dev, struct reg_pair *map,
+ 	return err;
+ }
+ 
+-int max9295_init_settings(struct device *dev)
++static int __max9295_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
++			      u8 data_type2, u32 vc_id)
+ {
+-	int err = 0;
+-	struct max9295 *priv = dev_get_drvdata(dev);
+-
+-	mutex_lock(&priv->lock);
+-
+-	// Set CMU
+-	err = max9295_set_registers(dev, map_cmu_regulator,
+-				    ARRAY_SIZE(map_cmu_regulator));
+-
+-	// Init control
+-	err |= max9295_set_registers(dev, map_pipe_opt,
+-				     ARRAY_SIZE(map_pipe_opt));
+-
+-	err |= max9295_set_registers(dev, map_bpp8dbl, ARRAY_SIZE(map_bpp8dbl));
+-
+-	// Pipe X
+-	err |= max9295_set_registers(dev, map_pipe_x_control,
+-				     ARRAY_SIZE(map_pipe_x_control));
+-	// Pipe Y
+-	err |= max9295_set_registers(dev, map_pipe_y_control,
+-				     ARRAY_SIZE(map_pipe_y_control));
+-	// Pipe Z
+-	err |= max9295_set_registers(dev, map_pipe_z_control,
+-				     ARRAY_SIZE(map_pipe_z_control));
+-
+-	// Pipe U
+-	err |= max9295_set_registers(dev, map_pipe_u_control,
+-				     ARRAY_SIZE(map_pipe_u_control));
+-
+-	// Trigger Depth
+-	err |= max9295_set_registers(dev, map_depth_trigger,
+-				     ARRAY_SIZE(map_depth_trigger));
+-	// Trigger RGB
+-	err |= max9295_set_registers(dev, map_rgb_trigger,
+-				     ARRAY_SIZE(map_rgb_trigger));
+-
+-	mutex_unlock(&priv->lock);
+-
+-	return err;
+-}
+-EXPORT_SYMBOL(max9295_init_settings);
+-
+-int max9295_set_pipe(struct device *dev, int pipe_id,
+-		     u8 data_type1, u8 data_type2, u32 vc_id)
+-{
+-	struct max9295 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
+ 	u8 bpp = 0x30;
+ 	static u8 pipe_x_val = 0x0;
+ 	struct reg_pair map_multi_pipe_en[] = {
+ 		{0x0315, 0x80},
+ 	};
++	struct reg_pair map_bpp8dbl[] = {
++		{0x0312, 0x0F},
++	};
+ 	struct reg_pair map_pipe_control[] = {
+ 		/* addr, val */
+-		{0x0314, 0x5E}, // Pipe X pulls data_type1
++		{MAX9295_PIPE_X_DT_ADDR, 0x5E}, // Pipe X pulls data_type1
+ 		{0x0315, 0x52}, // Pipe X pulls data_type2
+ 		{0x0309, 0x01}, // # Pipe X pulls vc_id
+ 		{0x030A, 0x00},
+@@ -633,17 +518,6 @@ int max9295_set_pipe(struct device *dev, int pipe_id,
+ 		{0x0102, 0x0E}, // LIM_HEART Pipe X: Disabled
+ 	};
+ 
+-	if (pipe_id > (MAX9295_MAX_PIPES - 1)) {
+-		dev_info(dev, "%s, input pipe_id: %d exceed max9295 max pipes\n",
+-			 __func__, pipe_id);
+-		return -EINVAL;
+-	}
+-
+-	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
+-		__func__, pipe_id, data_type1, data_type2, vc_id);
+-
+-	mutex_lock(&priv->lock);
+-
+ 	if (data_type1 == GMSL_CSI_DT_RAW_8 || data_type1 == GMSL_CSI_DT_EMBED
+ 	    || data_type2 == GMSL_CSI_DT_RAW_8 || data_type2 == GMSL_CSI_DT_EMBED) {
+ 		map_bpp8dbl[0].val |= (1 << pipe_id);
+@@ -679,6 +553,61 @@ int max9295_set_pipe(struct device *dev, int pipe_id,
+ 	err |= max9295_set_registers(dev, map_multi_pipe_en,
+ 				     ARRAY_SIZE(map_multi_pipe_en));
+ 
++	return err;
++}
++
++int max9295_init_settings(struct device *dev)
++{
++	int err = 0;
++	int i;
++	struct max9295 *priv = dev_get_drvdata(dev);
++
++	struct reg_pair map_pipe_opt[] = {
++		// Enable all pipes
++		{MAX9295_PIPE_EN_ADDR, 0xF3},
++		// Write 0x33 for 4 lanes
++		{MAX9295_MIPI_RX1_ADDR, 0x11},
++		// All pipes pull clock from port B
++		{MAX9295_CSI_PORT_SEL_ADDR, 0x6F},
++		// All pipes pull data from port B
++		{MAX9295_START_PIPE_ADDR, 0xF0},
++	};
++
++	mutex_lock(&priv->lock);
++
++	// Init control
++	err |= max9295_set_registers(dev, map_pipe_opt,
++				     ARRAY_SIZE(map_pipe_opt));
++
++	for (i = 0; i < MAX9295_MAX_PIPES; i++)
++		err |= __max9295_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
++					  GMSL_CSI_DT_EMBED, i);
++
++	mutex_unlock(&priv->lock);
++
++	return err;
++}
++EXPORT_SYMBOL(max9295_init_settings);
++
++int max9295_set_pipe(struct device *dev, int pipe_id,
++		     u8 data_type1, u8 data_type2, u32 vc_id)
++{
++	struct max9295 *priv = dev_get_drvdata(dev);
++	int err = 0;
++
++	if (pipe_id > (MAX9295_MAX_PIPES - 1)) {
++		dev_info(dev, "%s, input pipe_id: %d exceed max9295 max pipes\n",
++			 __func__, pipe_id);
++		return -EINVAL;
++	}
++
++	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
++		__func__, pipe_id, data_type1, data_type2, vc_id);
++
++	mutex_lock(&priv->lock);
++
++	err = __max9295_set_pipe(dev, pipe_id, data_type1, data_type2, vc_id);
++
+ 	mutex_unlock(&priv->lock);
+ 
+ 	return err;
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 9481358b0..87f9dcf7a 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -44,6 +44,8 @@
+ #define MAX9296_PIPE_X_DST_1_MAP_ADDR 0x410
+ #define MAX9296_PIPE_X_SRC_2_MAP_ADDR 0x411
+ #define MAX9296_PIPE_X_DST_2_MAP_ADDR 0x412
++#define MAX9296_PIPE_X_SRC_3_MAP_ADDR 0x413
++#define MAX9296_PIPE_X_DST_3_MAP_ADDR 0x414
+ 
+ #define MAX9296_PIPE_X_ST_SEL_ADDR 0x50
+ 
+@@ -783,103 +785,6 @@ ret:
+ }
+ EXPORT_SYMBOL(max9296_setup_streaming);
+ 
+-static struct reg_pair map_cmu_regulator[] = {
+-	{0x0302, 0x10}, // Increase CMU regulator voltage
+-};
+-
+-static struct reg_pair map_pipe_opt[] = {
+-	{0x1458, 0x28}, // PHY A Optimization
+-	{0x1459, 0x68}, // PHY A Optimization
+-	{0x1558, 0x28}, // PHY B Optimization
+-	{0x1559, 0x68}, // PHY B Optimization
+-	//{0x0010, 0x31}, // One-shot reset  enable auto-link
+-
+-	{0x044A, 0x50}, // 4 lanes on port A, write 0x50 for 2 lanes
+-	{0x0320, 0x2F}, // 1500Mbps/lane on port A
+-//	{0x031C, 0x00}, // Do not un-double 8bpp (Un-double 8bpp data)
+-//	{0x031F, 0x00}, // Do not un-double 8bpp
+-	{0x0473, 0x10}, // 0x02: ALT_MEM_MAP8, 0x10: ALT2_MEM_MAP8
+-	// VC2 VS will come from pipe Z, not needed for pipe U
+-};
+-
+-static struct reg_pair map_pipe_x_control[] = {
+-	/* addr, val */
+-	{0x040B, 0x0F}, // Enable 4 mappings for Pipe X
+-	{0x040D, 0x1E}, // Map Depth VC0
+-	{0x040E, 0x1E},
+-	{0x040F, 0x00}, // Map frame start  VC0
+-	{0x0410, 0x00},
+-	{0x0411, 0x01}, // Map frame end  VC0
+-	{0x0412, 0x01},
+-	{0x0413, 0x12}, // Map EMB8, VC0
+-	{0x0414, 0x12},
+-	{0x042D, 0x55}, // All mappings to PHY1 (master for port A)
+-
+-	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+-	{0x0100, 0x23}, // pipe X
+-};
+-
+-static struct reg_pair map_pipe_y_control[] = {
+-	/* addr, val */
+-	{0x044B, 0x0F}, // Enable 4 mappings for Pipe Y
+-	{0x044D, 0x5E}, // Map RGB VC1
+-	{0x044E, 0x5E},
+-	{0x044F, 0x40}, // Map frame start  VC1
+-	{0x0450, 0x40},
+-	{0x0451, 0x41}, // Map frame end  VC1
+-	{0x0452, 0x41},
+-	{0x0453, 0x52}, // Map EMB8, VC1
+-	{0x0454, 0x52},
+-	{0x046D, 0x55}, // All mappings to PHY1 (master for port A)
+-
+-	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+-	{0x0112, 0x23}, // pipe Y
+-};
+-
+-static struct reg_pair map_pipe_z_control[] = {
+-	/* addr, val */
+-	{0x048B, 0x0F}, // Enable 4 mappings for Pipe Z
+-	{0x048D, 0x9E}, // Map Depth VC2
+-	{0x048E, 0x9E},
+-	{0x048F, 0x80}, // Map frame start  VC2
+-	{0x0490, 0x80},
+-	{0x0491, 0x81}, // Map frame end  VC2
+-	{0x0492, 0x81},
+-	{0x0493, 0x92}, // Map EMB8, VC2
+-	{0x0494, 0x92},
+-	{0x04AD, 0x55}, // Map to PHY1 (master for port A)
+-
+-	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+-	{0x0124, 0x23}, // pipe Z
+-};
+-
+-static struct reg_pair map_pipe_u_control[] = {
+-	/* addr, val */
+-	{0x04CB, 0x0F}, // Enable 4 mappings for Pipe U
+-	{0x04CD, 0xDE}, // Map RGB VC3
+-	{0x04CE, 0xDE},
+-	{0x04CF, 0xC0}, // Map frame start  VC3
+-	{0x04D0, 0xC0},
+-	{0x04D1, 0xC1}, // Map frame end  VC3
+-	{0x04D2, 0xC1},
+-	{0x04D3, 0xD2}, // Map EMB8, VC3
+-	{0x04D4, 0xD2},
+-	{0x04ED, 0x55}, // Map to PHY1 (master for port A)
+-
+-	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+-	{0x0136, 0x23}, // pipe U
+-};
+-
+-static struct reg_pair map_depth_trigger[] = {
+-	{0x02C5, 0x82}, // #MFP7
+-	{0x02C6, 0x1F},
+-};
+-
+-static struct reg_pair map_rgb_trigger[] = {
+-	{0x02CB, 0x82}, // #MFP9
+-	{0x02CC, 0x1B},
+-};
+-
+ static int max9296_set_registers(struct device *dev, struct reg_pair *map,
+ 				 u32 count)
+ {
+@@ -948,84 +853,50 @@ void max9296_reset_oneshot(struct device *dev)
+ }
+ EXPORT_SYMBOL(max9296_reset_oneshot);
+ 
+-int max9296_init_settings(struct device *dev)
++static int __max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
++			      u8 data_type2, u32 vc_id)
+ {
+-	int err = 0;
+-	struct max9296 *priv = dev_get_drvdata(dev);
+-
+-	mutex_lock(&priv->lock);
+-
+-	// Set CMU
+-	err = max9296_set_registers(dev, map_cmu_regulator,
+-				    ARRAY_SIZE(map_cmu_regulator));
+-
+-	// Init control
+-	err |= max9296_set_registers(dev, map_pipe_opt,
+-				     ARRAY_SIZE(map_pipe_opt));
+-
+-	// Pipe X
+-	err |= max9296_set_registers(dev, map_pipe_x_control,
+-				     ARRAY_SIZE(map_pipe_x_control));
+-	// Pipe Y
+-	err |= max9296_set_registers(dev, map_pipe_y_control,
+-				     ARRAY_SIZE(map_pipe_y_control));
+-	// Pipe Z
+-	err |= max9296_set_registers(dev, map_pipe_z_control,
+-				     ARRAY_SIZE(map_pipe_z_control));
+-
+-	// Pipe U
+-	err |= max9296_set_registers(dev, map_pipe_u_control,
+-				     ARRAY_SIZE(map_pipe_u_control));
+-
+-	// Trigger Depth
+-	err |= max9296_set_registers(dev, map_depth_trigger,
+-				     ARRAY_SIZE(map_depth_trigger));
+-	// Trigger RGB
+-	err |= max9296_set_registers(dev, map_rgb_trigger,
+-				     ARRAY_SIZE(map_rgb_trigger));
+-
+-	mutex_unlock(&priv->lock);
+-
+-	return err;
+-}
+-EXPORT_SYMBOL(max9296_init_settings);
+-
+-int max9296_set_pipe(struct device *dev, int pipe_id,
+-		     u8 data_type1, u8 data_type2, u32 vc_id)
+-{
+-	struct max9296 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
+ 	int i = 0;
+ 	u8 en_mapping_num = 0x0F;
+ 	u8 all_mapping_phy = 0x55;
++	struct reg_pair map_pipe_opt[] = {
++		{0x1458, 0x28}, // PHY A Optimization
++		{0x1459, 0x68}, // PHY A Optimization
++		{0x1558, 0x28}, // PHY B Optimization
++		{0x1559, 0x68}, // PHY B Optimization
++		// 4 lanes on port A, write 0x50 for 2 lanes
++		{MAX9296_LANE_CTRL1_ADDR, 0x50},
++		// 1500Mbps/lane on port A
++		{MAX9296_PHY1_CLK_ADDR, 0x2F},
++		// Do not un-double 8bpp (Un-double 8bpp data)
++		//{0x031C, 0x00},
++		// Do not un-double 8bpp
++		//{0x031F, 0x00},
++		// 0x02: ALT_MEM_MAP8, 0x10: ALT2_MEM_MAP8
++		{0x0473, 0x10},
++	};
+ 	struct reg_pair map_pipe_control[] = {
+-		/* addr, val */
+-		{0x040B, 0x0F}, // Enable 4 mappings for Pipe X
+-		{0x040D, 0x1E}, // Map data_type1 on vc_id
+-		{0x040E, 0x1E},
+-		{0x040F, 0x00}, // Map frame_start on vc_id
+-		{0x0410, 0x00},
+-		{0x0411, 0x01}, // Map frame end on vc_id
+-		{0x0412, 0x01},
+-		{0x0413, 0x12}, // Map data_type2 on vc_id
+-		{0x0414, 0x12},
+-		{0x042D, 0x55}, // All mappings to PHY1 (master for port A)
+-
++		// Enable 4 mappings for Pipe X
++		{MAX9296_TX11_PIPE_X_EN_ADDR, 0x0F},
++		// Map data_type1 on vc_id
++		{MAX9296_PIPE_X_SRC_0_MAP_ADDR, 0x1E},
++		{MAX9296_PIPE_X_DST_0_MAP_ADDR, 0x1E},
++		// Map frame_start on vc_id
++		{MAX9296_PIPE_X_SRC_1_MAP_ADDR, 0x00},
++		{MAX9296_PIPE_X_DST_1_MAP_ADDR, 0x00},
++		// Map frame end on vc_id
++		{MAX9296_PIPE_X_SRC_2_MAP_ADDR, 0x01},
++		{MAX9296_PIPE_X_DST_2_MAP_ADDR, 0x01},
++		// Map data_type2 on vc_id
++		{MAX9296_PIPE_X_SRC_3_MAP_ADDR, 0x12},
++		{MAX9296_PIPE_X_DST_3_MAP_ADDR, 0x12},
++		// All mappings to PHY1 (master for port A)
++		{MAX9296_TX45_PIPE_X_DST_CTRL_ADDR, 0x55},
+ 		// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+ 		{0x0100, 0x23}, // pipe X
+ 	};
+ 
+-	if (pipe_id > (MAX9296_MAX_PIPES - 1)) {
+-		dev_info(dev, "%s, input pipe_id: %d exceed max9296 max pipes\n",
+-			 __func__, pipe_id);
+-		return -EINVAL;
+-	}
+-
+-	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
+-		__func__, pipe_id, data_type1, data_type2, vc_id);
+-
+-	mutex_lock(&priv->lock);
+-
+ 	for (i = 0; i < 10; i++) {
+ 		map_pipe_control[i].addr += 0x40 * pipe_id;
+ 	}
+@@ -1053,6 +924,45 @@ int max9296_set_pipe(struct device *dev, int pipe_id,
+ 	err |= max9296_set_registers(dev, map_pipe_opt,
+ 				     ARRAY_SIZE(map_pipe_opt));
+ 
++	return err;
++}
++int max9296_init_settings(struct device *dev)
++{
++	int err = 0;
++	int i;
++	struct max9296 *priv = dev_get_drvdata(dev);
++
++	mutex_lock(&priv->lock);
++
++	for (i = 0; i < MAX9296_MAX_PIPES; i++)
++		err |= __max9296_set_pipe(dev, i, GMSL_CSI_DT_YUV422_8,
++					  GMSL_CSI_DT_EMBED, i);
++
++	mutex_unlock(&priv->lock);
++
++	return err;
++}
++EXPORT_SYMBOL(max9296_init_settings);
++
++int max9296_set_pipe(struct device *dev, int pipe_id,
++		     u8 data_type1, u8 data_type2, u32 vc_id)
++{
++	struct max9296 *priv = dev_get_drvdata(dev);
++	int err = 0;
++
++	if (pipe_id > (MAX9296_MAX_PIPES - 1)) {
++		dev_info(dev, "%s, input pipe_id: %d exceed max9296 max pipes\n",
++			 __func__, pipe_id);
++		return -EINVAL;
++	}
++
++	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
++		__func__, pipe_id, data_type1, data_type2, vc_id);
++
++	mutex_lock(&priv->lock);
++
++	err = __max9296_set_pipe(dev, pipe_id, data_type1, data_type2, vc_id);
++
+ 	mutex_unlock(&priv->lock);
+ 
+ 	return err;
+-- 
+2.30.2
+

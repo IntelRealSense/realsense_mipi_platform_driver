@@ -1,0 +1,622 @@
+From d9f3b565f91702d0bc9eecb8a8e5ca7822f3d12e Mon Sep 17 00:00:00 2001
+From: Kaili Xu <kaili.xu@intel.com>
+Date: Mon, 21 Nov 2022 10:38:44 +0800
+Subject: [PATCH] Support d457/9295/9296 dynamic load pipe config
+
+1. Remove hardcode register settings for each pipeline, and change to
+use dynamic load pipe config base on the info read from device tree.
+
+2. Change API max9295/9296_update_pipe() to max9295/9296_set_pipe(), and
+remove setting pipe related registers in max9295/9296_init_setting(), do it in
+max9295/9296_set_pipe() base on the info read from device tree.
+
+3. Remove update pipe for IR pipe in tegra channel setting, and do it in d4xx
+start streaming stage. In addition, not limited to the IR pipe type, all types
+of pipe setting are performed here.
+
+4. Remove param: "ir_type","ir_type_value", and probe/init check from max9295/9296,
+since all the pipe setting flow and needed info are maintained in d4xx.
+
+5. Split 0x0312 from map_pipe_opt in max9296, and set this register for each pipe,
+in order to support dynamic switching of pipelines developed in the next step.
+
+Signed-off-by: Kaili Xu <kaili.xu@intel.com>
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+---
+ drivers/media/i2c/max9295.c                   | 145 ++++++++----------
+ drivers/media/i2c/max9296.c                   | 145 ++++++++----------
+ .../media/platform/tegra/camera/vi/channel.c  |  21 ---
+ include/media/gmsl-link.h                     |  10 +-
+ include/media/max9295.h                       |   3 +-
+ include/media/max9296.h                       |   3 +-
+ 6 files changed, 133 insertions(+), 194 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index 4de304360..d295df745 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -103,11 +103,6 @@ struct max9295_client_ctx {
+ 	bool st_done;
+ };
+ 
+-enum ir_type {
+-       Y8_Y8I,
+-       Y12I,
+-};
+-
+ struct max9295 {
+ 	struct i2c_client *i2c_client;
+ 	struct regmap *regmap;
+@@ -116,8 +111,6 @@ struct max9295 {
+ 	/* primary serializer properties */
+ 	__u32 def_addr;
+ 	__u32 pst2_ref;
+-
+-	int ir_type_value;
+ };
+ 
+ static struct max9295 *prim_priv__;
+@@ -499,14 +492,10 @@ static struct reg_pair map_pipe_opt[] = {
+ 	{0x0311, 0xF0}, // All pipes pull data from port B
+ };
+ 
+-static struct reg_pair map_pipe_y8_opt[] = {
++static struct reg_pair map_bpp8dbl[] = {
+ 	{0x0312, 0x0F}, // Double 8-bit data on pipe X, Y, Z & U
+ };
+ 
+-static struct reg_pair map_pipe_y12i_opt[] = {
+-	{0x0312, 0x0B}, // Double 8-bit data on pipe X, Y & U
+-};
+-
+ static struct reg_pair map_pipe_x_control[] = {
+ 	/* addr, val */
+ 	{0x0314, 0x5E}, // Pipe X pulls Depth (DT 0x1E)
+@@ -527,7 +516,7 @@ static struct reg_pair map_pipe_y_control[] = {
+ 	{0x010A, 0x0E}, // LIM_HEART Pipe Y: Disabled
+ };
+ 
+-static struct reg_pair map_pipe_z_y8_y8i_control[] = {
++static struct reg_pair map_pipe_z_control[] = {
+ 	/* addr, val */
+ 	{0x0318, 0x5E}, // Pipe Z pulls Depth (DT 0x1E)
+ 	{0x0319, 0x52}, // Pipe Z pulls EMB8 (DT 0x12)
+@@ -537,19 +526,6 @@ static struct reg_pair map_pipe_z_y8_y8i_control[] = {
+ 	{0x0112, 0x0E}, // LIM_HEART Pipe Z: Disabled
+ };
+ 
+-static struct reg_pair map_pipe_z_y12i_control[] = {
+-	/* addr, val */
+-	{0x0318, 0x64}, // Pipe Z pulls Y12I (DT 0x24)
+-	{0x0319, 0x00}, // Reset to clean setting of Y8/Y8I configs
+-	{0x030D, 0x04}, // Pipe Z pulls VC2
+-	{0x030E, 0x00},
+-	/* Reset reg 0x031E since it's very likely to be modified in Y8/Y8I
+-	 * before running Y12I. For Y12I, this reg is not required to be set.
+-	 */
+-	{0x031E, 0x18},
+-	{0x0112, 0x0E}, // LIM_HEART Pipe Z: Disabled
+-};
+-
+ static struct reg_pair map_pipe_u_control[] = {
+ 	/* addr, val */
+ 	{0x031A, 0x5E}, // Pipe U pulls RGB (DT 0x1E)
+@@ -577,9 +553,6 @@ static struct reg_pair map_rgb_trigger[] = {
+ 	{0x02C0, 0x1B},
+ };
+ 
+-static bool init_done = false;
+-static bool probe_done = false;
+-
+ static int max9295_set_registers(struct device *dev, struct reg_pair *map,
+ 				 u32 count)
+ {
+@@ -594,7 +567,8 @@ static int max9295_set_registers(struct device *dev, struct reg_pair *map,
+ 	for (j = 0; j < count; j++) {
+ 		err = max9295_write_reg(dev,
+ 			map[j].addr, map[j].val);
+-		if (err != 0) break;
++		if (err != 0)
++			break;
+ 	}
+ 
+ 	mutex_unlock(&priv->lock);
+@@ -605,16 +579,16 @@ static int max9295_set_registers(struct device *dev, struct reg_pair *map,
+ int max9295_init_settings(struct device *dev)
+ {
+ 	int err = 0;
+-	struct max9295 *priv = dev_get_drvdata(dev);
+ 
+ 	// Set CMU
+ 	err = max9295_set_registers(dev, map_cmu_regulator,
+ 				    ARRAY_SIZE(map_cmu_regulator));
++
+ 	// Init control
+ 	err |= max9295_set_registers(dev, map_pipe_opt,
+ 				     ARRAY_SIZE(map_pipe_opt));
+-	err |= max9295_set_registers(dev, map_pipe_y8_opt,
+-				     ARRAY_SIZE(map_pipe_y8_opt));
++
++	err |= max9295_set_registers(dev, map_bpp8dbl, ARRAY_SIZE(map_bpp8dbl));
+ 
+ 	// Pipe X
+ 	err |= max9295_set_registers(dev, map_pipe_x_control,
+@@ -623,12 +597,8 @@ int max9295_init_settings(struct device *dev)
+ 	err |= max9295_set_registers(dev, map_pipe_y_control,
+ 				     ARRAY_SIZE(map_pipe_y_control));
+ 	// Pipe Z
+-	if (priv->ir_type_value == Y8_Y8I)
+-		err |= max9295_set_registers(dev, map_pipe_z_y8_y8i_control,
+-				     ARRAY_SIZE(map_pipe_z_y8_y8i_control));
+-	else
+-		err |= max9295_set_registers(dev, map_pipe_z_y12i_control,
+-				     ARRAY_SIZE(map_pipe_z_y12i_control));
++	err |= max9295_set_registers(dev, map_pipe_z_control,
++				     ARRAY_SIZE(map_pipe_z_control));
+ 
+ 	// Pipe U
+ 	err |= max9295_set_registers(dev, map_pipe_u_control,
+@@ -641,59 +611,76 @@ int max9295_init_settings(struct device *dev)
+ 	err |= max9295_set_registers(dev, map_rgb_trigger,
+ 				     ARRAY_SIZE(map_rgb_trigger));
+ 
+-	if (err == 0) {
+-		dev_info(dev, "%s done\n", __func__);
+-		init_done = true;
+-	}
+-
+ 	return err;
+ }
+ EXPORT_SYMBOL(max9295_init_settings);
+ 
+-int max9295_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
++int max9295_set_pipe(struct device *dev, int pipe_id,
++		     u8 data_type1, u8 data_type2, u32 vc_id)
+ {
+ 	int err = 0;
+-	struct max9295 *priv;
++	u8 bpp = 0x30;
++	static u8 pipe_x_val = 0x0;
++	struct reg_pair map_multi_pipe_en[] = {
++		{0x0315, 0x80},
++	};
++	struct reg_pair map_pipe_control[] = {
++		/* addr, val */
++		{0x0314, 0x5E}, // Pipe X pulls data_type1
++		{0x0315, 0x52}, // Pipe X pulls data_type2
++		{0x0309, 0x01}, // # Pipe X pulls vc_id
++		{0x030A, 0x00},
++		{0x031C, 0x30}, // BPP in pipe X
++		{0x0102, 0x0E}, // LIM_HEART Pipe X: Disabled
++	};
+ 
+-	if (!probe_done)
+-		return 0;
++	if (pipe_id > (MAX9295_MAX_PIPES - 1)) {
++		dev_info(dev, "%s, input pipe_id: %d exceed max9295 max pipes\n",
++			 __func__, pipe_id);
++		return -EINVAL;
++	}
+ 
+-	dev_dbg(dev, "%s st %d, fourcc %u\n", __func__, sensor_type, fourcc);
++	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
++		__func__, pipe_id, data_type1, data_type2, vc_id);
+ 
+-	if (!init_done) {
+-		dev_info(dev, "%s, SerDes device may not exist\n", __func__);
+-		return 0;
++	if (data_type1 == GMSL_CSI_DT_RAW_8 || data_type1 == GMSL_CSI_DT_EMBED
++	    || data_type2 == GMSL_CSI_DT_RAW_8 || data_type2 == GMSL_CSI_DT_EMBED) {
++		map_bpp8dbl[0].val |= (1 << pipe_id);
++	} else {
++		map_bpp8dbl[0].val &= ~(1 << pipe_id);
+ 	}
++	err |= max9295_set_registers(dev, map_bpp8dbl, ARRAY_SIZE(map_bpp8dbl));
+ 
+-	if (sensor_type != IR_SENSOR)
+-		return 0;
++	if (data_type1 == GMSL_CSI_DT_RGB_888)
++		bpp = 0x18;
+ 
+-	priv = dev_get_drvdata(dev);
+-	if ((priv->ir_type_value != Y8_Y8I) &&
+-	    (fourcc == V4L2_PIX_FMT_GREY || fourcc == V4L2_PIX_FMT_Y8I)) {
+-		// Init control
+-		err = max9295_set_registers(dev, map_pipe_y8_opt,
+-					ARRAY_SIZE(map_pipe_y8_opt));
+-		// Pipe Z
+-		err |= max9295_set_registers(dev, map_pipe_z_y8_y8i_control,
+-					ARRAY_SIZE(map_pipe_z_y8_y8i_control));
+-		if (err == 0)
+-			priv->ir_type_value = Y8_Y8I;
+-	} else if ((priv->ir_type_value != Y12I) &&
+-		   (fourcc == V4L2_PIX_FMT_Y12I)) {
+-		// Init control
+-		err = max9295_set_registers(dev, map_pipe_y12i_opt,
+-					ARRAY_SIZE(map_pipe_y12i_opt));
+-		// Pipe Z
+-		err |= max9295_set_registers(dev, map_pipe_z_y12i_control,
+-					ARRAY_SIZE(map_pipe_z_y12i_control));
+-		if (err == 0)
+-			priv->ir_type_value = Y12I;
+-	}
++	map_pipe_control[0].addr += 0x2 * pipe_id;
++	map_pipe_control[1].addr += 0x2 * pipe_id;
++	map_pipe_control[2].addr += 0x2 * pipe_id;
++	map_pipe_control[3].addr += 0x2 * pipe_id;
++	map_pipe_control[4].addr += 0x1 * pipe_id;
++	map_pipe_control[5].addr += 0x8 * pipe_id;
++
++	map_pipe_control[0].val = 0x40 | data_type1;
++	map_pipe_control[1].val = 0x40 | data_type2;
++	map_pipe_control[2].val = 1 << vc_id;
++	map_pipe_control[3].val = 0x00;
++	map_pipe_control[4].val = bpp;
++	map_pipe_control[5].val = 0x0E;
++
++	if (pipe_id == 0)
++		pipe_x_val = map_pipe_control[1].val;
++
++	err |= max9295_set_registers(dev, map_pipe_control,
++				     ARRAY_SIZE(map_pipe_control));
++
++	map_multi_pipe_en[0].val = 0x80 | pipe_x_val;
++	err |= max9295_set_registers(dev, map_multi_pipe_en,
++				     ARRAY_SIZE(map_multi_pipe_en));
+ 
+ 	return err;
+ }
+-EXPORT_SYMBOL(max9295_update_pipe);
++EXPORT_SYMBOL(max9295_set_pipe);
+ 
+ static int max9295_probe(struct i2c_client *client,
+ 				const struct i2c_device_id *id)
+@@ -734,10 +721,6 @@ static int max9295_probe(struct i2c_client *client,
+ 
+ 	dev_set_drvdata(&client->dev, priv);
+ 
+-	priv->ir_type_value = Y8_Y8I;
+-
+-	probe_done = true;
+-
+ 	/* dev communication gets validated when GMSL link setup is done */
+ 	dev_info(&client->dev, "%s:  success\n", __func__);
+ 
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 161cf3acd..a01445c8f 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -104,11 +104,6 @@ struct pipe_ctx {
+ 	u32 st_id_sel;
+ };
+ 
+-enum ir_type {
+-	Y8_Y8I,
+-	Y12I,
+-};
+-
+ struct max9296 {
+ 	struct i2c_client *i2c_client;
+ 	struct regmap *regmap;
+@@ -129,8 +124,6 @@ struct max9296 {
+ 	int reset_gpio;
+ 	int pw_ref;
+ 	struct regulator *vdd_cam_1v2;
+-
+-	int ir_type_value;
+ };
+ 
+ static int max9296_write_reg(struct device *dev,
+@@ -840,7 +833,7 @@ static struct reg_pair map_pipe_y_control[] = {
+ 	{0x0112, 0x23}, // pipe Y
+ };
+ 
+-static struct reg_pair map_pipe_z_y8_y8i_control[] = {
++static struct reg_pair map_pipe_z_control[] = {
+ 	/* addr, val */
+ 	{0x048B, 0x0F}, // Enable 4 mappings for Pipe Z
+ 	{0x048D, 0x9E}, // Map Depth VC2
+@@ -857,23 +850,6 @@ static struct reg_pair map_pipe_z_y8_y8i_control[] = {
+ 	{0x0124, 0x23}, // pipe Z
+ };
+ 
+-static struct reg_pair map_pipe_z_y12i_control[] = {
+-	/* addr, val */
+-	{0x048B, 0x07}, // Enable 3 mappings for Pipe Z
+-	{0x048D, 0xA4}, // Map Y12I VC2
+-	{0x048E, 0xA4},
+-	{0x048F, 0x80}, // Map frame start  VC2
+-	{0x0490, 0x80},
+-	{0x0491, 0x81}, // Map frame end  VC2
+-	{0x0492, 0x81},
+-	{0x0493, 0x00}, // Reset to unmap EMB8, VC2
+-	{0x0494, 0x00},
+-	{0x04AD, 0x15}, // Map to PHY1 (master for port A)
+-
+-	// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
+-	{0x0124, 0x23}, // pipe Z
+-};
+-
+ static struct reg_pair map_pipe_u_control[] = {
+ 	/* addr, val */
+ 	{0x04CB, 0x0F}, // Enable 4 mappings for Pipe U
+@@ -901,9 +877,6 @@ static struct reg_pair map_rgb_trigger[] = {
+ 	{0x02CC, 0x1B},
+ };
+ 
+-static bool init_done = false;
+-static bool probe_done = false;
+-
+ static int max9296_set_registers(struct device *dev, struct reg_pair *map,
+ 				 u32 count)
+ {
+@@ -918,7 +891,8 @@ static int max9296_set_registers(struct device *dev, struct reg_pair *map,
+ 	for (j = 0; j < count; j++) {
+ 		err = max9296_write_reg(dev,
+ 			map[j].addr, map[j].val);
+-		if (err != 0) break;
++		if (err != 0)
++			break;
+ 	}
+ 
+ 	mutex_unlock(&priv->lock);
+@@ -929,11 +903,11 @@ static int max9296_set_registers(struct device *dev, struct reg_pair *map,
+ int max9296_init_settings(struct device *dev)
+ {
+ 	int err = 0;
+-	struct max9296 *priv = dev_get_drvdata(dev);
+ 
+ 	// Set CMU
+ 	err = max9296_set_registers(dev, map_cmu_regulator,
+ 				    ARRAY_SIZE(map_cmu_regulator));
++
+ 	// Init control
+ 	err |= max9296_set_registers(dev, map_pipe_opt,
+ 				     ARRAY_SIZE(map_pipe_opt));
+@@ -945,12 +919,8 @@ int max9296_init_settings(struct device *dev)
+ 	err |= max9296_set_registers(dev, map_pipe_y_control,
+ 				     ARRAY_SIZE(map_pipe_y_control));
+ 	// Pipe Z
+-	if (priv->ir_type_value == Y8_Y8I)
+-		err |= max9296_set_registers(dev, map_pipe_z_y8_y8i_control,
+-				     ARRAY_SIZE(map_pipe_z_y8_y8i_control));
+-	else
+-		err |= max9296_set_registers(dev, map_pipe_z_y12i_control,
+-				     ARRAY_SIZE(map_pipe_z_y12i_control));
++	err |= max9296_set_registers(dev, map_pipe_z_control,
++				     ARRAY_SIZE(map_pipe_z_control));
+ 
+ 	// Pipe U
+ 	err |= max9296_set_registers(dev, map_pipe_u_control,
+@@ -963,63 +933,76 @@ int max9296_init_settings(struct device *dev)
+ 	err |= max9296_set_registers(dev, map_rgb_trigger,
+ 				     ARRAY_SIZE(map_rgb_trigger));
+ 
+-	if (err == 0) {
+-		dev_info(dev, "%s done\n", __func__);
+-		init_done = true;
+-	}
+-
+ 	return err;
+ }
+ EXPORT_SYMBOL(max9296_init_settings);
+ 
+-int max9296_update_pipe(struct device *dev, int sensor_type, u32 fourcc)
++int max9296_set_pipe(struct device *dev, int pipe_id,
++		     u8 data_type1, u8 data_type2, u32 vc_id)
+ {
+ 	int err = 0;
+-	struct max9296 *priv;
+-	const int reset_sleep = 5;
+-	if (!probe_done)
+-		return 0;
+-
+-	dev_dbg(dev, "%s st %d, fourcc %u\n", __func__, sensor_type, fourcc);
++	int i = 0;
++	const int reset_sleep = 5000;
++	u8 en_mapping_num = 0x0F;
++	u8 all_mapping_phy = 0x55;
++	struct reg_pair map_pipe_control[] = {
++		/* addr, val */
++		{0x040B, 0x0F}, // Enable 4 mappings for Pipe X
++		{0x040D, 0x1E}, // Map data_type1 on vc_id
++		{0x040E, 0x1E},
++		{0x040F, 0x00}, // Map frame_start on vc_id
++		{0x0410, 0x00},
++		{0x0411, 0x01}, // Map frame end on vc_id
++		{0x0412, 0x01},
++		{0x0413, 0x12}, // Map data_type2 on vc_id
++		{0x0414, 0x12},
++		{0x042D, 0x55}, // All mappings to PHY1 (master for port A)
++
++		// SEQ_MISS_EN: Disabled / DIS_PKT_DET: Disabled
++		{0x0100, 0x23}, // pipe X
++	};
+ 
+-	if (!init_done) {
+-		dev_info(dev, "%s, SerDes device may not exist\n", __func__);
+-		return 0;
++	if (pipe_id > (MAX9296_MAX_PIPES - 1)) {
++		dev_info(dev, "%s, input pipe_id: %d exceed max9296 max pipes\n",
++			 __func__, pipe_id);
++		return -EINVAL;
+ 	}
+ 
+-	if (sensor_type != IR_SENSOR)
+-		return 0;
++	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
++		__func__, pipe_id, data_type1, data_type2, vc_id);
+ 
+-	priv = dev_get_drvdata(dev);
+-	if ((priv->ir_type_value != Y8_Y8I) &&
+-	    (fourcc == V4L2_PIX_FMT_GREY || fourcc == V4L2_PIX_FMT_Y8I)) {
+-		// Init control
+-		err |= max9296_set_registers(dev, map_pipe_opt,
+-					     ARRAY_SIZE(map_pipe_opt));
+-		/* needed to settle serdes line after reset */
+-		usleep_range(reset_sleep * 1000, reset_sleep * 1000 + 500);
+-		// Pipe Z
+-		err = max9296_set_registers(dev, map_pipe_z_y8_y8i_control,
+-					ARRAY_SIZE(map_pipe_z_y8_y8i_control));
+-		if (err == 0)
+-			priv->ir_type_value = Y8_Y8I;
+-	} else if ((priv->ir_type_value != Y12I) &&
+-		   (fourcc == V4L2_PIX_FMT_Y12I)) {
+-		// Init control
+-		err |= max9296_set_registers(dev, map_pipe_opt,
+-					     ARRAY_SIZE(map_pipe_opt));
+-		/* needed to settle serdes line after reset */
+-		usleep_range(reset_sleep * 1000, reset_sleep * 1000 + 500);
+-		// Pipe Z
+-		err = max9296_set_registers(dev, map_pipe_z_y12i_control,
+-					ARRAY_SIZE(map_pipe_z_y12i_control));
+-		if (err == 0)
+-			priv->ir_type_value = Y12I;
++	err |= max9296_set_registers(dev, map_pipe_opt,
++				     ARRAY_SIZE(map_pipe_opt));
++	/* needed to settle serdes line after reset */
++	usleep_range(reset_sleep, reset_sleep + 500);
++
++	for (i = 0; i < 10; i++) {
++		map_pipe_control[i].addr += 0x40 * pipe_id;
+ 	}
++	map_pipe_control[10].addr += 0x12 * pipe_id;
++
++	if (data_type2 == 0x0) {
++		en_mapping_num = 0x07;
++		all_mapping_phy = 0x15;
++	}
++	map_pipe_control[0].val = en_mapping_num;
++	map_pipe_control[1].val = (vc_id << 6) | data_type1;
++	map_pipe_control[2].val = (vc_id << 6) | data_type1;
++	map_pipe_control[3].val = (vc_id << 6) | 0x00;
++	map_pipe_control[4].val = (vc_id << 6) | 0x00;
++	map_pipe_control[5].val = (vc_id << 6) | 0x01;
++	map_pipe_control[6].val = (vc_id << 6) | 0x01;
++	map_pipe_control[7].val = (vc_id << 6) | data_type2;
++	map_pipe_control[8].val = (vc_id << 6) | data_type2;
++	map_pipe_control[9].val = all_mapping_phy;
++	map_pipe_control[10].val = 0x23;
++
++	err |= max9296_set_registers(dev, map_pipe_control,
++				     ARRAY_SIZE(map_pipe_control));
+ 
+ 	return err;
+ }
+-EXPORT_SYMBOL(max9296_update_pipe);
++EXPORT_SYMBOL(max9296_set_pipe);
+ 
+ static const struct of_device_id max9296_of_match[] = {
+ 	{ .compatible = "maxim,max9296", },
+@@ -1136,10 +1119,6 @@ static int max9296_probe(struct i2c_client *client,
+ 
+ 	dev_set_drvdata(&client->dev, priv);
+ 
+-	priv->ir_type_value = Y8_Y8I;
+-
+-	probe_done = true;
+-
+ 	/* dev communication gets validated when GMSL link setup is done */
+ 	dev_info(&client->dev, "%s:  success\n", __func__);
+ 
+diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
+index 979fdde1e..c2a9e6f14 100644
+--- a/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -40,10 +40,6 @@
+ #include <media/v4l2-dv-timings.h>
+ #include <media/vi.h>
+ 
+-#include <media/gmsl-link.h>
+-#include <media/max9296.h>
+-#include <media/max9295.h>
+-
+ #include <linux/clk/tegra.h>
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/camera_common.h>
+@@ -2099,7 +2095,6 @@ __tegra_channel_set_format(struct tegra_channel *chan,
+ 	const struct tegra_video_format *vfmt;
+ 	struct v4l2_subdev_format fmt;
+ 	struct v4l2_subdev *sd = chan->subdev_on_csi;
+-	struct tegra_mc_vi *vi = chan->vi;
+ 	struct v4l2_subdev_pad_config cfg = {};
+ 	int ret = 0;
+ 
+@@ -2107,22 +2102,6 @@ __tegra_channel_set_format(struct tegra_channel *chan,
+ 	if (!vfmt)
+ 		return -EINVAL;
+ 
+-	if (vi->ser_dev) {
+-		ret = max9295_update_pipe(vi->ser_dev, chan->id, vfmt->fourcc);
+-		dev_dbg(vi->ser_dev, "%s, chan id %d, data_type %x\n",
+-				__func__, chan->id, vfmt->img_dt);
+-		if (ret < 0)
+-			return ret;
+-	}
+-
+-	if (vi->dser_dev) {
+-		ret = max9296_update_pipe(vi->dser_dev, chan->id, vfmt->fourcc);
+-		dev_dbg(vi->dser_dev, "%s, chan id %d, data_type %x\n",
+-				__func__, chan->id, vfmt->img_dt);
+-		if (ret < 0)
+-			return ret;
+-	}
+-
+ 	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+ 	fmt.pad = 0;
+ 	v4l2_fill_mbus_format(&fmt.format, pix, vfmt->code);
+diff --git a/include/media/gmsl-link.h b/include/media/gmsl-link.h
+index 9cfd907bd..533f31eb8 100644
+--- a/include/media/gmsl-link.h
++++ b/include/media/gmsl-link.h
+@@ -53,16 +53,12 @@
+ #define GMSL_CSI_DT_RAW_12 0x2C
+ #define GMSL_CSI_DT_UED_U1 0x30
+ #define GMSL_CSI_DT_EMBED 0x12
++#define GMSL_CSI_DT_YUV422_8 0x1E
++#define GMSL_CSI_DT_RGB_888 0x24
++#define GMSL_CSI_DT_RAW_8 0x2A
+ 
+ #define GMSL_ST_ID_UNUSED 0xFF
+ 
+-enum sensor_type {
+-	DEPTH_SENSOR,
+-	RGB_SENSOR,
+-	IR_SENSOR,
+-	IMU_SENSOR,
+-};
+-
+ /**
+  * Maximum number of data streams (\ref gmsl_stream elements) in a GMSL link
+  * (\ref gmsl_link_ctx).
+diff --git a/include/media/max9295.h b/include/media/max9295.h
+index 4572f432b..bea15c414 100644
+--- a/include/media/max9295.h
++++ b/include/media/max9295.h
+@@ -36,7 +36,8 @@
+  * @{
+  */
+ 
+-int max9295_update_pipe(struct device *dev, int sensor_type, u32 fourcc);
++int max9295_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
++		     u8 data_type2, u32 vc_id);
+ 
+ /**
+  * @brief  Powers on a serializer device and performs the I2C overrides
+diff --git a/include/media/max9296.h b/include/media/max9296.h
+index 644c8d37f..cfe977e00 100644
+--- a/include/media/max9296.h
++++ b/include/media/max9296.h
+@@ -36,7 +36,8 @@
+  * @{
+  */
+ 
+-int max9296_update_pipe(struct device *dev, int sensor_type, u32 fourcc);
++int max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
++		     u8 data_type2, u32 vc_id);
+ 
+ /**
+  * Puts a deserializer device in single exclusive link mode, so link-specific
+-- 
+2.30.2
+
