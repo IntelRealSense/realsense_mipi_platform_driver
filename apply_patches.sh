@@ -46,7 +46,7 @@ apply_external_patches $1 $KERNEL_DIR
 apply_external_patches $1 hardware/nvidia/platform/t19x/galen/kernel-dts
 
 if [ $1 = 'apply' ]; then
-    cp $DEVDIR/d4xx.c $DEVDIR/sources_$JETPACK_VERSION/kernel/nvidia/drivers/media/i2c/
+    cp $DEVDIR/kernel/realsense/d4xx.c $DEVDIR/sources_$JETPACK_VERSION/kernel/nvidia/drivers/media/i2c/
     cp $DEVDIR/hardware/realsense/$JP5_D4XX_DTSI $DEVDIR/sources_$JETPACK_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts/common/tegra194-camera-d4xx.dtsi
 elif [ $1 = 'reset' ]; then
     rm $DEVDIR/sources_$JETPACK_VERSION/kernel/nvidia/drivers/media/i2c/d4xx.c
