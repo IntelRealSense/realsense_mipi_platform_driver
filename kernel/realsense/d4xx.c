@@ -38,7 +38,8 @@
 #ifdef CONFIG_VIDEO_D4XX_SERDES
 #include <media/max9295.h>
 #include <media/max9296.h>
-#elif
+#else
+#include <media/gmsl-link.h>
 #define GMSL_CSI_DT_YUV422_8 0x1E
 #define GMSL_CSI_DT_RGB_888 0x24
 #define GMSL_CSI_DT_RAW_8 0x2A
@@ -4321,11 +4322,9 @@ e_regulator:
 static int ds5_remove(struct i2c_client *c)
 {
 	struct ds5 *state = container_of(i2c_get_clientdata(c), struct ds5, mux.sd.subdev);
+
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 	int i, ret;
-
-	dev_info(&c->dev, "D4XX remove %s\n",
-			ds5_get_sensor_name(state));
-
 	for (i = 0; i < MAX_DEV_NUM; i++) {
 		if (serdes_inited[i] && serdes_inited[i] == state) {
 			serdes_inited[i] = NULL;
@@ -4356,7 +4355,9 @@ static int ds5_remove(struct i2c_client *c)
 			break;
 		}
 	}
-
+#endif
+	dev_info(&c->dev, "D4XX remove %s\n",
+			ds5_get_sensor_name(state));
 	if (state->vcc)
 		regulator_disable(state->vcc);
 //	gpio_free(state->pwdn_gpio);
