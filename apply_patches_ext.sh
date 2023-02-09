@@ -9,7 +9,7 @@ fi
 # Default to single camera DT for JetPack 5.0.2
 # single - dev board
 # one/dual - evb
-JP5_D4XX_DTSI="tegra194-camera-d4xx.dtsi"
+JP5_D4XX_DTSI="tegra194-camera-d4xx-dual.dtsi"
 if [[ "$1" == "--one-cam" ]]; then
     JP5_D4XX_DTSI="tegra194-camera-d4xx-single.dtsi"
     shift
@@ -24,6 +24,11 @@ DEVDIR=$(cd `dirname $0` && pwd)
 . $DEVDIR/scripts/setup-common "$2"
 
 cd "$DEVDIR"
+
+# set JP4 devicetree
+if [[ "$JETPACK_VERSION" == "4.6.1" ]]; then
+    JP5_D4XX_DTSI="tegra194-camera-d4xx.dtsi"
+fi
 
 # NVIDIA SDK Manager's JetPack 4.6.1 source_sync.sh doesn't set the right folder name, it mismatches with the direct tar
 # package source code. Correct the folder name.
