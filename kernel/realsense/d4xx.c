@@ -4019,7 +4019,7 @@ static const struct file_operations ds5_device_file_ops = {
 	.release = &ds5_dfu_device_release
 };
 
-struct class* g_ds5_class;
+struct class* g_ds5_class = NULL;
 atomic_t primary_chardev=ATOMIC_INIT(0);
 
 static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
@@ -4027,7 +4027,7 @@ static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
 	struct cdev *ds5_cdev = &state->dfu_dev.ds5_cdev;
 	struct class* *ds5_class = &state->dfu_dev.ds5_class;
 	struct device *chr_dev;
-	char dev_name[sizeof(DS5_DRIVER_NAME_DFU) +5];
+	char dev_name[sizeof(DS5_DRIVER_NAME_DFU) + 8];
 	dev_t *dev_num = &c->dev.devt;
 	int ret;
 
@@ -4056,8 +4056,8 @@ static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
 	/* Build up the current device number. To be used further */
 	*dev_num = MKDEV(MAJOR(*dev_num), MINOR(*dev_num));
 	/* Create a device node for this device. */
-	snprintf (dev_name, sizeof(dev_name), "%s%d",
-			DS5_DRIVER_NAME_DFU, MAJOR(*dev_num));
+	snprintf (dev_name, sizeof(dev_name), "%s-%d-%04x",
+			DS5_DRIVER_NAME_DFU, i2c_adapter_id(c->adapter), c->addr);
 	chr_dev = device_create(*ds5_class, NULL, *dev_num, NULL, dev_name);
 	if (IS_ERR(chr_dev)) {
 		ret = PTR_ERR(chr_dev);
@@ -4074,7 +4074,9 @@ static int ds5_chrdev_remove(struct ds5 *state)
 {
 	struct class* *ds5_class = &state->dfu_dev.ds5_class;
 	dev_t *dev_num = &state->client->dev.devt;
-
+	if (!ds5_class) {
+		return 0;
+	}
 	dev_dbg(&state->client->dev, "%s()\n", __func__);
 	unregister_chrdev_region(*dev_num, 1);
 	device_destroy(*ds5_class, *dev_num);
@@ -4084,7 +4086,7 @@ static int ds5_chrdev_remove(struct ds5 *state)
 }
 
 /* SYSFS attributes */
-
+#ifdef CONFIG_SYSFS
 static ssize_t ds5_fw_ver_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -4202,6 +4204,7 @@ static struct attribute *ds5_attributes[] = {
 static const struct attribute_group ds5_attr_group = {
 	.attrs = ds5_attributes,
 };
+#endif
 
 static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 {
@@ -4248,22 +4251,6 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 		goto e_regulator;
 	}
 
-	ret = ds5_chrdev_init(c, state);
-	if (ret < 0)
-		goto e_regulator;
-	ret = ds5_read(state, 0x5020, &rec_state);
-	if (ret < 0) {
-		dev_err(&c->dev, "%s(): cannot communicate with D4XX: %d\n",
-				__func__, ret);
-		goto e_chardev;
-	}
-
-	if (rec_state == 0x201) {
-		dev_info(&c->dev, "%s(): D4XX recovery state\n", __func__);
-		state->dfu_dev.dfu_state_flag = DS5_DFU_RECOVERY;
-		return 0;
-	}
-
 	state->is_depth = 0;
 	state->is_y8 = 0;
 	state->is_rgb = 0;
@@ -4281,6 +4268,26 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 	}
 	if (!ret && !strncmp(str, "IMU", strlen("IMU"))) {
 		state->is_imu = 1;
+	}
+
+	/* create DFU chardev once */
+	if (state->is_depth) {
+		ret = ds5_chrdev_init(c, state);
+		if (ret < 0)
+			goto e_regulator;
+	}
+
+	ret = ds5_read(state, 0x5020, &rec_state);
+	if (ret < 0) {
+		dev_err(&c->dev, "%s(): cannot communicate with D4XX: %d\n",
+				__func__, ret);
+		goto e_chardev;
+	}
+
+	if (rec_state == 0x201) {
+		dev_info(&c->dev, "%s(): D4XX recovery state\n", __func__);
+		state->dfu_dev.dfu_state_flag = DS5_DFU_RECOVERY;
+		return 0;
 	}
 
 	ds5_read_with_check(state, DS5_FW_VERSION, &state->fw_version);
@@ -4306,13 +4313,15 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 	}
 */
 	/* Custom sysfs attributes */
+#ifdef CONFIG_SYSFS
 	/* create the sysfs file group */
 	err = sysfs_create_group(&state->client->dev.kobj, &ds5_attr_group);
-
+#endif
 	return 0;
 
 e_chardev:
-	ds5_chrdev_remove(state);
+	if(state->dfu_dev.ds5_class)
+		ds5_chrdev_remove(state);
 e_regulator:
 	if (state->vcc)
 		regulator_disable(state->vcc);
@@ -4361,9 +4370,14 @@ static int ds5_remove(struct i2c_client *c)
 	if (state->vcc)
 		regulator_disable(state->vcc);
 //	gpio_free(state->pwdn_gpio);
-	ds5_chrdev_remove(state);
+	if (state->is_depth) {
+		ds5_chrdev_remove(state);
+	}
+
 	if (state->dfu_dev.dfu_state_flag != DS5_DFU_RECOVERY) {
+#ifdef CONFIG_SYSFS
 		sysfs_remove_group(&c->dev.kobj, &ds5_attr_group);
+#endif
 		ds5_mux_remove(state);
 	}
 
