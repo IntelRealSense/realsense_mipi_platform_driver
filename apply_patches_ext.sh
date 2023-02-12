@@ -6,7 +6,7 @@ if [[ $# < 1 ]]; then
     exit 1
 fi
 
-# Default to single camera DT for JetPack 5.0.2
+# Default to dual camera DT for JetPack 5.0.2
 # single - dev board
 # one/dual - evb
 JP5_D4XX_DTSI="tegra194-camera-d4xx-dual.dtsi"
