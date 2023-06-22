@@ -1,14 +1,14 @@
 
-# Realsense Firmware Log Parser
+# Realsense MIPI Firmware Log Parser (D457)
 
 ## About
 
-This script can parse log next format:
+This script can parse logs from the following format:
 ```text
 logger:   15,    0,    0,    0,  160,   33,   38,   16,    7,    0,  228,   33,  224,    1,   80,    3,    0,    0,    0,    0,   87,  124,  108,  139,  160,   35,   10,   16,   65,    2,  161,   49,    0,    0,    0,    0,    0,    0,    0,    0,  151,  130,  108,  139,  160,   33,   63,   16,    8,    0,  230,   64,   15,    0,  135,   25,   48,    3,    0,    0,  213,  208,  250,  139,  160,   35,   10,   16,   65,    2,  161,   81,    0,    0,    0,    0,    0,    0,    0,    0,  191,   33,  253,  139,  160
 ``` 
 
-and provide parsed output from next format:
+and provide parsed output i.e.:
 
 ```text
 Sequence  File name                     Group id  Thread name  Severity  Line  Timestamp      Δ timestamp  Description                        
