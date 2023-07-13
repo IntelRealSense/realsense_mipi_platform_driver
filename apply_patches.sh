@@ -9,9 +9,10 @@ if [[ $# < 1 ]]; then
 fi
 
 # Default to dual camera DT for JetPack 5.0.2
+# generic - jp5 default single cam
 # single - dev board
 # one/dual - evb
-JP5_D4XX_DTSI="tegra194-camera-d4xx-dual.dtsi"
+JP5_D4XX_DTSI="tegra194-camera-d4xx-generic.dtsi"
 if [[ "$1" == "--one-cam" ]]; then
     JP5_D4XX_DTSI="tegra194-camera-d4xx-single.dtsi"
     shift
