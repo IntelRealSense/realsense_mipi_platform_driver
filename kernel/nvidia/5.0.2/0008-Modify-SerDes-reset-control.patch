@@ -1,0 +1,48 @@
+From 61945fddc4dc007b49eb2389df8b3961553313bb Mon Sep 17 00:00:00 2001
+From: Junze Wu <junze.wu@intel.com>
+Date: Fri, 2 Dec 2022 16:36:58 +0800
+Subject: [PATCH] Modify SerDes reset control
+
+* Invoke max9295 prim-ser reset all only if ref count is 0
+* Clip max9296 pw_ref count to 0
+
+Signed-off-by: Junze Wu <junze.wu@intel.com>
+---
+ drivers/media/i2c/max9295.c | 6 +++---
+ drivers/media/i2c/max9296.c | 3 +++
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index d295df745..da79a5bcb 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -395,9 +395,9 @@ int max9295_reset_control(struct device *dev)
+ 
+ 		max9295_write_reg(dev, MAX9295_DEV_ADDR,
+ 					(prim_priv__->def_addr << 1));
+-
+-		max9295_write_reg(&prim_priv__->i2c_client->dev,
+-					MAX9295_CTRL0_ADDR, MAX9295_RESET_ALL);
++		if (prim_priv__->pst2_ref == 0)
++			max9295_write_reg(&prim_priv__->i2c_client->dev,
++						MAX9295_CTRL0_ADDR, MAX9295_RESET_ALL);
+ 	}
+ 
+ error:
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index a01445c8f..2a61c9c74 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -260,6 +260,9 @@ void max9296_power_off(struct device *dev)
+ 	mutex_lock(&priv->lock);
+ 	priv->pw_ref--;
+ 
++	if (priv->pw_ref < 0)
++		priv->pw_ref = 0;
++
+ 	if (priv->pw_ref == 0) {
+ 		/* enter reset mode: XCLR */
+ 		usleep_range(1, 2);
+-- 
+2.30.2
+

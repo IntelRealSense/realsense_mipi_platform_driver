@@ -1,0 +1,217 @@
+From 2c52e7d9eb37c8f767946be2c0ffd89154dbb553 Mon Sep 17 00:00:00 2001
+From: Xin Zhang <xin.x.zhang@intel.com>
+Date: Sun, 11 Dec 2022 20:32:14 +0800
+Subject: [PATCH] Serdes pipe setup update
+
+- Use mutex lock in our APIs, they were missing and used only in
+  set_registers functions is not not enough.
+- Do 9296 reset_oneshot at every set_pipe, then sleep timeout is set to
+  100ms following the existing 9296 code. Though the delay increases.
+  Keeping the old 5-5.5ms is not enough now if doing the reset after
+  setting the current pipe.
+- Move map_pipe_opt and reset_oneshot after the current pipe setting,
+  this is to follow the existing 9296 code too. And this may be a reason
+  that delay becomes longer.
+
+Signed-off-by: Xin Zhang <xin.x.zhang@intel.com>
+
+- Add API for max9296 one-shot reset.
+- Remove oneshot reset in max9296 set_pipe. Let the user call the new
+  API to do the reset instead.
+
+Signed-off-by: Junze Wu <junze.wu@intel.com>
+---
+ drivers/media/i2c/max9295.c | 17 ++++++++-------
+ drivers/media/i2c/max9296.c | 41 ++++++++++++++++++++++++++-----------
+ include/media/max9296.h     |  1 +
+ 3 files changed, 40 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
+index da79a5bcb..b2e29b640 100644
+--- a/drivers/media/i2c/max9295.c
++++ b/drivers/media/i2c/max9295.c
+@@ -556,14 +556,9 @@ static struct reg_pair map_rgb_trigger[] = {
+ static int max9295_set_registers(struct device *dev, struct reg_pair *map,
+ 				 u32 count)
+ {
+-	struct max9295 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
+ 	u32 j = 0;
+ 
+-	mutex_lock(&priv->lock);
+-
+-	dev_info(dev, "%s count %u\n", __func__, count);
+-
+ 	for (j = 0; j < count; j++) {
+ 		err = max9295_write_reg(dev,
+ 			map[j].addr, map[j].val);
+@@ -571,14 +566,15 @@ static int max9295_set_registers(struct device *dev, struct reg_pair *map,
+ 			break;
+ 	}
+ 
+-	mutex_unlock(&priv->lock);
+-
+ 	return err;
+ }
+ 
+ int max9295_init_settings(struct device *dev)
+ {
+ 	int err = 0;
++	struct max9295 *priv = dev_get_drvdata(dev);
++
++	mutex_lock(&priv->lock);
+ 
+ 	// Set CMU
+ 	err = max9295_set_registers(dev, map_cmu_regulator,
+@@ -611,6 +607,8 @@ int max9295_init_settings(struct device *dev)
+ 	err |= max9295_set_registers(dev, map_rgb_trigger,
+ 				     ARRAY_SIZE(map_rgb_trigger));
+ 
++	mutex_unlock(&priv->lock);
++
+ 	return err;
+ }
+ EXPORT_SYMBOL(max9295_init_settings);
+@@ -618,6 +616,7 @@ EXPORT_SYMBOL(max9295_init_settings);
+ int max9295_set_pipe(struct device *dev, int pipe_id,
+ 		     u8 data_type1, u8 data_type2, u32 vc_id)
+ {
++	struct max9295 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
+ 	u8 bpp = 0x30;
+ 	static u8 pipe_x_val = 0x0;
+@@ -643,6 +642,8 @@ int max9295_set_pipe(struct device *dev, int pipe_id,
+ 	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
+ 		__func__, pipe_id, data_type1, data_type2, vc_id);
+ 
++	mutex_lock(&priv->lock);
++
+ 	if (data_type1 == GMSL_CSI_DT_RAW_8 || data_type1 == GMSL_CSI_DT_EMBED
+ 	    || data_type2 == GMSL_CSI_DT_RAW_8 || data_type2 == GMSL_CSI_DT_EMBED) {
+ 		map_bpp8dbl[0].val |= (1 << pipe_id);
+@@ -678,6 +679,8 @@ int max9295_set_pipe(struct device *dev, int pipe_id,
+ 	err |= max9295_set_registers(dev, map_multi_pipe_en,
+ 				     ARRAY_SIZE(map_multi_pipe_en));
+ 
++	mutex_unlock(&priv->lock);
++
+ 	return err;
+ }
+ EXPORT_SYMBOL(max9295_set_pipe);
+diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
+index 74868770f..9481358b0 100644
+--- a/drivers/media/i2c/max9296.c
++++ b/drivers/media/i2c/max9296.c
+@@ -883,14 +883,9 @@ static struct reg_pair map_rgb_trigger[] = {
+ static int max9296_set_registers(struct device *dev, struct reg_pair *map,
+ 				 u32 count)
+ {
+-	struct max9296 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
+ 	u32 j = 0;
+ 
+-	mutex_lock(&priv->lock);
+-
+-	dev_info(dev, "%s count %u\n", __func__, count);
+-
+ 	for (j = 0; j < count; j++) {
+ 		err = max9296_write_reg(dev,
+ 			map[j].addr, map[j].val);
+@@ -898,8 +893,6 @@ static int max9296_set_registers(struct device *dev, struct reg_pair *map,
+ 			break;
+ 	}
+ 
+-	mutex_unlock(&priv->lock);
+-
+ 	return err;
+ }
+ 
+@@ -938,9 +931,29 @@ int max9296_release_pipe(struct device *dev, int pipe_id)
+ }
+ EXPORT_SYMBOL(max9296_release_pipe);
+ 
++void max9296_reset_oneshot(struct device *dev)
++{
++	struct max9296 *priv = dev_get_drvdata(dev);
++
++	mutex_lock(&priv->lock);
++	if (priv->splitter_enabled) {
++		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, 0x03);
++		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, 0x23);
++	} else {
++		max9296_write_reg(dev, MAX9296_CTRL0_ADDR, 0x31);
++	}
++	/* delay to settle link */
++	msleep(100);
++	mutex_unlock(&priv->lock);
++}
++EXPORT_SYMBOL(max9296_reset_oneshot);
++
+ int max9296_init_settings(struct device *dev)
+ {
+ 	int err = 0;
++	struct max9296 *priv = dev_get_drvdata(dev);
++
++	mutex_lock(&priv->lock);
+ 
+ 	// Set CMU
+ 	err = max9296_set_registers(dev, map_cmu_regulator,
+@@ -971,6 +984,8 @@ int max9296_init_settings(struct device *dev)
+ 	err |= max9296_set_registers(dev, map_rgb_trigger,
+ 				     ARRAY_SIZE(map_rgb_trigger));
+ 
++	mutex_unlock(&priv->lock);
++
+ 	return err;
+ }
+ EXPORT_SYMBOL(max9296_init_settings);
+@@ -978,9 +993,9 @@ EXPORT_SYMBOL(max9296_init_settings);
+ int max9296_set_pipe(struct device *dev, int pipe_id,
+ 		     u8 data_type1, u8 data_type2, u32 vc_id)
+ {
++	struct max9296 *priv = dev_get_drvdata(dev);
+ 	int err = 0;
+ 	int i = 0;
+-	const int reset_sleep = 5000;
+ 	u8 en_mapping_num = 0x0F;
+ 	u8 all_mapping_phy = 0x55;
+ 	struct reg_pair map_pipe_control[] = {
+@@ -1009,10 +1024,7 @@ int max9296_set_pipe(struct device *dev, int pipe_id,
+ 	dev_dbg(dev, "%s pipe_id %d, data_type1 %u, data_type2 %u, vc_id %u\n",
+ 		__func__, pipe_id, data_type1, data_type2, vc_id);
+ 
+-	err |= max9296_set_registers(dev, map_pipe_opt,
+-				     ARRAY_SIZE(map_pipe_opt));
+-	/* needed to settle serdes line after reset */
+-	usleep_range(reset_sleep, reset_sleep + 500);
++	mutex_lock(&priv->lock);
+ 
+ 	for (i = 0; i < 10; i++) {
+ 		map_pipe_control[i].addr += 0x40 * pipe_id;
+@@ -1038,6 +1050,11 @@ int max9296_set_pipe(struct device *dev, int pipe_id,
+ 	err |= max9296_set_registers(dev, map_pipe_control,
+ 				     ARRAY_SIZE(map_pipe_control));
+ 
++	err |= max9296_set_registers(dev, map_pipe_opt,
++				     ARRAY_SIZE(map_pipe_opt));
++
++	mutex_unlock(&priv->lock);
++
+ 	return err;
+ }
+ EXPORT_SYMBOL(max9296_set_pipe);
+diff --git a/include/media/max9296.h b/include/media/max9296.h
+index e8a214754..20f3a6657 100644
+--- a/include/media/max9296.h
++++ b/include/media/max9296.h
+@@ -40,6 +40,7 @@ int max9296_get_available_pipe_id(struct device *dev, int vc_id);
+ int max9296_set_pipe(struct device *dev, int pipe_id, u8 data_type1,
+ 		     u8 data_type2, u32 vc_id);
+ int max9296_release_pipe(struct device *dev, int pipe_id);
++void max9296_reset_oneshot(struct device *dev);
+ 
+ /**
+  * Puts a deserializer device in single exclusive link mode, so link-specific
+-- 
+2.17.1
+
