@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * ds5.c - Intel(R) RealSense(TM) D4XX camera driver
  *
- * Copyright (c) 2017-2019, INTEL CORPORATION.  All rights reserved.
+ * Copyright (c) 2017-2023, INTEL CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -43,6 +44,7 @@
 #define GMSL_CSI_DT_YUV422_8 0x1E
 #define GMSL_CSI_DT_RGB_888 0x24
 #define GMSL_CSI_DT_RAW_8 0x2A
+#define GMSL_CSI_DT_EMBED 0x12
 #endif
 
 //#define DS5_DRIVER_NAME "DS5 RealSense camera driver"
@@ -168,16 +170,16 @@ enum ds5_mux_pad {
 
 #define ds5_read_with_check(state, addr, val) {\
 	if (ds5_read(state, addr, val))	\
-		return -EINVAL;}
+		return -EINVAL; }
 #define ds5_raw_read_with_check(state, addr, buf, size)	{\
 	if (ds5_raw_read(state, addr, buf, size))	\
-		return -EINVAL;}
+		return -EINVAL; }
 #define ds5_write_with_check(state, addr, val) {\
-	if (ds5_write(state, addr, val)) 	\
-		return -EINVAL;}
+	if (ds5_write(state, addr, val))	\
+		return -EINVAL; }
 #define ds5_raw_write_with_check(state, addr, buf, size) {\
-	if (ds5_raw_write(state, addr, buf, size)) 	\
-		return -EINVAL;}
+	if (ds5_raw_write(state, addr, buf, size)) \
+		return -EINVAL; }
 enum dfu_fw_state {
 	appIDLE                = 0x0000,
 	appDETACH              = 0x0001,
@@ -354,6 +356,7 @@ struct ds5_sensor {
 	/*struct ds5_vchan *vchan;*/
 	const struct ds5_format *formats;
 	unsigned int n_formats;
+	int pipe_id;
 };
 
 #ifdef CONFIG_TEGRA_CAMERA_PLATFORM
@@ -498,8 +501,7 @@ static int ds5_read(struct ds5 *state, u16 reg, u16 *val)
 	return ret;
 }
 
-static int ds5_raw_read(struct ds5 *state, u16 reg, void *val,
- size_t val_len)
+static int ds5_raw_read(struct ds5 *state, u16 reg, void *val, size_t val_len)
 {
 	int ret = regmap_raw_read(state->regmap, reg, val, val_len);
 	if (ret < 0)
@@ -587,7 +589,7 @@ static const struct ds5_resolution d46x_depth_sizes[] = {
 		.height = 960,
 		.framerates = ds5_framerates,
 		.n_framerates = ARRAY_SIZE(ds5_framerates),
-	},{
+	}, {
 		.width =  640,
 		.height = 480,
 		.framerates = ds5_framerates,
@@ -724,7 +726,7 @@ static const struct ds5_resolution d46x_calibration_sizes[] = {
 
 static const struct ds5_resolution ds5_size_imu[] = {
 	{
-	.width =  32,
+	.width = 32,
 	.height = 1,
 	.framerates = ds5_imu_framerates,
 	.n_framerates = ARRAY_SIZE(ds5_imu_framerates),
@@ -851,7 +853,8 @@ static const char *ds5_get_sensor_name(struct ds5 *state)
 }
 
 /* This is needed for .get_fmt()
- * and if streaming is started without .set_fmt() */
+ * and if streaming is started without .set_fmt()
+ */
 static void ds5_sensor_format_init(struct ds5_sensor *sensor)
 {
 	const struct ds5_format *fmt;
@@ -875,7 +878,7 @@ static void ds5_sensor_format_init(struct ds5_sensor *sensor)
 	sensor->config.format = fmt;
 	sensor->config.resolution = fmt->resolutions;
 	/* Set default framerate to 30, or to 1st one if not supported */
-	for (i = 0; i < fmt->resolutions->n_framerates;i++) {
+	for (i = 0; i < fmt->resolutions->n_framerates; i++) {
 		if (fmt->resolutions->framerates[i] == ds5_framerate_30 /* fps */) {
 			sensor->config.framerate = ds5_framerate_30;
 			return;
@@ -1087,7 +1090,10 @@ static int ds5_setup_pipeline(struct ds5 *state, u8 data_type1, u8 data_type2,
 			      int pipe_id, u32 vc_id)
 {
 	int ret = 0;
-
+	dev_dbg(&state->client->dev,
+			 "set pipe %d, data_type1: 0x%x, \
+			 data_type2: 0x%x, vc_id: %u\n",
+			 pipe_id, data_type1, data_type2, vc_id);
 	ret |= max9295_set_pipe(state->ser_dev, pipe_id,
 				data_type1, data_type2, vc_id);
 	ret |= max9296_set_pipe(state->dser_dev, pipe_id,
@@ -1290,7 +1296,7 @@ static const struct v4l2_subdev_ops ds5_imu_subdev_ops = {
 static int ds5_hw_set_auto_exposure(struct ds5 *state, u32 base, s32 val)
 {
 	if (val != V4L2_EXPOSURE_APERTURE_PRIORITY &&
-			val != V4L2_EXPOSURE_MANUAL)
+		val != V4L2_EXPOSURE_MANUAL)
 		return -EINVAL;
 
 	/*
@@ -1320,7 +1326,7 @@ static int ds5_hw_set_auto_exposure(struct ds5 *state, u32 base, s32 val)
  */
 static int ds5_hw_set_exposure(struct ds5 *state, u32 base, s32 val)
 {
-	int ret;
+	int ret = -1;
 
 	if (val < 1)
 		val = 1;
@@ -1370,14 +1376,28 @@ static int ds5_hw_set_exposure(struct ds5 *state, u32 base, s32 val)
 #define DS5_CAMERA_CID_PWM			(DS5_CAMERA_CID_BASE+22)
 
 /* the HWMC will remain for legacy tools compatibility,
- * HWMC_RW used for UVC compatibility*/
+ * HWMC_RW used for UVC compatibility
+ */
 #define DS5_CAMERA_CID_HWMC_RW		(DS5_CAMERA_CID_BASE+32)
 
-static int ds5_send_hwmc(struct ds5 *state, u16 cmdLen, struct hwm_cmd *cmd,
-			 bool isRead, u16 *dataLen)
+#define DS5_HWMC_DATA			0x4900
+#define DS5_HWMC_STATUS			0x4904
+#define DS5_HWMC_RESP_LEN		0x4908
+#define DS5_HWMC_EXEC			0x490C
+
+#define DS5_HWMC_STATUS_OK		0
+#define DS5_HWMC_STATUS_ERR		1
+#define DS5_HWMC_STATUS_WIP		2
+#define DS5_HWMC_BUFFER_SIZE	1024
+
+static int ds5_send_hwmc(struct ds5 *state,
+			u16 cmdLen,
+			struct hwm_cmd *cmd,
+			bool isRead,
+			u16 *dataLen)
 {
 	int ret = 0;
-	u16 status = 2;
+	u16 status = DS5_HWMC_STATUS_WIP;
 	int retries = 100;
 	int errorCode;
 	int iter = retries;
@@ -1425,16 +1445,6 @@ static int ds5_send_hwmc(struct ds5 *state, u16 cmdLen, struct hwm_cmd *cmd,
 	return 0;
 }
 
-#define DS5_HWMC_DATA			0x4900
-#define DS5_HWMC_STATUS			0x4904
-#define DS5_HWMC_RESP_LEN		0x4908
-#define DS5_HWMC_EXEC			0x490C
-
-#define DS5_HWMC_STATUS_OK		0
-#define DS5_HWMC_STATUS_ERR		1
-#define DS5_HWMC_STATUS_WIP		2
-#define DS5_HWMC_BUFFER_SIZE	1024
-
 static int ds5_get_hwmc(struct ds5 *state, unsigned char *data)
 {
 	int ret = 0;
@@ -1481,7 +1491,8 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data)
 	ds5_raw_read_with_check(state, DS5_HWMC_DATA, data, tmp_len);
 
 	/* This is needed for librealsense, to align there code with UVC,
-	 * last word is length - 4 bytes header length */
+	 * last word is length - 4 bytes header length
+	 */
 	tmp_len -= SIZE_OF_HW_MONITOR_HEADER;
 	data[DS5_HWMC_BUFFER_SIZE - 4] = (unsigned char)(tmp_len & 0x00FF);
 	data[DS5_HWMC_BUFFER_SIZE - 3] = (unsigned char)((tmp_len & 0xFF00) >> 8);
@@ -1494,7 +1505,7 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data)
 static int ds5_set_calibration_data(struct ds5 *state,
 		struct hwm_cmd *cmd, u16 length)
 {
-	int ret;
+	int ret = -1;
 	int retries = 10;
 	u16 status = 2;
 
@@ -1522,7 +1533,7 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 	struct ds5 *state = container_of(ctrl->handler, struct ds5,
 					 ctrls.handler);
 	struct v4l2_subdev *sd = &state->mux.sd.subdev;
-	int ret = 0;
+	int ret = -EINVAL;
 	u16 base = DS5_DEPTH_CONTROL_BASE;
 
 	if (state->is_rgb)
@@ -1560,26 +1571,26 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 		struct hwm_cmd *calib_cmd;
 
 		dev_dbg(&state->client->dev,
-				"%s(): DS5_CAMERA_DEPTH_CALIBRATION_TABLE_SET \n",
-				__func__);
+			"%s(): DS5_CAMERA_DEPTH_CALIBRATION_TABLE_SET \n",
+			__func__);
 		dev_dbg(&state->client->dev,
-				"%s(): table id: 0x%x\n",
-				__func__, *((u8*)ctrl->p_new.p + 2));
+			"%s(): table id: 0x%x\n",
+			__func__, *((u8 *)ctrl->p_new.p + 2));
 		if (ctrl->p_new.p && DEPTH_CALIBRATION_ID ==
-				*((u8*)ctrl->p_new.p + 2)) {
+				*((u8 *)ctrl->p_new.p + 2)) {
 			calib_cmd = devm_kzalloc(&state->client->dev,
 					sizeof(struct hwm_cmd) + 256, GFP_KERNEL);
 			if (!calib_cmd) {
 				dev_err(&state->client->dev,
-						"%s(): Can't allocate memory for 0x%x\n",
-						__func__, ctrl->id);
+					"%s(): Can't allocate memory for 0x%x\n",
+					__func__, ctrl->id);
 				ret = -ENOMEM;
 				break;
 			}
-			memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
+			memcpy(calib_cmd, &set_calib_data, sizeof(set_calib_data));
 			calib_cmd->header = 276;
 			calib_cmd->param1 = DEPTH_CALIBRATION_ID;
-			memcpy(calib_cmd->Data, (u8*)ctrl->p_new.p , 256);
+			memcpy(calib_cmd->Data, (u8 *)ctrl->p_new.p, 256);
 			ret = ds5_set_calibration_data(state, calib_cmd,
 					sizeof(struct hwm_cmd) + 256);
 			devm_kfree(&state->client->dev, calib_cmd);
@@ -1590,40 +1601,39 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 			struct hwm_cmd *calib_cmd;
 
 			dev_dbg(&state->client->dev,
-					"%s(): DS5_CAMERA_COEFF_CALIBRATION_TABLE_SET \n",
-					__func__);
+				"%s(): DS5_CAMERA_COEFF_CALIBRATION_TABLE_SET \n",
+				__func__);
 			dev_dbg(&state->client->dev,
-					"%s(): table id %d\n",
-					__func__, *((u8*)ctrl->p_new.p + 2));
+				"%s(): table id %d\n",
+				__func__, *((u8 *)ctrl->p_new.p + 2));
 			if (ctrl->p_new.p && COEF_CALIBRATION_ID ==
-					*((u8*)ctrl->p_new.p + 2)) {
+					*((u8 *)ctrl->p_new.p + 2)) {
 				calib_cmd = devm_kzalloc(&state->client->dev,
 						sizeof(struct hwm_cmd) + 512, GFP_KERNEL);
 				if (!calib_cmd) {
 					dev_err(&state->client->dev,
-							"%s(): Can't allocate memory for 0x%x\n",
-							__func__, ctrl->id);
+						"%s(): Can't allocate memory for 0x%x\n",
+						__func__, ctrl->id);
 					ret = -ENOMEM;
 					break;
 				}
 				memcpy(calib_cmd, &set_calib_data, sizeof (set_calib_data));
 				calib_cmd->header = 532;
 				calib_cmd->param1 = COEF_CALIBRATION_ID;
-				memcpy(calib_cmd->Data, (u8*)ctrl->p_new.p , 512);
+				memcpy(calib_cmd->Data, (u8 *)ctrl->p_new.p, 512);
 				ret = ds5_set_calibration_data(state, calib_cmd,
 						sizeof(struct hwm_cmd) + 512);
 				devm_kfree(&state->client->dev, calib_cmd);
 			}
-
 		}
 		break;
 	case DS5_CAMERA_CID_AE_ROI_SET: {
 		struct hwm_cmd ae_roi_cmd;
 		memcpy(&ae_roi_cmd, &set_ae_roi, sizeof(ae_roi_cmd));
-		ae_roi_cmd.param1 = *((u16*)ctrl->p_new.p_u16);
-		ae_roi_cmd.param2 = *((u16*)ctrl->p_new.p_u16 + 1);
-		ae_roi_cmd.param3 = *((u16*)ctrl->p_new.p_u16 + 2);
-		ae_roi_cmd.param4 = *((u16*)ctrl->p_new.p_u16 + 3);
+		ae_roi_cmd.param1 = *((u16 *)ctrl->p_new.p_u16);
+		ae_roi_cmd.param2 = *((u16 *)ctrl->p_new.p_u16 + 1);
+		ae_roi_cmd.param3 = *((u16 *)ctrl->p_new.p_u16 + 2);
+		ae_roi_cmd.param4 = *((u16 *)ctrl->p_new.p_u16 + 3);
 		ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd),
 				&ae_roi_cmd, false, NULL);
 		break;
@@ -1632,18 +1642,18 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 		struct hwm_cmd *ae_setpoint_cmd;
 		if (ctrl->p_new.p_s32) {
 			dev_dbg(&state->client->dev, "%s():0x%x \n",
-					__func__, *(ctrl->p_new.p_s32));
+				__func__, *(ctrl->p_new.p_s32));
 			ae_setpoint_cmd = devm_kzalloc(&state->client->dev,
 					sizeof(struct hwm_cmd) + 4, GFP_KERNEL);
 			if (!ae_setpoint_cmd) {
 				dev_err(&state->client->dev,
-						"%s(): Can't allocate memory for 0x%x\n",
-						__func__, ctrl->id);
+					"%s(): Can't allocate memory for 0x%x\n",
+					__func__, ctrl->id);
 				ret = -ENOMEM;
 				break;
 			}
 			memcpy(ae_setpoint_cmd, &set_ae_setpoint, sizeof (set_ae_setpoint));
-			memcpy(ae_setpoint_cmd->Data, (u8*)ctrl->p_new.p_s32 , 4);
+			memcpy(ae_setpoint_cmd->Data, (u8 *)ctrl->p_new.p_s32, 4);
 			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd) + 4,
 					ae_setpoint_cmd, false, NULL);
 			devm_kfree(&state->client->dev, ae_setpoint_cmd);
@@ -1668,8 +1678,8 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 					sizeof(struct hwm_cmd) + size, GFP_KERNEL);
 			if (!erb_cmd) {
 				dev_err(&state->client->dev,
-						"%s(): Can't allocate memory for 0x%x\n",
-						__func__, ctrl->id);
+					"%s(): Can't allocate memory for 0x%x\n",
+					__func__, ctrl->id);
 				ret = -ENOMEM;
 				break;
 			}
@@ -1681,9 +1691,9 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 
 			if (ret) {
 				dev_err(&state->client->dev,
-						"%s(): ERB cmd failed, ret: %d,"
-						"requested size: %d, actual size: %d\n",
-						__func__, ret, erb_cmd->param2, size);
+					"%s(): ERB cmd failed, ret: %d,"
+					"requested size: %d, actual size: %d\n",
+					__func__, ret, erb_cmd->param2, size);
 				devm_kfree(&state->client->dev, erb_cmd);
 				return -EAGAIN;
 			}
@@ -1708,41 +1718,41 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 			u16 size = 0;
 			struct hwm_cmd *ewb_cmd;
 
-			offset = *((u8*)ctrl->p_new.p_u8) << 8;
-			offset |= *((u8*)ctrl->p_new.p_u8 + 1);
-			size = *((u8*)ctrl->p_new.p_u8 + 2) << 8;
-			size |= *((u8*)ctrl->p_new.p_u8 + 3);
+			offset = *((u8 *)ctrl->p_new.p_u8) << 8;
+			offset |= *((u8 *)ctrl->p_new.p_u8 + 1);
+			size = *((u8 *)ctrl->p_new.p_u8 + 2) << 8;
+			size |= *((u8 *)ctrl->p_new.p_u8 + 3);
 
 			dev_dbg(&state->client->dev, "%s():0x%x 0x%x 0x%x 0x%x\n",
 					__func__,
-					*((u8*)ctrl->p_new.p_u8),
-					*((u8*)ctrl->p_new.p_u8 + 1),
-					*((u8*)ctrl->p_new.p_u8 + 2),
-					*((u8*)ctrl->p_new.p_u8 + 3));
+					*((u8 *)ctrl->p_new.p_u8),
+					*((u8 *)ctrl->p_new.p_u8 + 1),
+					*((u8 *)ctrl->p_new.p_u8 + 2),
+					*((u8 *)ctrl->p_new.p_u8 + 3));
 
 			ewb_cmd = devm_kzalloc(&state->client->dev,
 					sizeof(struct hwm_cmd) + size,
 					GFP_KERNEL);
 			if (!ewb_cmd) {
 				dev_err(&state->client->dev,
-						"%s(): Can't allocate memory for 0x%x\n",
-						__func__, ctrl->id);
+					"%s(): Can't allocate memory for 0x%x\n",
+					__func__, ctrl->id);
 				ret = -ENOMEM;
 				break;
 			}
-			memcpy(ewb_cmd, &ewb, sizeof (ewb));
+			memcpy(ewb_cmd, &ewb, sizeof(ewb));
 			ewb_cmd->header = 0x14 + size;
 			ewb_cmd->param1 = offset; // start index
 			ewb_cmd->param2 = size; // size
-			memcpy(ewb_cmd->Data, (u8*)ctrl->p_new.p_u8 + 4, size);
+			memcpy(ewb_cmd->Data, (u8 *)ctrl->p_new.p_u8 + 4, size);
 			ret = ds5_send_hwmc(state, sizeof(struct hwm_cmd) + size,
 					ewb_cmd, false, NULL);
 
 			if (ret) {
 				dev_err(&state->client->dev,
-						"%s(): EWB cmd failed, ret: %d,"
-						"requested size: %d, actual size: %d\n",
-						__func__, ret, ewb_cmd->param2, size);
+					"%s(): EWB cmd failed, ret: %d,"
+					"requested size: %d, actual size: %d\n",
+					__func__, ret, ewb_cmd->param2, size);
 				devm_kfree(&state->client->dev, ewb_cmd);
 				return -EAGAIN;
 			}
@@ -1755,19 +1765,19 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 			u16 dataLen = 0;
 			u16 size = 0;
 
-			size = *((u8*)ctrl->p_new.p_u8 + 1) << 8;
-			size |= *((u8*)ctrl->p_new.p_u8 + 0);
+			size = *((u8 *)ctrl->p_new.p_u8 + 1) << 8;
+			size |= *((u8 *)ctrl->p_new.p_u8 + 0);
 			dev_dbg(&state->client->dev,
-					"%s(): HWMC size %d\n",
-					__func__, size);
+				"%s(): HWMC size %d\n",
+				__func__, size);
 			ret = ds5_send_hwmc(state, size + 4,
 					(struct hwm_cmd *)ctrl->p_new.p_u8, true, &dataLen);
 		}
 		break;
 	case DS5_CAMERA_CID_HWMC_RW:
 		if (ctrl->p_new.p_u8) {
-			u16 size = *((u8*)ctrl->p_new.p_u8 + 1) << 8;
-			size |= *((u8*)ctrl->p_new.p_u8 + 0);
+			u16 size = *((u8 *)ctrl->p_new.p_u8 + 1) << 8;
+			size |= *((u8 *)ctrl->p_new.p_u8 + 0);
 			ret = ds5_send_hwmc(state, size + 4,
 					(struct hwm_cmd *)ctrl->p_new.p_u8, false, NULL);
 		}
@@ -1787,7 +1797,7 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
 		unsigned char *table, unsigned int length)
 {
 	struct hwm_cmd *cmd;
-	int ret;
+	int ret = -1;
 	int retries = 3;
 	u16 status = 2;
 	u16 table_length;
@@ -1833,7 +1843,7 @@ static int ds5_get_calibration_data(struct ds5 *state, enum table_id id,
 static int ds5_gvd(struct ds5 *state, unsigned char *data)
 {
 	struct hwm_cmd cmd;
-	int ret;
+	int ret = -1;
 	u16 length = 0;
 	u16 status = 2;
 	u8 retries = 3;
@@ -1861,7 +1871,6 @@ static int ds5_gvd(struct ds5 *state, unsigned char *data)
 	return ret;
 }
 
-
 static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct ds5 *state = container_of(ctrl->handler, struct ds5,
@@ -1875,8 +1884,8 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 	u16 base = (state->is_rgb) ? DS5_RGB_CONTROL_BASE : DS5_DEPTH_CONTROL_BASE;
 	u16 reg;
 
-	dev_dbg(&state->client->dev, "%s(): ctrl: %s \n",
-		__func__, ctrl->name);
+	dev_dbg(&state->client->dev, "%s(): %s - ctrl: %s \n",
+		__func__, ds5_get_sensor_name(state), ctrl->name);
 
 	switch (ctrl->id) {
 
@@ -1993,8 +2002,8 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 				sizeof(struct hwm_cmd) + 12, GFP_KERNEL);
 		if (!ae_roi_cmd) {
 			dev_err(&state->client->dev,
-					"%s(): Can't allocate memory for 0x%x\n",
-					__func__, ctrl->id);
+				"%s(): Can't allocate memory for 0x%x\n",
+				__func__, ctrl->id);
 			ret = -ENOMEM;
 			break;
 		}
@@ -2022,8 +2031,8 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 				ae_setpoint_cmd, true, &len);
 		memcpy(ctrl->p_new.p_s32, ae_setpoint_cmd->Data + 4, 4);
 		dev_dbg(&state->client->dev, "%s(): 0x%x \n",
-					__func__,
-					*(ctrl->p_new.p_s32));
+			__func__,
+			*(ctrl->p_new.p_s32));
 		devm_kfree(&state->client->dev, ae_setpoint_cmd);
 		}
 		break;
@@ -2330,9 +2339,9 @@ static int ds5_board_setup(struct ds5 *state)
 		goto error;
 	}
 
-	ser_node = of_parse_phandle(node, "nvidia,gmsl-ser-device", 0);
+	ser_node = of_parse_phandle(node, "maxim,gmsl-ser-device", 0);
 	if (ser_node == NULL) {
-		dev_err(dev, "missing %s handle\n", "nvidia,gmsl-ser-device");
+		dev_err(dev, "missing %s handle\n", "maxim,gmsl-ser-device");
 		goto error;
 	}
 
@@ -2357,9 +2366,9 @@ static int ds5_board_setup(struct ds5 *state)
 
 	state->ser_dev = &ser_i2c->dev;
 
-	dser_node = of_parse_phandle(node, "nvidia,gmsl-dser-device", 0);
+	dser_node = of_parse_phandle(node, "maxim,gmsl-dser-device", 0);
 	if (dser_node == NULL) {
-		dev_err(dev, "missing %s handle\n", "nvidia,gmsl-dser-device");
+		dev_err(dev, "missing %s handle\n", "maxim,gmsl-dser-device");
 		goto error;
 	}
 
@@ -2485,6 +2494,7 @@ static int ds5_gmsl_serdes_setup(struct ds5 *state)
 	/* For now no separate power on required for serializer device */
 	max9296_power_on(state->dser_dev);
 
+	dev_dbg(dev, "Setup SERDES addressing and control pipeline\n");
 	/* setup serdes addressing and control pipeline */
 	err = max9296_setup_link(state->dser_dev, &state->client->dev);
 	if (err) {
@@ -2546,14 +2556,14 @@ static int ds5_serdes_setup(struct ds5 *state)
 	ret = max9295_init_settings(state->ser_dev);
 	if (ret) {
 		dev_warn(&c->dev, "%s, failed to init max9295 settings\n",
-			 __func__);
+			__func__);
 		return ret;
 	}
 
 	ret = max9296_init_settings(state->dser_dev);
 	if (ret) {
 		dev_warn(&c->dev, "%s, failed to init max9296 settings\n",
-			 __func__);
+			__func__);
 		return ret;
 	}
 
@@ -2711,7 +2721,7 @@ static int ds5_sensor_register(struct ds5 *state, struct ds5_sensor *sensor)
 {
 	struct v4l2_subdev *sd = &sensor->sd;
 	struct media_entity *entity = &sensor->sd.entity;
-	int ret;
+	int ret = -1;
 
 	// FIXME: is async needed?
 	ret = v4l2_device_register_subdev(state->mux.sd.subdev.v4l2_dev, sd);
@@ -2750,28 +2760,28 @@ static int ds5_depth_init(struct i2c_client *c, struct ds5 *state)
 	/* Which mux pad we're connecting to */
 	state->depth.sensor.mux_pad = DS5_MUX_PAD_DEPTH;
 	return ds5_sensor_init(c, state, &state->depth.sensor,
-			&ds5_depth_subdev_ops, "depth");
+		       &ds5_depth_subdev_ops, "depth");
 }
 
 static int ds5_motion_t_init(struct i2c_client *c, struct ds5 *state)
 {
 	state->motion_t.sensor.mux_pad = DS5_MUX_PAD_MOTION_T;
 	return ds5_sensor_init(c, state, &state->motion_t.sensor,
-			&ds5_motion_t_subdev_ops, "motion detection");
+		       &ds5_motion_t_subdev_ops, "motion detection");
 }
 
 static int ds5_rgb_init(struct i2c_client *c, struct ds5 *state)
 {
 	state->rgb.sensor.mux_pad = DS5_MUX_PAD_RGB;
 	return ds5_sensor_init(c, state, &state->rgb.sensor,
-			&ds5_rgb_subdev_ops, "rgb");
+		       &ds5_rgb_subdev_ops, "rgb");
 }
 
 static int ds5_imu_init(struct i2c_client *c, struct ds5 *state)
 {
 	state->imu.sensor.mux_pad = DS5_MUX_PAD_IMU;
 	return ds5_sensor_init(c, state, &state->imu.sensor,
-			&ds5_imu_subdev_ops, "imu");
+		       &ds5_imu_subdev_ops, "imu");
 }
 
 /* No locking needed */
@@ -2782,7 +2792,7 @@ static int ds5_mux_enum_mbus_code(struct v4l2_subdev *sd,
 	struct ds5 *state = container_of(sd, struct ds5, mux.sd.subdev);
 	struct v4l2_subdev_mbus_code_enum tmp = *mce;
 	struct v4l2_subdev *remote_sd;
-	int ret;
+	int ret = -1;
 
 	switch (mce->pad) {
 	case DS5_MUX_PAD_MOTION_T:
@@ -2846,7 +2856,7 @@ static int ds5_mux_enum_frame_size(struct v4l2_subdev *sd,
 	struct v4l2_subdev_frame_size_enum tmp = *fse;
 	struct v4l2_subdev *remote_sd;
 	u32 pad = fse->pad;
-	int ret;
+	int ret = -1;
 
 	tmp.pad = 0;
 
@@ -2910,7 +2920,7 @@ static int ds5_mux_enum_frame_interval(struct v4l2_subdev *sd,
 	struct v4l2_subdev_frame_interval_enum tmp = *fie;
 	struct v4l2_subdev *remote_sd;
 	u32 pad = fie->pad;
-	int ret;
+	int ret = -1;
 
 	tmp.pad = 0;
 
@@ -3183,7 +3193,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 #ifdef CONFIG_VIDEO_D4XX_SERDES
 		state->pipe_id =
 			max9296_get_available_pipe_id(state->dser_dev,
-						      (int)state->g_ctx.dst_vc);
+					(int)state->g_ctx.dst_vc);
 		if (state->pipe_id < 0) {
 			dev_err(&state->client->dev,
 				"No free pipe in max9296\n");
@@ -3272,46 +3282,6 @@ restore_s_state:
 
 	return ret;
 }
-
-//static int ds5_set_power(struct ds5 *state, int on)
-//{
-//	int ret = 0;
-//
-//	mutex_lock(&state->lock);
-//
-//	if (state->power != !on) {
-//		mutex_unlock(&state->lock);
-//		return 0;
-//	}
-//
-////	gpio_set_value_cansleep(state->pwdn_gpio, on);
-//
-//	dev_info(&state->client->dev, "%s(): power %d\n", __func__, on);
-//
-//	usleep_range(100, 200);
-//
-//	if (on) {
-//		state->power = true;
-//	} else {
-//		state->power = false;
-//	}
-//
-//	mutex_unlock(&state->lock);
-//
-//	/* TODO: Restore controls when powering on */
-//	//if (on)
-//	//	ret = v4l2_ctrl_handler_setup(&state->ctrls.handler);
-//
-//	return ret;
-//}
-
-/* Core ops */
-/*static int ds5_mux_set_power(struct v4l2_subdev *sd, int on)
-{
-	struct ds5 *state = container_of(sd, struct ds5, mux.sd.subdev);
-
-	return ds5_set_power(state, on);
-}*/
 
 static const struct v4l2_subdev_pad_ops ds5_mux_pad_ops = {
 	.enum_mbus_code		= ds5_mux_enum_mbus_code,
@@ -3447,7 +3417,6 @@ static int ds5_mux_init(struct i2c_client *c, struct ds5 *state)
 		 i2c_adapter_id(c->adapter), c->addr);
 
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-
 	entity->obj_type = MEDIA_ENTITY_TYPE_V4L2_SUBDEV;
 	entity->function = MEDIA_ENT_F_CAM_SENSOR;
 
@@ -3610,7 +3579,9 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
 
 static int ds5_parse_cam(struct i2c_client *client, struct ds5 *state)
 {
-	int ret = ds5_fixed_configuration(client, state);
+	int ret;
+
+	ret = ds5_fixed_configuration(client, state);
 	if (ret < 0)
 		return ret;
 
@@ -3644,11 +3615,9 @@ static int ds5_dfu_wait_for_status(struct ds5 *state)
 	int i, ret = 0;
 	u16 status;
 
-	for (i = 0; i < DS5_START_MAX_COUNT; i++)
-	{
+	for (i = 0; i < DS5_START_MAX_COUNT; i++) {
 		ds5_read(state, 0x5000, &status);
-		if (status == 0x0001 || status == 0x0002)
-		{
+		if (status == 0x0001 || status == 0x0002) {
 			dev_err(&state->client->dev,
 					"%s(): dfu failed status(0x%4x)\n",
 					__func__, status);
@@ -3658,7 +3627,7 @@ static int ds5_dfu_wait_for_status(struct ds5 *state)
 		if (!status)
 			break;
 		msleep_range(DS5_START_POLL_TIME);
-		}
+	}
 
 	return ret;
 };
@@ -3676,7 +3645,7 @@ static int ds5_dfu_switch_to_dfu(struct ds5 *state)
 	do {
 		msleep_range(DS5_START_POLL_TIME*10);
 		ret = ds5_read(state, 0x5000, &status);
-	} while (ret && i-- );
+	} while (ret && i--);
 	return ret;
 };
 
@@ -3684,9 +3653,10 @@ static int ds5_dfu_wait_for_get_dfu_status(struct ds5 *state,
 		enum dfu_fw_state exp_state)
 {
 	int ret = 0;
-	u16 status,dfu_state_len = 0x0000;
+	u16 status, dfu_state_len = 0x0000;
 	unsigned char dfu_asw_buf[DFU_WAIT_RET_LEN];
 	unsigned int dfu_wr_wait_msec = 0;
+
 	do {
 		ds5_write_with_check(state, 0x5008, 0x0003); // Get Write state
 		do {
@@ -3719,7 +3689,6 @@ static int ds5_dfu_wait_for_get_dfu_status(struct ds5 *state,
 						| dfu_asw_buf[1];
 	} while (dfu_asw_buf[4] == dfuDNBUSY && exp_state == dfuDNLOAD_IDLE);
 
-
 	if (dfu_asw_buf[4] != exp_state) {
 		dev_notice(&state->client->dev,
 				"%s(): Wrong dfu_state (%d) while expected(%d)\n",
@@ -3731,7 +3700,7 @@ static int ds5_dfu_wait_for_get_dfu_status(struct ds5 *state,
 
 static int ds5_dfu_get_dev_info(struct ds5 *state, struct __fw_status *buf)
 {
-	int ret;
+	int ret = 0;
 	u16 len = 0;
 
 	ret = ds5_write(state, 0x5008, 0x0002); //Upload DFU cmd
@@ -3760,9 +3729,9 @@ static int ds5_dfu_detach(struct ds5 *state)
 	ret = ds5_dfu_wait_for_get_dfu_status(state, dfuIDLE);
 	if (!ret)
 		ret = ds5_dfu_get_dev_info(state, &buf);
-	dev_notice(&state->client->dev, "%s():DFU ver (0x%x) recieved\n",
+	dev_notice(&state->client->dev, "%s():DFU ver (0x%x) received\n",
 			__func__, buf.DFU_version);
-	dev_notice(&state->client->dev, "%s():FW last version (0x%x) recieved\n",
+	dev_notice(&state->client->dev, "%s():FW last version (0x%x) received\n",
 			__func__, buf.FW_lastVersion);
 	dev_notice(&state->client->dev, "%s():FW status (%s)\n",
 			__func__, buf.DFU_isLocked ? "locked" : "unlocked");
@@ -3805,6 +3774,7 @@ static ssize_t ds5_dfu_device_write(struct file *flip,
 {
 	struct ds5 *state = flip->private_data;
 	int ret = 0;
+	(void)offset;
 
 	if (mutex_lock_interruptible(&state->lock))
 		return -ERESTARTSYS;
@@ -3817,7 +3787,8 @@ static ssize_t ds5_dfu_device_write(struct file *flip,
 					__func__, ret);
 			goto dfu_write_error;
 		}
-		/*fallthrough - procceed to recovery*/
+	/* fallthrough - procceed to recovery */
+	__attribute__((__fallthrough__));
 	case DS5_DFU_RECOVERY:
 		ret = ds5_dfu_detach(state);
 		if (ret < 0) {
@@ -3827,14 +3798,14 @@ static ssize_t ds5_dfu_device_write(struct file *flip,
 		}
 		state->dfu_dev.dfu_state_flag = DS5_DFU_IN_PROGRESS;
 		state->dfu_dev.init_v4l_f = 1;
-
-		/*fallthrough - procceed to download*/
+	/* fallthrough - procceed to download */
+	__attribute__((__fallthrough__));
 	case DS5_DFU_IN_PROGRESS: {
 		unsigned int dfu_full_blocks = len / DFU_BLOCK_SIZE;
 		unsigned int dfu_part_blocks = len % DFU_BLOCK_SIZE;
 
 		while (dfu_full_blocks--) {
-			if(copy_from_user(state->dfu_dev.dfu_msg, buffer, DFU_BLOCK_SIZE)) {
+			if (copy_from_user(state->dfu_dev.dfu_msg, buffer, DFU_BLOCK_SIZE)) {
 				ret = -EFAULT;
 				goto dfu_write_error;
 			}
@@ -3842,25 +3813,24 @@ static ssize_t ds5_dfu_device_write(struct file *flip,
 					state->dfu_dev.dfu_msg, DFU_BLOCK_SIZE);
 			if (ret < 0)
 				goto dfu_write_error;
-			ret = ds5_dfu_wait_for_get_dfu_status (state, dfuDNLOAD_IDLE);
+			ret = ds5_dfu_wait_for_get_dfu_status(state, dfuDNLOAD_IDLE);
 			if (ret < 0)
 				goto dfu_write_error;
 			buffer += DFU_BLOCK_SIZE;
 		}
-		if(copy_from_user(state->dfu_dev.dfu_msg , buffer, dfu_part_blocks)) {
+		if (copy_from_user(state->dfu_dev.dfu_msg, buffer, dfu_part_blocks)) {
 				ret = -EFAULT;
 				goto dfu_write_error;
 		}
 		if (dfu_part_blocks) {
 			ret = ds5_raw_write(state, 0x4a00,
 					state->dfu_dev.dfu_msg, dfu_part_blocks);
-			if (!ret) {
-				ret = ds5_dfu_wait_for_get_dfu_status (state, dfuDNLOAD_IDLE);
-			}
+			if (!ret)
+				ret = ds5_dfu_wait_for_get_dfu_status(state, dfuDNLOAD_IDLE);
 			if (!ret)
 				ret = ds5_write(state, 0x4a04, 0x00); /*Download complete */
 			if (!ret)
-				ret = ds5_dfu_wait_for_get_dfu_status (state, dfuMANIFEST);
+				ret = ds5_dfu_wait_for_get_dfu_status(state, dfuMANIFEST);
 			if (ret < 0)
 				goto dfu_write_error;
 			state->dfu_dev.dfu_state_flag = DS5_DFU_DONE;
@@ -3882,8 +3852,7 @@ static ssize_t ds5_dfu_device_write(struct file *flip,
 dfu_write_error:
 	state->dfu_dev.dfu_state_flag = DS5_DFU_ERROR;
 	// Reset DFU device to IDLE states
-	ret = ds5_write(state, 0x5010, 0x0);
-	if (!ret)
+	if (!ds5_write(state, 0x5010, 0x0))
 		state->dfu_dev.dfu_state_flag = DS5_DFU_IDLE;
 	mutex_unlock(&state->lock);
 	return ret;
@@ -4019,13 +3988,13 @@ static const struct file_operations ds5_device_file_ops = {
 	.release = &ds5_dfu_device_release
 };
 
-struct class* g_ds5_class = NULL;
-atomic_t primary_chardev=ATOMIC_INIT(0);
+struct class *g_ds5_class;
+atomic_t primary_chardev = ATOMIC_INIT(0);
 
 static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
 {
 	struct cdev *ds5_cdev = &state->dfu_dev.ds5_cdev;
-	struct class* *ds5_class = &state->dfu_dev.ds5_class;
+	struct class **ds5_class = &state->dfu_dev.ds5_class;
 	struct device *chr_dev;
 	char dev_name[sizeof(DS5_DRIVER_NAME_DFU) + 8];
 	dev_t *dev_num = &c->dev.devt;
@@ -4061,7 +4030,7 @@ static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
 	chr_dev = device_create(*ds5_class, NULL, *dev_num, NULL, dev_name);
 	if (IS_ERR(chr_dev)) {
 		ret = PTR_ERR(chr_dev);
-		dev_err(&c->dev,"Could not create device\n");
+		dev_err(&c->dev, "Could not create device\n");
 		class_destroy(*ds5_class);
 		unregister_chrdev_region(0, 1);
 		return ret;
@@ -4072,7 +4041,7 @@ static int ds5_chrdev_init(struct i2c_client *c, struct ds5 *state)
 
 static int ds5_chrdev_remove(struct ds5 *state)
 {
-	struct class* *ds5_class = &state->dfu_dev.ds5_class;
+	struct class **ds5_class = &state->dfu_dev.ds5_class;
 	dev_t *dev_num = &state->client->dev.devt;
 	if (!ds5_class) {
 		return 0;
@@ -4165,9 +4134,9 @@ static ssize_t ds5_read_reg_store(struct device *dev,
 
 #define DS5_RW_REG_ATTR(_name) \
 		struct dev_ds5_reg_attribute dev_attr_##_name = { \
-				__ATTR(_name, S_IRUGO | S_IWUSR, \
-						ds5_read_reg_show, ds5_read_reg_store), \
-						0, 0 }
+			__ATTR(_name, S_IRUGO | S_IWUSR, \
+			ds5_read_reg_show, ds5_read_reg_store), \
+			0, 0 }
 
 static DS5_RW_REG_ATTR(ds5_read_reg);
 
@@ -4255,7 +4224,7 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 	state->is_y8 = 0;
 	state->is_rgb = 0;
 	state->is_imu = 0;
-
+#ifdef CONFIG_OF
 	ret = of_property_read_string(c->dev.of_node, "cam-type", &str);
 	if (!ret && !strncmp(str, "Depth", strlen("Depth"))) {
 		state->is_depth = 1;
@@ -4269,7 +4238,9 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 	if (!ret && !strncmp(str, "IMU", strlen("IMU"))) {
 		state->is_imu = 1;
 	}
-
+#else
+	state->is_depth = 1;
+#endif
 	/* create DFU chardev once */
 	if (state->is_depth) {
 		ret = ds5_chrdev_init(c, state);
@@ -4301,19 +4272,19 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 	ret = ds5_v4l_init(c, state);
 	if (ret < 0)
 		goto e_chardev;
-	/* DONOT!! Override I2C drvdata */
-//	i2c_set_clientdata(c, state);
+	/* Override I2C drvdata */
+	/* i2c_set_clientdata(c, state); */
 
 /*	regulators? clocks?
-	devm_regulator_bulk_get(&c->dev, DS5_N_SUPPLIES, state->supplies);
-	state->clock = devm_clk_get(&c->dev, DS5_CLK_NAME);
-	if (IS_ERR(state->clock)) {
-		ret = -EPROBE_DEFER;
-		goto err;
-	}
-*/
-	/* Custom sysfs attributes */
+ *	devm_regulator_bulk_get(&c->dev, DS5_N_SUPPLIES, state->supplies);
+ *	state->clock = devm_clk_get(&c->dev, DS5_CLK_NAME);
+ *	if (IS_ERR(state->clock)) {
+ *		ret = -EPROBE_DEFER;
+ *		goto err;
+ *	}
+ */
 #ifdef CONFIG_SYSFS
+	/* Custom sysfs attributes */
 	/* create the sysfs file group */
 	err = sysfs_create_group(&state->client->dev.kobj, &ds5_attr_group);
 #endif
@@ -4365,20 +4336,23 @@ static int ds5_remove(struct i2c_client *c)
 		}
 	}
 #endif
+#ifndef CONFIG_TEGRA_CAMERA_PLATFORM
+	state->is_depth = 1;
+#endif
 	dev_info(&c->dev, "D4XX remove %s\n",
 			ds5_get_sensor_name(state));
 	if (state->vcc)
 		regulator_disable(state->vcc);
 //	gpio_free(state->pwdn_gpio);
-	if (state->is_depth) {
-		ds5_chrdev_remove(state);
-	}
 
 	if (state->dfu_dev.dfu_state_flag != DS5_DFU_RECOVERY) {
 #ifdef CONFIG_SYSFS
 		sysfs_remove_group(&c->dev.kobj, &ds5_attr_group);
 #endif
 		ds5_mux_remove(state);
+		if (state->is_depth) {
+			ds5_chrdev_remove(state);
+		}
 	}
 
 	return 0;
@@ -4405,7 +4379,7 @@ static struct i2c_driver ds5_i2c_driver = {
 module_i2c_driver(ds5_i2c_driver);
 
 MODULE_DESCRIPTION("Intel RealSense D4XX Camera Driver");
-MODULE_AUTHOR( "Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
+MODULE_AUTHOR("Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
 				Nael Masalha <nael.masalha@intel.com>,\n\
 				Alexander Gantman <alexander.gantman@intel.com>,\n\
 				Emil Jahshan <emil.jahshan@intel.com>,\n\
@@ -4415,4 +4389,4 @@ MODULE_AUTHOR( "Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
 				Shikun Ding <shikun.ding@intel.com>");
 MODULE_AUTHOR("Dmitry Perchanov <dmitry.perchanov@intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION("1.0.1.15");
+MODULE_VERSION("1.0.1.16");
