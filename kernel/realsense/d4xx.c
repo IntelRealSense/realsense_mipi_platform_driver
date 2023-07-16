@@ -1079,7 +1079,7 @@ static const char *ds5_get_sensor_name(struct ds5 *state)
 
 static void ds5_set_state_last_set(struct ds5 *state)
 {
-	 dev_info(&state->client->dev, "%s(): %s\n",
+	 dev_dbg(&state->client->dev, "%s(): %s\n",
 		__func__, ds5_get_sensor_name(state));
 
 	if (state->is_depth)
@@ -1385,7 +1385,7 @@ static int __ds5_sensor_set_fmt(struct ds5 *state, struct ds5_sensor *sensor,
 		set_sub_stream_dt(substream, mbus_code_to_mipi(mf->code));
 	}
 
-	dev_info(sensor->sd.dev, "%s(): fmt->pad: %d, sensor->mux_pad: %d, code: 0x%x, %ux%u substream:%d\n", __func__,
+	dev_dbg(sensor->sd.dev, "%s(): fmt->pad: %d, sensor->mux_pad: %d, code: 0x%x, %ux%u substream:%d\n", __func__,
 		fmt->pad, sensor->mux_pad, fmt->format.code,
 		fmt->format.width, fmt->format.height, substream);
 #endif
@@ -1407,7 +1407,7 @@ static int ds5_setup_pipeline(struct ds5 *state, u8 data_type1, u8 data_type2,
 			      int pipe_id, u32 vc_id)
 {
 	int ret = 0;
-	dev_info(&state->client->dev,
+	dev_dbg(&state->client->dev,
 			 "set pipe %d, data_type1: 0x%x, \
 			 data_type2: 0x%x, vc_id: %u\n",
 			 pipe_id, data_type1, data_type2, vc_id);
@@ -1579,7 +1579,7 @@ static int ds5_sensor_s_frame_interval(struct v4l2_subdev *sd,
 	fi->interval.numerator = 1;
 	fi->interval.denominator = framerate;
 
-	dev_info(sd->dev, "%s(): %s %u\n", __func__, sd->name, framerate);
+	dev_dbg(sd->dev, "%s(): %s %u\n", __func__, sd->name, framerate);
 
 	return 0;
 }
@@ -1607,7 +1607,7 @@ static const struct v4l2_subdev_ops ds5_depth_subdev_ops = {
 	.video = &ds5_sensor_video_ops,
 };
 
-/* Motion detection */
+/* InfraRed stream Y8/Y16 */
 
 /* FIXME: identical to ds5_depth_pad_ops, use one for both */
 static const struct v4l2_subdev_pad_ops ds5_ir_pad_ops = {
@@ -1898,7 +1898,7 @@ static int ds5_set_calibration_data(struct ds5 *state,
 }
 
 static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on);
-#ifdef CONFIG_VIDEO_INTEL_IPU6
+
 static int ds5_s_state(struct ds5 *state, int vc)
 {
 	int ret = 0;
@@ -1938,7 +1938,6 @@ static int ds5_s_state(struct ds5 *state, int vc)
 	ds5_set_state_last_set(state);
 	return ret;
 }
-#endif
 
 static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 {
@@ -1995,7 +1994,10 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 
 	if (state->is_rgb)
 		base = DS5_RGB_CONTROL_BASE;
-
+#ifndef CONFIG_VIDEO_INTEL_IPU6
+	else if (state->is_imu)
+		return -EINVAL;
+#endif
 	v4l2_dbg(3, 1, sd, "ctrl: %s, value: %d\n", ctrl->name, ctrl->val);
 	dev_dbg(&state->client->dev, "%s(): %s - ctrl: %s, value: %d\n",
 		__func__, ds5_get_sensor_name(state), ctrl->name, ctrl->val);
@@ -2246,7 +2248,7 @@ static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 #ifdef CONFIG_VIDEO_INTEL_IPU6
 	case V4L2_CID_IPU_SET_SUB_STREAM:
 		val = (*ctrl->p_new.p_s64 & 0xFFFF);
-		dev_info(&state->client->dev, "V4L2_CID_IPU_SET_SUB_STREAM %x\n", val);
+		dev_dbg(&state->client->dev, "V4L2_CID_IPU_SET_SUB_STREAM %x\n", val);
 		vc_id = (val >> 8) & 0x00FF;
 		on = val & 0x00FF;
 		if (vc_id < DS5_MUX_PAD_COUNT)
@@ -2580,6 +2582,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 #endif
 	}
+
 	return ret;
 }
 
@@ -2916,7 +2919,7 @@ static int ds5_board_setup(struct ds5 *state)
 	}
 
 	err = of_property_read_u32(ser_node, "reg", &state->g_ctx.ser_reg);
-	dev_info(dev,  "serializer reg: 0x%x\n", state->g_ctx.ser_reg);
+	dev_dbg(dev,  "serializer reg: 0x%x\n", state->g_ctx.ser_reg);
 	if (err < 0) {
 		dev_err(dev, "serializer reg not found\n");
 		goto error;
@@ -3117,7 +3120,7 @@ static int ds5_board_setup(struct ds5 *state)
 		state->g_ctx.sdev_def, state->g_ctx.sdev_reg);
 	//0x42, 0x44, 0x62, 0x64
 	state->g_ctx.ser_reg = pdata->subdev_info[0].ser_alias;
-	dev_info(dev,  "serializer: i2c-%d@0x%x\n",
+	dev_dbg(dev,  "serializer: i2c-%d@0x%x\n",
 		state->ser_i2c->adapter->nr, state->g_ctx.ser_reg);
 
 	if (err < 0) {
@@ -3127,7 +3130,7 @@ static int ds5_board_setup(struct ds5 *state)
 
 	state->ser_dev = &state->ser_i2c->dev;
 
-	dev_info(dev,  "deserializer: i2c-%d@0x%x\n",
+	dev_dbg(dev,  "deserializer: i2c-%d@0x%x\n",
 		state->dser_i2c->adapter->nr, state->dser_i2c->addr);
 
 
@@ -3249,7 +3252,7 @@ static int ds5_i2c_addr_setting(struct i2c_client *c, struct ds5 *state)
 	for (i = 0; i < 4; i++) {
 		if (c_bus == serdes_bus[i]) {
 			c->addr = des_addr[i];
-			dev_info(&c->dev, "Set max9296@%d-0x%x to link B\n",
+			dev_dbg(&c->dev, "Set max9296@%d-0x%x to link B\n",
 					c_bus, c->addr);
 			ds5_write_8(state, 0x1000, 0x22); // move to link B
 		}
@@ -3335,71 +3338,108 @@ static int ds5_serdes_setup(struct ds5 *state)
 	return ret;
 }
 #endif
+enum state_sid {
+	DEPTH_SID = 0,
+	RGB_SID,
+	IR_SID,
+	IMU_SID,
+	MUX_SID = -1
+};
 
-static int ds5_ctrl_init(struct ds5 *state)
+static int ds5_ctrl_init(struct ds5 *state, int sid)
 {
 	const struct v4l2_ctrl_ops *ops = &ds5_ctrl_ops;
 	struct ds5_ctrls *ctrls = &state->ctrls;
 	struct v4l2_ctrl_handler *hdl = &ctrls->handler;
 	struct v4l2_subdev *sd = &state->mux.sd.subdev;
-	int ret;
+	int ret = -1;
+	struct ds5_sensor *sensor = NULL;
 
-	if (state->is_imu)
-		return 0;
+	switch (sid) {
+	case DEPTH_SID:
+		hdl = &ctrls->handler_depth;
+		sensor = &state->depth.sensor;
+		break;
+	case RGB_SID:
+		hdl = &ctrls->handler_rgb;
+		sensor = &state->rgb.sensor;
+		break;
+	case IR_SID:
+		hdl = &ctrls->handler_y8;
+		sensor = &state->ir.sensor;
+		break;
+	case IMU_SID:
+		hdl = &ctrls->handler_imu;
+		sensor = &state->imu.sensor;
+		break;
+	default:
+		/* control for MUX */
+		hdl = &ctrls->handler;
+		sensor = NULL;
+		break;
+	}
 
+	dev_dbg(NULL, "%s():%d sid: %d\n", __func__, __LINE__, sid);
 	ret = v4l2_ctrl_handler_init(hdl, DS5_N_CONTROLS);
 	if (ret < 0) {
 		v4l2_err(sd, "cannot init ctrl handler (%d)\n", ret);
 		return ret;
 	}
 
-	if (state->is_depth || state->is_y8) {
+	if (sid == DEPTH_SID || sid == IR_SID) {
 		ctrls->laser_power = v4l2_ctrl_new_custom(hdl,
 						&ds5_ctrl_laser_power,
-						NULL);
+						sensor);
 		ctrls->manual_laser_power = v4l2_ctrl_new_custom(hdl,
 						&ds5_ctrl_manual_laser_power,
-						NULL);
+						sensor);
 	}
 
 	/* Total gain */
-	if (state->is_depth || state->is_y8) {
+	if (sid == DEPTH_SID || sid == IR_SID) {
 		ctrls->gain = v4l2_ctrl_new_std(hdl, ops,
 						V4L2_CID_ANALOGUE_GAIN,
 						16, 248, 1, 16);
-	} else if (state->is_rgb) {
+	} else if (sid == RGB_SID) {
 		ctrls->gain = v4l2_ctrl_new_std(hdl, ops,
 						V4L2_CID_ANALOGUE_GAIN,
 						0, 128, 1, 64);
 	}
 
-	if (ctrls->gain)
+	if ((ctrls->gain) && (sid >= DEPTH_SID && sid < IMU_SID)) {
+		ctrls->gain->priv = sensor;
 		ctrls->gain->flags =
 				V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE;
+	}
+	if (sid >= DEPTH_SID && sid < IMU_SID) {
 
-	ctrls->auto_exp = v4l2_ctrl_new_std_menu(hdl, ops,
-			V4L2_CID_EXPOSURE_AUTO,
-			V4L2_EXPOSURE_APERTURE_PRIORITY,
-			~((1 << V4L2_EXPOSURE_MANUAL) |
-					(1 << V4L2_EXPOSURE_APERTURE_PRIORITY)),
-					V4L2_EXPOSURE_APERTURE_PRIORITY);
+		ctrls->auto_exp = v4l2_ctrl_new_std_menu(hdl, ops,
+				V4L2_CID_EXPOSURE_AUTO,
+				V4L2_EXPOSURE_APERTURE_PRIORITY,
+				~((1 << V4L2_EXPOSURE_MANUAL) |
+						(1 << V4L2_EXPOSURE_APERTURE_PRIORITY)),
+						V4L2_EXPOSURE_APERTURE_PRIORITY);
 
-	if (ctrls->auto_exp)
-		ctrls->auto_exp->flags |=
-				V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE;
+		if (ctrls->auto_exp) {
+			ctrls->auto_exp->flags |=
+					V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE;
+			ctrls->auto_exp->priv = sensor;
+		}
+	}
 
 	/* Exposure time: V4L2_CID_EXPOSURE_ABSOLUTE default unit: 100 us. */
-	if (state->is_depth || state->is_y8) {
+	if (sid == DEPTH_SID || sid == IR_SID) {
 		ctrls->exposure = v4l2_ctrl_new_std(hdl, ops,
 					V4L2_CID_EXPOSURE_ABSOLUTE,
 					1, MAX_DEPTH_EXP, 1, DEF_DEPTH_EXP);
-	} else if (state->is_rgb) {
+	} else if (sid == RGB_SID) {
 		ctrls->exposure = v4l2_ctrl_new_std(hdl, ops,
 					V4L2_CID_EXPOSURE_ABSOLUTE,
 					1, MAX_RGB_EXP, 1, DEF_RGB_EXP);
 	}
 
-	if (ctrls->exposure) {
+	if ((ctrls->exposure) && (sid >= DEPTH_SID && sid < IMU_SID)) {
+		ctrls->exposure->priv = sensor;
 		ctrls->exposure->flags |=
 				V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE;
 		/* override default int type to u32 to match SKU & UVC */
@@ -3424,41 +3464,68 @@ static int ds5_ctrl_init(struct ds5 *state)
 		return ret;
 	}
 
-	ret = v4l2_ctrl_handler_setup(hdl);
-	if (ret < 0) {
-		dev_err(&state->client->dev,
-			"failed to set default values for controls\n");
-		v4l2_ctrl_handler_free(hdl);
-		return ret;
-	}
-
 	// Add these after v4l2_ctrl_handler_setup so they won't be set up
-	ctrls->log = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_log, NULL);
-	ctrls->fw_version = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_fw_version, NULL);
-	ctrls->gvd = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_gvd, NULL);
-	ctrls->get_depth_calib =
-			v4l2_ctrl_new_custom(hdl, &ds5_ctrl_get_depth_calib, NULL);
-	ctrls->set_depth_calib =
-			v4l2_ctrl_new_custom(hdl, &ds5_ctrl_set_depth_calib, NULL);
-	ctrls->get_coeff_calib =
-			v4l2_ctrl_new_custom(hdl, &ds5_ctrl_get_coeff_calib, NULL);
-	ctrls->set_coeff_calib =
-			v4l2_ctrl_new_custom(hdl, &ds5_ctrl_set_coeff_calib, NULL);
-	ctrls->ae_roi_get = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_roi_get, NULL);
-	ctrls->ae_roi_set = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_roi_set, NULL);
-	ctrls->ae_setpoint_get =
-			v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_setpoint_get, NULL);
-	ctrls->ae_setpoint_set =
-			v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_setpoint_set, NULL);
-	ctrls->erb = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_erb, NULL);
-	ctrls->ewb = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ewb, NULL);
-	ctrls->hwmc = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_hwmc, NULL);
-	v4l2_ctrl_new_custom(hdl, &ds5_ctrl_hwmc_rw, NULL);
+	if (sid >= DEPTH_SID && sid < IMU_SID) {
+		ctrls->log = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_log, sensor);
+		ctrls->fw_version = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_fw_version, sensor);
+		ctrls->gvd = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_gvd, sensor);
+		ctrls->get_depth_calib =
+				v4l2_ctrl_new_custom(hdl, &ds5_ctrl_get_depth_calib, sensor);
+		ctrls->set_depth_calib =
+				v4l2_ctrl_new_custom(hdl, &ds5_ctrl_set_depth_calib, sensor);
+		ctrls->get_coeff_calib =
+				v4l2_ctrl_new_custom(hdl, &ds5_ctrl_get_coeff_calib, sensor);
+		ctrls->set_coeff_calib =
+				v4l2_ctrl_new_custom(hdl, &ds5_ctrl_set_coeff_calib, sensor);
+		ctrls->ae_roi_get = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_roi_get, sensor);
+		ctrls->ae_roi_set = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_roi_set, sensor);
+		ctrls->ae_setpoint_get =
+				v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_setpoint_get, sensor);
+		ctrls->ae_setpoint_set =
+				v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ae_setpoint_set, sensor);
+		ctrls->erb = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_erb, sensor);
+		ctrls->ewb = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_ewb, sensor);
+		ctrls->hwmc = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_hwmc, sensor);
+		v4l2_ctrl_new_custom(hdl, &ds5_ctrl_hwmc_rw, sensor);
+	}
+	// DEPTH custom
+	if (sid == DEPTH_SID)
+		v4l2_ctrl_new_custom(hdl, &ds5_ctrl_pwm, sensor);
+	// IMU custom
+	if (sid == IMU_SID)
+		ctrls->fw_version = v4l2_ctrl_new_custom(hdl, &ds5_ctrl_fw_version, sensor);
 
-	if (state->is_depth)
-		v4l2_ctrl_new_custom(hdl, &ds5_ctrl_pwm, NULL);
-
-	state->mux.sd.subdev.ctrl_handler = hdl;
+	switch (sid) {
+	case DEPTH_SID:
+		state->depth.sensor.sd.ctrl_handler = hdl;
+		dev_dbg(state->depth.sensor.sd.dev,
+			"%s():%d set ctrl_handler pad:%d\n",
+			__func__, __LINE__, state->depth.sensor.mux_pad);
+		break;
+	case RGB_SID:
+		state->rgb.sensor.sd.ctrl_handler = hdl;
+		dev_dbg(state->rgb.sensor.sd.dev,
+			"%s():%d set ctrl_handler pad:%d\n",
+			__func__, __LINE__, state->rgb.sensor.mux_pad);
+		break;
+	case IR_SID:
+		state->ir.sensor.sd.ctrl_handler = hdl;
+		dev_dbg(state->ir.sensor.sd.dev,
+			"%s():%d set ctrl_handler pad:%d\n",
+			__func__, __LINE__, state->ir.sensor.mux_pad);
+		break;
+	case IMU_SID:
+		state->imu.sensor.sd.ctrl_handler = hdl;
+		dev_dbg(state->imu.sensor.sd.dev,
+			"%s():%d set ctrl_handler pad:%d\n",
+			__func__, __LINE__, state->imu.sensor.mux_pad);
+		break;
+	default:
+		state->mux.sd.subdev.ctrl_handler = hdl;
+		dev_dbg(state->mux.sd.subdev.dev,
+			"%s():%d set ctrl_handler for MUX\n", __func__, __LINE__);
+		break;
+	}
 
 	return 0;
 }
@@ -3549,7 +3616,7 @@ static int ds5_ir_init(struct i2c_client *c, struct ds5 *state)
 {
 	state->ir.sensor.mux_pad = DS5_MUX_PAD_IR;
 	return ds5_sensor_init(c, state, &state->ir.sensor,
-		       &ds5_ir_subdev_ops, "motion detection");
+		       &ds5_ir_subdev_ops, "ir");
 }
 
 static int ds5_rgb_init(struct i2c_client *c, struct ds5 *state)
@@ -3829,7 +3896,7 @@ static int ds5_mux_set_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config
 		set_sub_stream_dt(substream, mbus_code_to_mipi(ffmt->code));
 	}
 
-	dev_info(sd->dev, "%s(): fmt->pad:%d, sensor->mux_pad: %d, \
+	dev_dbg(sd->dev, "%s(): fmt->pad:%d, sensor->mux_pad: %d, \
 		code: 0x%x: %ux%u substream:%d for sensor: %s\n",
 		__func__,
 		fmt->pad, pad, fmt->format.code,
@@ -3847,9 +3914,13 @@ static int ds5_mux_get_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config
 	struct v4l2_subdev_format tmp = *fmt;
 	struct v4l2_subdev *remote_sd;
 	u32 pad = fmt->pad;
-	int ret;
-
-	dev_dbg(sd->dev, "%s(): %u %p\n", __func__, pad, state->mux.last_set);
+	int ret = 0;
+	struct ds5_sensor *sensor = state->mux.last_set;
+	//u32 pad = sensor->mux_pad;
+	if (pad != DS5_MUX_PAD_EXTERNAL)
+		ds5_s_state(state, pad - 1);
+	sensor = state->mux.last_set;
+	dev_dbg(sd->dev, "%s(): %u %s %p\n", __func__, pad, ds5_get_sensor_name(state), state->mux.last_set);
 
 	if (state->is_depth)
 		pad = DS5_MUX_PAD_DEPTH;
@@ -3880,7 +3951,10 @@ static int ds5_mux_get_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config
 		return -EINVAL;
 	}
 
-
+	dev_dbg(sd->dev, "%s(): fmt->pad:%d, sensor->mux_pad:%u size:%d-%d, code:0x%x field:%d, color:%d\n",
+		__func__, fmt->pad, pad,
+		fmt->format.width, fmt->format.height, fmt->format.code,
+		fmt->format.field, fmt->format.colorspace);
 	/* Locks internally */
 	ret = ds5_sensor_get_fmt(remote_sd, cfg, &tmp);
 	if (!ret) {
@@ -3960,7 +4034,7 @@ int d4xx_reset_oneshot(struct ds5 *state)
 
 	if (n_addr) {
 		state->client->addr = n_addr;
-		dev_warn(&state->client->dev, "One-shot reset 0x%x enable auto-link\n", n_addr);
+		dev_dbg(&state->client->dev, "One-shot reset 0x%x enable auto-link\n", n_addr);
 		/* One-shot reset  enable auto-link */
 		ret = max9296_write_8(state, MAX9296_CTRL0, RESET_ONESHOT | AUTO_LINK | LINK_A);
 		state->client->addr = s_addr;
@@ -4008,7 +4082,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 		return -EINVAL;
 	}
 
-	dev_warn(&state->client->dev, "s_stream for stream %s, vc:%d, SENSOR=%s on = %d\n",
+	dev_dbg(&state->client->dev, "s_stream for stream %s, vc:%d, SENSOR=%s on = %d\n",
 			sensor->sd.name, vc_id, ds5_get_sensor_name(state), on);
 
 	restore_val = state->mux.last_set->streaming;
@@ -4094,7 +4168,7 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 
 	ds5_read(state, config_status_base, &status);
 	ds5_read(state, stream_status_base, &streaming);
-	dev_info(&state->client->dev,
+	dev_dbg(&state->client->dev,
 			"%s %s, stream_status 0x%x:%x, config_status 0x%x:%x ret=%d\n",
 			ds5_get_sensor_name(state),
 			(on)?"START":"STOP",
@@ -4297,13 +4371,49 @@ static int ds5_mux_init(struct i2c_client *c, struct ds5 *state)
 	if (ret < 0)
 		return ret;
 
-	ret = ds5_ctrl_init(state);
+	/*set for mux*/
+	ret = ds5_ctrl_init(state, MUX_SID);
 	if (ret < 0)
 		goto e_entity;
+
+	/*set for depth*/
+	ret = ds5_ctrl_init(state, DEPTH_SID);
+	if (ret < 0)
+		return ret;
+	/*set for rgb*/
+	ret = ds5_ctrl_init(state, RGB_SID);
+	if (ret < 0)
+		return ret;
+	/*set for y8*/
+	ret = ds5_ctrl_init(state, IR_SID);
+	if (ret < 0)
+		return ret;
+	/*set for imu*/
+	ret = ds5_ctrl_init(state, IMU_SID);
+	if (ret < 0)
+		return ret;
 
 	ds5_set_state_last_set(state);
 
 #ifdef CONFIG_TEGRA_CAMERA_PLATFORM
+	if (state->is_depth) {
+		v4l2_ctrl_add_handler(&state->ctrls.handler,
+					&state->ctrls.handler_depth, NULL, true);
+		state->mux.last_set = &state->depth.sensor;
+	}
+	else if (state->is_rgb) {
+		v4l2_ctrl_add_handler(&state->ctrls.handler,
+					&state->ctrls.handler_rgb, NULL, true);
+		state->mux.last_set = &state->rgb.sensor;
+	}
+	else if (state->is_y8) {
+		v4l2_ctrl_add_handler(&state->ctrls.handler,
+					&state->ctrls.handler_y8, NULL, true);
+		state->mux.last_set = &state->ir.sensor;
+	}
+	else
+		state->mux.last_set = &state->imu.sensor;
+
 	state->mux.sd.dev = &c->dev;
 	ret = camera_common_initialize(&state->mux.sd, "d4xx");
 	if (ret) {
