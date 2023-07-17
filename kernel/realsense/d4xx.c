@@ -2568,7 +2568,7 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 			ds5_read(state, base | DS5_PWM_FREQUENCY, ctrl->p_new.p_u16);
 		break;
 #ifdef CONFIG_VIDEO_INTEL_IPU6
-	case V4L2_CID_IPU_QUERY_SUB_STREAM: {
+	case V4L2_CID_IPU_QUERY_SUB_STREAM:
 		if (sensor) {
 			int vc_id = get_sub_stream_vc_id(pad_to_substream[sensor->mux_pad]);
 
@@ -2577,10 +2577,9 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 				__func__, sensor->mux_pad, vc_id);
 			*ctrl->p_new.p_s32 = pad_to_substream[sensor->mux_pad];
 			state->mux.last_set = sensor;
-			} else {
+		} else {
 				/* we are in DS5 MUX case */
 				*ctrl->p_new.p_s32 = -1;
-			}
 		}
 		break;
 #endif
