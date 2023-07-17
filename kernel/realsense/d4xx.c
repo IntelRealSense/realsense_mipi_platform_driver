@@ -169,11 +169,15 @@ enum ds5_mux_pad {
 	DS5_MUX_PAD_RGB,
 	DS5_MUX_PAD_IR,
 	DS5_MUX_PAD_IMU,
+#ifdef CONFIG_TEGRA_CAMERA_PLATFORM
+	DS5_MUX_PAD_COUNT,
+#else
 	DS5_MUX_PAD_DEPTH_B,
 	DS5_MUX_PAD_RGB_B,
 	DS5_MUX_PAD_IR_B,
 	DS5_MUX_PAD_IMU_B,
 	DS5_MUX_PAD_COUNT,
+#endif
 };
 
 #define DS5_N_CONTROLS			8
@@ -1932,8 +1936,7 @@ static int ds5_s_state(struct ds5 *state, int vc)
 		break;
 	default:
 		dev_warn(&state->client->dev, "%s(): unknown vc: %d\n", __func__, vc);
-		ret = -EINVAL;
-		break;
+		return (-EINVAL);
 	}
 	ds5_set_state_last_set(state);
 	return ret;
