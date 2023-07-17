@@ -53,7 +53,10 @@ Apply D457 patches and build the kernel image, dtb and D457 driver.
 # or, if using direct download method
 # ./apply_patches_ext.sh [--one-cam | --dual-cam] ./Linux_for_tegra/source/public [JetPack_version]
 
-Note: The `--one-cam` and `--dual-cam` option applies only for JetPack 5.0.2. By setting the `--one-cam` option it builds DT with only camera on GMSL link A. Without it the default is to build dual camera configuration for JetPack 5.0.2.
+Note: The `--one-cam` and `--dual-cam` option applies only for JetPack 5.0.2 compatible with adapter: https://store.intelrealsense.com/buy-intel-realsense-des457.html.
+By setting the `--one-cam` option it builds DT with only camera on GMSL link A.
+By setting the `--dual-cam` option it builds DT with dual cameras on GMSL link A.
+Without it the default is to single camera configuration with SC20190112 adapter for JetPack 5.0.2.
 
 # build kernel, dtb and D457 driver
 # install dependencies
