@@ -1751,6 +1751,13 @@ static int ds5_hw_set_exposure(struct ds5 *state, u32 base, s32 val)
 #define DS5_HWMC_STATUS_WIP		2
 #define DS5_HWMC_BUFFER_SIZE	1024
 
+enum DS5_HWMC_ERR {
+	DS5_HWMC_ERR_SUCCESS = 0,
+	DS5_HWMC_ERR_CMD     = -1,
+	DS5_HWMC_ERR_PARAM   = -6,
+	DS5_HWMC_ERR_NODATA  = -21,
+};
+
 static int ds5_send_hwmc(struct ds5 *state,
 			u16 cmdLen,
 			struct hwm_cmd *cmd,
@@ -1768,14 +1775,7 @@ static int ds5_send_hwmc(struct ds5 *state,
 			"param1: %d, param2: %d, param3: %d, param4: %d\n",
 			__func__, cmd->header, cmd->magic_word, cmd->opcode,
 			cmd->param1, cmd->param2, cmd->param3, cmd->param4);
-	if(cmd->opcode == 0x7d) {
-			dev_warn(&state->client->dev,
-			"%s(): SKIP ISSUE HWMC header: 0x%x, magic: 0x%x, opcode: 0x%x, "
-			"param1: %d, param2: %d, param3: %d, param4: %d\n",
-			__func__, cmd->header, cmd->magic_word, cmd->opcode,
-			cmd->param1, cmd->param2, cmd->param3, cmd->param4);
-		return 0;
-	}
+
 	ds5_raw_write_with_check(state, 0x4900, cmd, cmdLen);
 
 	ds5_write_with_check(state, 0x490C, 0x01); /* execute cmd */
@@ -1783,22 +1783,34 @@ static int ds5_send_hwmc(struct ds5 *state,
 		if (iter != retries)
 			msleep_range(10);
 		ret = ds5_read(state, 0x4904, &status);
-	} while (iter-- && status != 0);
+	} while (iter-- && status == DS5_HWMC_STATUS_WIP);
 
-	if (ret || status != 0) {
+	if (ret || status != DS5_HWMC_STATUS_OK) {
 		ds5_raw_read(state, 0x4900, &errorCode, 4);
-		dev_err(&state->client->dev,
+		switch(errorCode) {
+			case (DS5_HWMC_ERR_CMD):
+			case (DS5_HWMC_ERR_PARAM):
+				ret = -EBADMSG;
+			break;
+			case (DS5_HWMC_ERR_NODATA):
+				ret = -ENODATA;
+			break;
+
+			default:
+			dev_err(&state->client->dev,
 				"%s(): HWMC failed, ret: %d, status: %x, error code: %d\n",
 				__func__, ret, status, errorCode);
-		dev_warn(&state->client->dev,
-			"%s(): HWMC header: 0x%x, magic: 0x%x, opcode: 0x%x, "
-			"param1: %d, param2: %d, param3: %d, param4: %d\n",
-			__func__, cmd->header, cmd->magic_word, cmd->opcode,
-			cmd->param1, cmd->param2, cmd->param3, cmd->param4);
-		ret = -EAGAIN;
+			dev_dbg(&state->client->dev,
+				"%s(): HWMC header: 0x%x, magic: 0x%x, opcode: 0x%x, "
+				"param1: %d, param2: %d, param3: %d, param4: %d\n",
+				__func__, cmd->header, cmd->magic_word, cmd->opcode,
+				cmd->param1, cmd->param2, cmd->param3, cmd->param4);
+			ret = -EPROTO;
+			break;
+		}
 	}
 
-	if (isRead) {
+	if (isRead && dataLen && status == DS5_HWMC_STATUS_OK) {
 		if (*dataLen == 0) {
 			ret = regmap_raw_read(state->regmap, 0x4908, dataLen, sizeof(u16));
 			if (ret)
@@ -1815,7 +1827,7 @@ static int ds5_send_hwmc(struct ds5 *state,
 		cmd->Data[1001] = (unsigned char)(((*dataLen) & 0xFF00) >> 8);
 	}
 
-	return 0;
+	return ret;
 }
 
 static int ds5_get_hwmc(struct ds5 *state, unsigned char *data)
