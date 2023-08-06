@@ -1324,11 +1324,31 @@ static int ds5_hw_set_exposure(struct ds5 *state, u32 base, s32 val)
  * HWMC_RW used for UVC compatibility*/
 #define DS5_CAMERA_CID_HWMC_RW		(DS5_CAMERA_CID_BASE+32)
 
-static int ds5_send_hwmc(struct ds5 *state, u16 cmdLen, struct hwm_cmd *cmd,
-			 bool isRead, u16 *dataLen)
+#define DS5_HWMC_DATA			0x4900
+#define DS5_HWMC_STATUS			0x4904
+#define DS5_HWMC_RESP_LEN		0x4908
+#define DS5_HWMC_EXEC			0x490C
+
+#define DS5_HWMC_STATUS_OK		0
+#define DS5_HWMC_STATUS_ERR		1
+#define DS5_HWMC_STATUS_WIP		2
+#define DS5_HWMC_BUFFER_SIZE	1024
+
+enum DS5_HWMC_ERR {
+	DS5_HWMC_ERR_SUCCESS = 0,
+	DS5_HWMC_ERR_CMD     = -1,
+	DS5_HWMC_ERR_PARAM   = -6,
+	DS5_HWMC_ERR_NODATA  = -21,
+};
+
+static int ds5_send_hwmc(struct ds5 *state,
+			u16 cmdLen,
+			struct hwm_cmd *cmd,
+			bool isRead,
+			u16 *dataLen)
 {
 	int ret = 0;
-	u16 status = 2;
+	u16 status = DS5_HWMC_STATUS_WIP;
 	int retries = 100;
 	int errorCode;
 	int iter = retries;
@@ -1346,17 +1366,31 @@ static int ds5_send_hwmc(struct ds5 *state, u16 cmdLen, struct hwm_cmd *cmd,
 		if (iter != retries)
 			msleep_range(10);
 		ret = ds5_read(state, 0x4904, &status);
-	} while (iter-- && status != 0);
+	} while (iter-- && status == DS5_HWMC_STATUS_WIP);
 
-	if (ret || status != 0) {
-		ds5_raw_read(state, 0x4900, &errorCode, 4);
-		dev_err(&state->client->dev,
-				"%s(): HWMC failed, ret: %d, status: %x, error code: %d\n",
-				__func__, ret, status, errorCode);
-		ret = -EAGAIN;
+	if (ret || status != DS5_HWMC_STATUS_OK) {
+		if (status == DS5_HWMC_STATUS_ERR) {
+			ds5_raw_read(state, 0x4900, &errorCode, 4);
+			switch(errorCode) {
+			case (DS5_HWMC_ERR_CMD):
+			case (DS5_HWMC_ERR_PARAM):
+				ret = -EBADMSG;
+			break;
+			case (DS5_HWMC_ERR_NODATA):
+				ret = -ENODATA;
+			break;
+
+			default:
+				dev_err(&state->client->dev,
+					"%s(): HWMC failed, ret: %d, status: %x, error code: %d\n",
+					__func__, ret, status, errorCode);
+				ret = -EPROTO;
+				break;
+			}
+		}
 	}
 
-	if (isRead) {
+	if (isRead && dataLen && status == DS5_HWMC_STATUS_OK) {
 		if (*dataLen == 0) {
 			ret = regmap_raw_read(state->regmap, 0x4908, dataLen, sizeof(u16));
 			if (ret)
@@ -1373,18 +1407,8 @@ static int ds5_send_hwmc(struct ds5 *state, u16 cmdLen, struct hwm_cmd *cmd,
 		cmd->Data[1001] = (unsigned char)(((*dataLen) & 0xFF00) >> 8);
 	}
 
-	return 0;
+	return ret;
 }
-
-#define DS5_HWMC_DATA			0x4900
-#define DS5_HWMC_STATUS			0x4904
-#define DS5_HWMC_RESP_LEN		0x4908
-#define DS5_HWMC_EXEC			0x490C
-
-#define DS5_HWMC_STATUS_OK		0
-#define DS5_HWMC_STATUS_ERR		1
-#define DS5_HWMC_STATUS_WIP		2
-#define DS5_HWMC_BUFFER_SIZE	1024
 
 static int ds5_get_hwmc(struct ds5 *state, unsigned char *data)
 {
