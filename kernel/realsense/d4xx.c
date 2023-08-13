@@ -1723,73 +1723,6 @@ enum DS5_HWMC_ERR {
 	DS5_HWMC_ERR_NODATA  = -21,
 };
 
-static int ds5_send_hwmc(struct ds5 *state,
-			u16 cmdLen,
-			struct hwm_cmd *cmd,
-			bool isRead,
-			u16 *dataLen)
-{
-	int ret = 0;
-	u16 status = DS5_HWMC_STATUS_WIP;
-	int retries = 100;
-	int errorCode;
-	int iter = retries;
-
-	dev_dbg(&state->client->dev,
-			"%s(): HWMC header: 0x%x, magic: 0x%x, opcode: 0x%x, "
-			"param1: %d, param2: %d, param3: %d, param4: %d\n",
-			__func__, cmd->header, cmd->magic_word, cmd->opcode,
-			cmd->param1, cmd->param2, cmd->param3, cmd->param4);
-
-	ds5_raw_write_with_check(state, 0x4900, cmd, cmdLen);
-
-	ds5_write_with_check(state, 0x490C, 0x01); /* execute cmd */
-	do {
-		if (iter != retries)
-			msleep_range(10);
-		ret = ds5_read(state, 0x4904, &status);
-	} while (iter-- && status == DS5_HWMC_STATUS_WIP);
-
-	if (ret || status != DS5_HWMC_STATUS_OK) {
-		ds5_raw_read(state, 0x4900, &errorCode, 4);
-		switch(errorCode) {
-			case (DS5_HWMC_ERR_CMD):
-			case (DS5_HWMC_ERR_PARAM):
-				ret = -EBADMSG;
-			break;
-			case (DS5_HWMC_ERR_NODATA):
-				ret = -ENODATA;
-			break;
-
-			default:
-				dev_err(&state->client->dev,
-					"%s(): HWMC failed, ret: %d, status: %x, error code: %d\n",
-					__func__, ret, status, errorCode);
-				ret = -EPROTO;
-				break;
-		}
-	}
-
-	if (isRead && dataLen && status == DS5_HWMC_STATUS_OK) {
-		if (*dataLen == 0) {
-			ret = regmap_raw_read(state->regmap, 0x4908, dataLen, sizeof(u16));
-			if (ret)
-				return -EAGAIN;
-		}
-
-		dev_dbg(&state->client->dev, "%s(): HWMC read len: %d\n",
-				__func__, *dataLen);
-		// First 4 bytes of cmd->Data after read will include opcode
-		ds5_raw_read_with_check(state, 0x4900, cmd->Data, *dataLen);
-
-		/*This is neede for libreealsense, to align there code with UVC*/
-		cmd->Data[1000] = (unsigned char)((*dataLen) & 0x00FF);
-		cmd->Data[1001] = (unsigned char)(((*dataLen) & 0xFF00) >> 8);
-	}
-
-	return ret;
-}
-
 static int ds5_get_hwmc(struct ds5 *state, unsigned char *data)
 {
 	int ret = 0;
@@ -1805,26 +1738,38 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data)
 		if (retries != 100)
 			msleep_range(1);
 		ret = ds5_read(state, DS5_HWMC_STATUS, &status);
-	} while (!ret && retries-- && status != DS5_HWMC_STATUS_OK);
+	} while (!ret && retries-- && status == DS5_HWMC_STATUS_WIP);
 
 	if (ret || status != DS5_HWMC_STATUS_OK) {
 		if (status == DS5_HWMC_STATUS_ERR) {
 			ds5_raw_read(state, DS5_HWMC_DATA, &errorCode, sizeof(errorCode));
-			dev_err(&state->client->dev,
-					"%s(): HWMC failed, ret: %d, error code: %d\n",
-					__func__, ret, errorCode);
-		} else {
-			dev_err(&state->client->dev,
-					"%s(): HWMC failed because of timeout, ret: %d\n",
-					__func__, ret);
+			switch(errorCode) {
+			case (DS5_HWMC_ERR_CMD):
+			case (DS5_HWMC_ERR_PARAM):
+				ret = -EBADMSG;
+			break;
+			case (DS5_HWMC_ERR_NODATA):
+				ret = -ENODATA;
+			break;
+
+			default:
+				dev_dbg(&state->client->dev,
+					"%s(): HWMC failed, ret: %d, status: %x, error code: %d\n",
+					__func__, ret, status, errorCode);
+				ret = -EBADMSG;
+				break;
+			}
 		}
-		return -EAGAIN;
+	}
+
+	if (status != DS5_HWMC_STATUS_OK) {
+		return ret;
 	}
 
 	ret = regmap_raw_read(state->regmap, DS5_HWMC_RESP_LEN,
 			&tmp_len, sizeof(tmp_len));
 	if (ret)
-		return -EAGAIN;
+		return -EBADMSG;
 
 	if (tmp_len > DS5_HWMC_BUFFER_SIZE)
 		return -ENOBUFS;
@@ -1836,15 +1781,39 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data)
 	ds5_raw_read_with_check(state, DS5_HWMC_DATA, data, tmp_len);
 
 	/* This is needed for librealsense, to align there code with UVC,
-	 * last word is length - 4 bytes header length
-	 */
+	 * last word is length - 4 bytes header length */
 	tmp_len -= SIZE_OF_HW_MONITOR_HEADER;
 	data[DS5_HWMC_BUFFER_SIZE - 4] = (unsigned char)(tmp_len & 0x00FF);
 	data[DS5_HWMC_BUFFER_SIZE - 3] = (unsigned char)((tmp_len & 0xFF00) >> 8);
 	data[DS5_HWMC_BUFFER_SIZE - 2] = 0;
 	data[DS5_HWMC_BUFFER_SIZE - 1] = 0;
 
-	return 0;
+	return ret;
+}
+
+static int ds5_send_hwmc(struct ds5 *state,
+			u16 cmdLen,
+			struct hwm_cmd *cmd,
+			bool isRead,
+			u16 *dataLen)
+{
+	int ret = 0;
+
+	dev_dbg(&state->client->dev,
+			"%s(): HWMC header: 0x%x, magic: 0x%x, opcode: 0x%x, "
+			"param1: %d, param2: %d, param3: %d, param4: %d\n",
+			__func__, cmd->header, cmd->magic_word, cmd->opcode,
+			cmd->param1, cmd->param2, cmd->param3, cmd->param4);
+
+	ds5_raw_write_with_check(state, DS5_HWMC_DATA, cmd, cmdLen);
+
+	ds5_write_with_check(state, DS5_HWMC_EXEC, 0x01); /* execute cmd */
+
+	if (isRead && *dataLen) {
+		ret = ds5_get_hwmc(state, cmd->Data);
+	}
+
+	return ret;
 }
 
 static int ds5_set_calibration_data(struct ds5 *state,
@@ -3017,7 +2986,7 @@ static int ds5_board_setup(struct ds5 *state)
 		I2C_BOARD_INFO("max9295", 0x42),
 		.platform_data = &max9295_pdata,
 	};
-	
+
 	i2c_info_ser.addr = pdata->subdev_info[0].ser_alias; //0x42, 0x44, 0x62, 0x64
 	state->ser_i2c = i2c_new_client_device(adapter, &i2c_info_ser);
 
@@ -3026,9 +2995,11 @@ static int ds5_board_setup(struct ds5 *state)
 	/* look for already registered max9296, use same context if found */
 	for (i = 0; i < MAX_DEV_NUM; i++) {
 		if (serdes_inited[i] && serdes_inited[i]->dser_i2c) {
-dev_info(dev, "MAX9296 found device on 0x%x\n", serdes_inited[i]->dser_i2c->addr);	
-			if (serdes_inited[i]->dser_i2c->addr == i2c_info_des.addr) {
-				dev_info(dev, "MAX9296 AGGREGATION found device on 0x%x\n", i2c_info_des.addr);	
+			dev_info(dev, "MAX9296 found device on %d@0x%x\n",
+				serdes_inited[i]->dser_i2c->adapter->nr, serdes_inited[i]->dser_i2c->addr);
+			if (bus == serdes_inited[i]->dser_i2c->adapter->nr
+				&& serdes_inited[i]->dser_i2c->addr == i2c_info_des.addr) {
+				dev_info(dev, "MAX9296 AGGREGATION found device on 0x%x\n", i2c_info_des.addr);
 				state->dser_i2c = serdes_inited[i]->dser_i2c;
 				state->aggregated = 1;
 			}
@@ -5021,7 +4992,7 @@ static void ds5_substream_init(struct ds5 *state)
 		state->pad_to_vc[DS5_MUX_PAD_IR]    = sensor_vc[6];
 		state->pad_to_vc[DS5_MUX_PAD_IMU]   = sensor_vc[7];
 	}
-	
+
 	for (i = 0; i < ARRAY_SIZE(state->pad_to_substream); i++)
 		state->pad_to_substream[i] = -1;
 	/* match for IPU6 CSI2 BE SOC video capture pads */
