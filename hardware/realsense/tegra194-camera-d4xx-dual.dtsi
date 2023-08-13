@@ -150,13 +150,13 @@
 				ser_a: max9295_a@42 {
 					compatible = "maxim,max9295";
 					reg = <0x42>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-dser-device = <&dser>;
 				};
 
 				ser_b: max9295_b@60 {
 					compatible = "maxim,max9295";
 					reg = <0x60>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-dser-device = <&dser>;
 				};
 
 				d4m0: d4m@1a {
@@ -166,8 +166,8 @@
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "Depth";
-					nvidia,gmsl-ser-device = <&ser_a>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-ser-device = <&ser_a>;
+					maxim,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -219,8 +219,8 @@
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "RGB";
-					nvidia,gmsl-ser-device = <&ser_a>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-ser-device = <&ser_a>;
+					maxim,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -270,8 +270,8 @@
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "Y8";
-					nvidia,gmsl-ser-device = <&ser_a>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-ser-device = <&ser_a>;
+					maxim,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -322,8 +322,8 @@
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "IMU";
-					nvidia,gmsl-ser-device = <&ser_a>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-ser-device = <&ser_a>;
+					maxim,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -374,8 +374,8 @@
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "Depth";
-					nvidia,gmsl-ser-device = <&ser_b>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-ser-device = <&ser_b>;
+					maxim,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -426,8 +426,8 @@
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "RGB";
-					nvidia,gmsl-ser-device = <&ser_b>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-ser-device = <&ser_b>;
+					maxim,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -478,8 +478,8 @@
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "Y8";
-					nvidia,gmsl-ser-device = <&ser_b>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-ser-device = <&ser_b>;
+					maxim,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
@@ -530,8 +530,8 @@
 					compatible = "intel,d4xx";
 					vcc-supply = <&p2822_vdd_1v8_cvb>;
 					cam-type = "IMU";
-					nvidia,gmsl-ser-device = <&ser_b>;
-					nvidia,gmsl-dser-device = <&dser>;
+					maxim,gmsl-ser-device = <&ser_b>;
+					maxim,gmsl-dser-device = <&dser>;
 					ports {
 						#address-cells = <1>;
 						#size-cells = <0>;
