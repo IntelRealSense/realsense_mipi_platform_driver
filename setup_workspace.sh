@@ -13,7 +13,9 @@ function DisplayNvidiaLicense {
     
     echo -e "\nPlease notice: This script will download the kernel source (from nv-tegra, NVIDIA's public git repository) which is subject to the following license:\n\nhttps://developer.nvidia.com/embedded/l4t/r35_release_v1.0/release/tegra_software_license_agreement-tegra-linux.txt\n"
 
-    license="$(curl -L -s https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/release/tegra_software_license_agreement-tegra-linux.txt)\n\n"
+    # license="$(curl -L -s https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/release/tegra_software_license_agreement-tegra-linux.txt)\n\n"
+    license="$(curl -L -s https://developer.download.nvidia.com/embedded/L4T/r35_Release_v4.1/release/Tegra_Software_License_Agreement-Tegra-Linux.txt)\n\n"
+
     ## display the page ##
     echo -e "${license}"
 
@@ -24,6 +26,7 @@ function DisplayNvidiaLicense {
 if [[ "$1" == "-h" ]]; then
     echo "setup_workspace.sh [JetPack_version]"
     echo "setup_workspace.sh -h"
+    echo "JetPack_version can be 4.6.1, 5.0.2, 5.1.2"
     exit 1
 fi
 
@@ -39,7 +42,10 @@ DisplayNvidiaLicense ""
 if [[ ! -d "$DEVDIR/l4t-gcc/$JETPACK_VERSION/bin/" ]]; then
     mkdir -p $DEVDIR/l4t-gcc/$JETPACK_VERSION
     cd $DEVDIR/l4t-gcc/$JETPACK_VERSION
-    if [[ "$JETPACK_VERSION" == "5.0.2" ]]; then
+    if [[ "$JETPACK_VERSION" == "5.1.2" ]]; then
+        wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93 -O aarch64--glibc--stable-final.tar.gz
+        tar xf aarch64--glibc--stable-final.tar.gz
+    elif [[ "$JETPACK_VERSION" == "5.0.2" ]]; then
         wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93 -O aarch64--glibc--stable-final.tar.gz
         tar xf aarch64--glibc--stable-final.tar.gz
     elif [[ "$JETPACK_VERSION" == "4.6.1" ]]; then
