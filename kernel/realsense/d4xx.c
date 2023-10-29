@@ -3954,6 +3954,29 @@ static int ds5_mux_s_frame_interval(struct v4l2_subdev *sd,
 }
 
 #ifdef CONFIG_VIDEO_INTEL_IPU6
+#ifndef CONFIG_VIDEO_D4XX_SERDES
+int d4xx_reset_oneshot(struct ds5 *state)
+{
+	struct d4xx_pdata *dpdata = state->client->dev.platform_data;
+	struct i2c_board_info *deser = dpdata->deser_board_info;
+
+	int s_addr = state->client->addr;
+	int n_addr = deser->addr;
+	int ret = 0;
+
+	if (n_addr) {
+		state->client->addr = n_addr;
+		dev_warn(&state->client->dev, "One-shot reset 0x%x enable auto-link\n", n_addr);
+		/* One-shot reset  enable auto-link */
+		ret = max9296_write_8(state, MAX9296_CTRL0, RESET_ONESHOT | AUTO_LINK | LINK_A);
+		state->client->addr = s_addr;
+		/* delay to settle link */
+		msleep(100);
+	}
+
+	return ret;
+}
+#endif
 static int ds5_state_to_vc(struct ds5 *state) {
 	int pad = 0;
 	if (state->is_depth) {
@@ -3989,18 +4012,22 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 		config_status_base = DS5_DEPTH_CONFIG_STATUS;
 		stream_status_base = DS5_DEPTH_STREAM_STATUS;
 		stream_id = DS5_STREAM_DEPTH;
+		vc_id = 0;
 	} else if (state->is_rgb) {
 		config_status_base = DS5_RGB_CONFIG_STATUS;
 		stream_status_base = DS5_RGB_STREAM_STATUS;
 		stream_id = DS5_STREAM_RGB;
+		vc_id = 1;
 	} else if (state->is_y8) {
 		config_status_base = DS5_IR_CONFIG_STATUS;
 		stream_status_base = DS5_IR_STREAM_STATUS;
 		stream_id = DS5_STREAM_IR;
+		vc_id = 2;
 	} else if (state->is_imu) {
 		config_status_base = DS5_IMU_CONFIG_STATUS;
 		stream_status_base = DS5_IMU_STREAM_STATUS;
 		stream_id = DS5_STREAM_IMU;
+		vc_id = 3;
 	} else {
 		return -EINVAL;
 	}
@@ -4008,7 +4035,9 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 	vc_id = ds5_state_to_vc(state);
 #endif
 #ifdef CONFIG_TEGRA_CAMERA_PLATFORM
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 	vc_id = state->g_ctx.dst_vc;
+#endif
 #endif
 	dev_dbg(&state->client->dev, "s_stream for stream %s, vc:%d, SENSOR=%s on = %d\n",
 			sensor->sd.name, vc_id, ds5_get_sensor_name(state), on);
@@ -4096,7 +4125,9 @@ static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on)
 			dev_warn(&state->client->dev, "release pipe failed\n");
 		sensor->pipe_id = -1;
 #else
+#ifdef CONFIG_VIDEO_INTEL_IPU6
 		d4xx_reset_oneshot(state);
+#endif
 #endif
 	}
 
@@ -4332,18 +4363,33 @@ static int ds5_mux_init(struct i2c_client *c, struct ds5 *state)
 
 #ifdef CONFIG_TEGRA_CAMERA_PLATFORM
 	if (state->is_depth) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 20, 0)
+		v4l2_ctrl_add_handler(&state->ctrls.handler,
+					&state->ctrls.handler_depth, NULL);
+#else
 		v4l2_ctrl_add_handler(&state->ctrls.handler,
 					&state->ctrls.handler_depth, NULL, true);
+#endif
 		state->mux.last_set = &state->depth.sensor;
 	}
 	else if (state->is_rgb) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 20, 0)
+		v4l2_ctrl_add_handler(&state->ctrls.handler,
+					&state->ctrls.handler_rgb, NULL);
+#else
 		v4l2_ctrl_add_handler(&state->ctrls.handler,
 					&state->ctrls.handler_rgb, NULL, true);
+#endif
 		state->mux.last_set = &state->rgb.sensor;
 	}
 	else if (state->is_y8) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 20, 0)
+		v4l2_ctrl_add_handler(&state->ctrls.handler,
+					&state->ctrls.handler_y8, NULL);
+#else
 		v4l2_ctrl_add_handler(&state->ctrls.handler,
 					&state->ctrls.handler_y8, NULL, true);
+#endif
 		state->mux.last_set = &state->ir.sensor;
 	}
 	else
