@@ -18,9 +18,20 @@ The developers can set up the source code with NVIDIA's Jetson git repositories 
 ./setup_workspace.sh [JetPack_version]
 ```
 
-Or download Jetson Linux source code tarball from [JetPack 5.0.2 BSP sources](https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/sources/public_sources.tbz2), [JetPack 4.6.1 BSP sources](https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2).
+Or download Jetson Linux source code tarball from [JetPack 5.1.2 BSP sources](https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2), [JetPack 5.0.2 BSP sources](https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/sources/public_sources.tbz2), [JetPack 4.6.1 BSP sources](https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2).
 
 ```
+# JetPack 5.1.2
+mkdir -p l4t-gcc/5.1.2
+cd ./l4t-gcc/5.1.2
+wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93 -O aarch64--glibc--stable-final.tar.gz
+tar xf aarch64--glibc--stable-final.tar.gz
+cd ../..
+wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2
+tar xjf public_sources.tbz2
+cd Linux_for_Tegra/source/public
+tar xjf kernel_src.tbz2
+
 # JetPack 5.0.2
 mkdir -p l4t-gcc/5.0.2
 cd ./l4t-gcc/5.0.2
