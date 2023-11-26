@@ -1770,6 +1770,9 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
 	int ret = 0;
 	u16 tmp_len = 0;
 
+	if (!data)
+		return -ENOBUFS
+
 	memset(data, 0, cmdDataLen);
 	ret = ds5_get_hwmc_status(state);
 	if (ret) {
@@ -1792,7 +1795,8 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
 			__func__, tmp_len, tmp_len - 4);
 
 	ds5_raw_read_with_check(state, DS5_HWMC_DATA, data, tmp_len);
-	*dataLen = tmp_len;
+	if (dataLen)
+		*dataLen = tmp_len;
 	return ret;
 }
 
