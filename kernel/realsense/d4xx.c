@@ -1771,7 +1771,7 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
 	u16 tmp_len = 0;
 
 	if (!data)
-		return -ENOBUFS
+		return -ENOBUFS;
 
 	memset(data, 0, cmdDataLen);
 	ret = ds5_get_hwmc_status(state);
