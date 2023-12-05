@@ -1,4 +1,4 @@
-# Intel® RealSense™ 
+# Intel® RealSense™ camera driver for GMSL* interface
 
 ## Third Party Programs
 
