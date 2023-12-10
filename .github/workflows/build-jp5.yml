@@ -1,0 +1,21 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ "dev" ]
+  pull_request:
+    branches: [ "dev" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: setup workspace
+      run: ./setup_workspace.sh 5.0.2
+    - name: apply patches
+      run: ./apply_patches.sh apply 5.0.2
+    - name: build
+      run: ./build_all.sh 5.0.2
