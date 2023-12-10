@@ -1,5 +1,7 @@
-
-
+/* Metadata parser example for D457.
+ * User-space document available on 
+ * https://elixir.bootlin.com/linux/v6.5/source/Documentation/userspace-api/media/v4l/metafmt-d4xx.rst
+ */
 #include <stdio.h>
 #include <stdint.h>
 /* librealsense/src/platform/uvc-device.h */
@@ -137,18 +139,16 @@ int main(int argc, char **argv)
         return 1;
     }
     n = fread(buf, sizeof(buf), 1, fp);
-    printf("n: %d\n",n);
-
     
     md_raw = (struct metadata_mipi_depth_raw *)(buf);
     md = &md_raw->depth_mode;
-    printf("raw: --------------------------------- %d\n", uvc_header_mipi_size);
+    printf("raw: ---------------------------------- %d\n", uvc_header_mipi_size);
     printf("framecounter: %d\n", md_raw->header.frame_counter);
     printf("length: %d\n", md_raw->header.header.length);
     printf("info: 0x%x\n", md_raw->header.header.info);
     printf("timestamp: %d\n", md_raw->header.header.timestamp);
 
-    printf("---------------------------------\n");
+    printf("----------------------------------\n");
     printf("type_id: 0x%x size: %d\n", md->header.md_type_id, md->header.md_size);
 
     printf("version: %d\n", md->version);
