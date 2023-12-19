@@ -4936,6 +4936,7 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
 	struct i2c_adapter *parent = i2c_parent_is_i2c_adapter(
 			state->client->adapter);
 #endif
+	int ret = 0, retry = 10;
 	state->dfu_dev.device_open_count--;
 	if (state->dfu_dev.dfu_state_flag != DS5_DFU_RECOVERY)
 		state->dfu_dev.dfu_state_flag = DS5_DFU_IDLE;
@@ -4959,7 +4960,18 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
 
 	i2c_set_adapter_bus_clk_rate(parent, state->dfu_dev.bus_clk_rate);
 #endif
-	return 0;
+	/* Verify communication */
+	do {
+		msleep_range(1);
+		ret = ds5_read(state, DS5_FW_VERSION, &state->fw_version);
+	} while (retry-- && ret != 0 );
+	if (!ret) {
+		dev_warn(&state->client->dev,
+			"%s(): no communication with d4xx\n", __func__);
+		return ret;
+	}
+	ret = ds5_read(state, DS5_FW_BUILD, &state->fw_build);
+	return ret;
 };
 
 static const struct file_operations ds5_device_file_ops = {
