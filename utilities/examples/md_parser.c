@@ -108,7 +108,6 @@ struct md_mipi_rgb_mode
     uint32_t    crc;
 };
 const uint8_t md_mipi_rgb_mode_size = sizeof(struct md_mipi_rgb_mode);
-#pragma pack(pop)
 
 /**\brief metadata_mipi_raw - metadata structure
  *  layout as transmitted and received by backend */
@@ -117,6 +116,7 @@ struct metadata_mipi_depth_raw
     struct uvc_header_mipi    header;
     struct md_mipi_depth_mode           depth_mode;
 };
+#pragma pack(pop)
 
 int main(int argc, char **argv)
 {
@@ -127,14 +127,16 @@ int main(int argc, char **argv)
     FILE *fp;
     struct md_mipi_depth_mode *md;
     struct metadata_mipi_depth_raw *md_raw;
-    if (argc < 2)
+    if (argc < 2) {
         printf("Missing file name\n");
+        printf("This application expect an input file name parameter\n" \
+                "format is: %s <file-name>\n", appname);
+        return 1;
+    }
     fname = argv[1];
-    printf("filename: %s\n", fname);
+    printf("Using file: %s\n", fname);
     fp = fopen(fname,"r");
-    if (fp)
-        printf("File found!\n");
-    else {
+    if (!fp) {
         printf("File not found!\n");
         return 1;
     }
