@@ -15,7 +15,7 @@ NPROC=$(nproc)
 
 SRCS="$DEVDIR/sources_$JETPACK_VERSION"
 if [[ -n "$2" ]]; then
-    SRCS="$2"
+    SRCS=$(realpath $2)
 fi
 
 if [[ "$JETPACK_VERSION" == "6.0" ]]; then
