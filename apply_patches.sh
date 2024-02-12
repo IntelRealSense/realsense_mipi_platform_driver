@@ -52,7 +52,7 @@ apply_external_patches() {
 
 apply_external_patches $1 $D4XX_SRC_DST
 
-if [[ $(ls -A ${KERNEL_DIR}/${JETPACK_VERSION}) ]]; then
+if [ -d ${KERNEL_DIR}/${JETPACK_VERSION} ]; then
     apply_external_patches $1 $KERNEL_DIR
 fi
 
