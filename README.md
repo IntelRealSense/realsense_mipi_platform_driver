@@ -120,20 +120,19 @@ Debian packages will be generated in `images` folder.
 
 Following steps required:
 
-1.	Copy entire directory “images/6.0/rootfs/lib/modules/5.15.122-tegra/extra/” from host to “/lib/modules/5.15.122-tegra/extra/” on Orin
-2.	Copy “tegra234-camera-d4xx-overlay.dtbo” from host to “/boot/tegra234-camera-d4xx-overlay.dtbo” on Orin
-3.	Run  $ sudo /opt/nvidia/jetson-io/jetson-io.py
+1.	Copy entire directory `images/6.0/rootfs/lib/modules/5.15.122-tegra/extra/` from host to `/lib/modules/5.15.122-tegra/extra/` on Orin
+2.	Copy `tegra234-camera-d4xx-overlay.dtbo` from host to `/boot/tegra234-camera-d4xx-overlay.dtbo` on Orin
+3.	Run  $ `sudo /opt/nvidia/jetson-io/jetson-io.py`
     1.	Configure Jetson AGX CSI Connector
     2.	Configure for compatible hardware
     3.	Jetson RealSense Camera D457
-    4.	$ sudo depmod
-    5.	$ echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf
+    4.	$ `sudo depmod`
+    5.	$ `echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf`
 4.	Reboot
 
 Copy them to the right places:
 
 ```
-# scp -r images/6.0/rootfs/boot/Image nvidia@10.0.0.116:~/
 scp -r images/6.0/rootfs/boot/tegra234-camera-d4xx-overlay.dtbo nvidia@10.0.0.116:~/
 scp -r images/6.0/rootfs/lib/modules/5.15.122-tegra/extra nvidia@10.0.0.116:~/
 ```
@@ -141,21 +140,31 @@ scp -r images/6.0/rootfs/lib/modules/5.15.122-tegra/extra nvidia@10.0.0.116:~/
 on target:
 
 ```
-# sudo cp ~/Image /boot/
 sudo cp ~/tegra234-camera-d4xx-overlay.dtbo /boot/
 # backup:
-sudo cp -r /lib/modules/$(uname -r)/extra /lib/modules/$(uname -r)/extra.orig
+sudo tar -cjf /lib/modules/$(uname -r)/modules_$(uname -r)_extra.tar.bz2 /lib/modules/$(uname -r)/extra
 sudo cp -r ~/extra /lib/modules/$(uname -r)/
 ```
 
 Enable d4xx overlay:
 
+With Jetson-IO tool:
 `sudo /opt/nvidia/jetson-io/jetson-io.py`
 
 1.	Configure Jetson AGX CSI Connector
 2.	Configure for compatible hardware
 3.	Jetson RealSense Camera D457
 
+With command line
+
+`sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Jetson RealSense Camera D457"`
+
+Expected:
+```
+nvidia@ubuntu:~$ sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Jetson RealSense Camera D457"
+Configuration saved to /boot/tegra234-camera-d4xx-overlay.dtbo.
+Reboot system to reconfigure.
+```
 Enable d4xx autoload:
 
 `echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf`
