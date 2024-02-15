@@ -66,3 +66,10 @@ if [[ "$JETPACK_VERSION" == "6.0" ]]; then
     cp ./nvidia-oot/Makefile ./sources_$JETPACK_VERSION/
     cp ./kernel/kernel-jammy-src/Makefile ./sources_$JETPACK_VERSION/kernel
 fi
+
+# remove BUILD_NUMBER env dependency kernel vermagic
+if [[ "${JETPACK_VERSION}" == "4.6.1" ]]; then
+    sed -i s/'UTS_RELEASE=\$(KERNELRELEASE)-ab\$(BUILD_NUMBER)'/'UTS_RELEASE=\$(KERNELRELEASE)'/g ./sources_$JETPACK_VERSION/kernel/kernel-4.9/Makefile
+    sed -i 's/the-space :=/E =/g' ./sources_$JETPACK_VERSION/kernel/kernel-4.9/scripts/Kbuild.include
+    sed -i 's/the-space += /the-space = \$E \$E/g' ./sources_$JETPACK_VERSION/kernel/kernel-4.9/scripts/Kbuild.include
+fi
