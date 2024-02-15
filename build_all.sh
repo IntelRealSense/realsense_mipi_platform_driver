@@ -56,7 +56,7 @@ else
 #jp4/5
     cd $SRCS/$KERNEL_DIR
     make ARCH=arm64 O=$TEGRA_KERNEL_OUT tegra_defconfig
-    make ARCH=arm64 O=$TEGRA_KERNEL_OUT -j$(NPROC)
+    make ARCH=arm64 O=$TEGRA_KERNEL_OUT -j${NPROC}
     make ARCH=arm64 O=$TEGRA_KERNEL_OUT modules_install INSTALL_MOD_PATH=$KERNEL_MODULES_OUT
 fi
 
