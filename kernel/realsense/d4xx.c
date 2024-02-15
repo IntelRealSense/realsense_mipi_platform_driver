@@ -1034,7 +1034,7 @@ static void ds5_sensor_format_init(struct ds5_sensor *sensor)
 
 /* No locking needed for enumeration methods */
 static int ds5_sensor_enum_mbus_code(struct v4l2_subdev *sd,
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 15, 10)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 10)
 				     struct v4l2_subdev_pad_config *cfg,
 #else
 				     struct v4l2_subdev_state *v4l2_state,
@@ -1057,7 +1057,7 @@ static int ds5_sensor_enum_mbus_code(struct v4l2_subdev *sd,
 }
 
 static int ds5_sensor_enum_frame_size(struct v4l2_subdev *sd,
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 15, 10)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 10)
 				     struct v4l2_subdev_pad_config *cfg,
 #else
 				     struct v4l2_subdev_state *v4l2_state,
@@ -1785,7 +1785,7 @@ static int ds5_get_hwmc_status(struct ds5 *state)
 			break;
 
 			default:
-				dev_warn(&state->client->dev,
+				dev_dbg(&state->client->dev,
 					"%s(): HWMC failed, ret: %d, status: %x, error code: %d\n",
 					__func__, ret, status, errorCode);
 				ret = -EBADMSG;
@@ -1811,7 +1811,7 @@ static int ds5_get_hwmc(struct ds5 *state, unsigned char *data,
 	memset(data, 0, cmdDataLen);
 	ret = ds5_get_hwmc_status(state);
 	if (ret) {
-		dev_warn(&state->client->dev,
+		dev_dbg(&state->client->dev,
 			"%s(): HWMC status not clear, ret: %d\n",
 			__func__, ret);
 			return ret;
@@ -3711,7 +3711,6 @@ static int ds5_mux_enum_mbus_code(struct v4l2_subdev *sd,
 	/* Locks internally */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 10)
 	ret = ds5_sensor_enum_mbus_code(remote_sd, cfg, &tmp);
-				     struct v4l2_subdev_pad_config *cfg,
 #else
 	ret = ds5_sensor_enum_mbus_code(remote_sd, v4l2_state, &tmp);
 #endif
@@ -5017,7 +5016,7 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
 {
 	struct ds5 *state = container_of(inode->i_cdev, struct ds5, dfu_dev.ds5_cdev);
 #ifdef CONFIG_TEGRA_CAMERA_PLATFORM
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 15, 10)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 10)
 	struct i2c_adapter *parent = i2c_parent_is_i2c_adapter(
 			state->client->adapter);
 #endif
@@ -5034,7 +5033,7 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
 		devm_kfree(&state->client->dev, state->dfu_dev.dfu_msg);
 	state->dfu_dev.dfu_msg = NULL;
 #ifdef CONFIG_TEGRA_CAMERA_PLATFORM
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 15, 10)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 10)
 	/* get i2c controller and restore bus clock rate */
 	while (parent && i2c_parent_is_i2c_adapter(parent))
 		parent = i2c_parent_is_i2c_adapter(state->client->adapter);
@@ -5050,7 +5049,7 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
 #endif
 	/* Verify communication */
 	do {
-		msleep_range(1);
+		msleep_range(100);
 		ret = ds5_read(state, DS5_FW_VERSION, &state->fw_version);
 	} while (retry-- && ret != 0 );
 	if (!ret) {
