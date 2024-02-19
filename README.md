@@ -3,7 +3,7 @@
 # D457 MIPI on Jetson AGX Xavier
 The RealSense MIPI platform driver enables the user to control and stream RealSense 3D MIPI cameras.
 The system shall include:
-* Jetson platform (Currently Supported JetPack versions are: 5.0.2, 4.6.1)
+* Jetson platform (Currently Supported JetPack versions are: 6.0, 5.1.2, 5.0.2, 4.6.1)
 * RealSense De-Serialize board (https://store.intelrealsense.com/buy-intel-realsense-des457.html)
 * RS MIPI camera (e.g. https://store.intelrealsense.com/buy-intel-realsense-depth-camera-d457.html)
 
@@ -25,9 +25,26 @@ The developers can set up the source code with NVIDIA's Jetson git repositories 
 ./setup_workspace.sh [JetPack_version]
 ```
 
-Or download Jetson Linux source code tarball from [JetPack 5.1.2 BSP sources](https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2), [JetPack 5.0.2 BSP sources](https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/sources/public_sources.tbz2), [JetPack 4.6.1 BSP sources](https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2).
+Or download Jetson Linux source code tarball from 
+- [JetPack 6.0-DP BSP sources](https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/sources/public_sources.tbz2)
+- [JetPack 5.1.2 BSP sources](https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v4.1/sources/public_sources.tbz2) 
+- [JetPack 5.0.2 BSP sources](https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/sources/public_sources.tbz2) 
+- [JetPack 4.6.1 BSP sources](https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/sources/t186/public_sources.tbz2)
 
 ```
+# JetPack 6.0
+mkdir -p l4t-gcc/6.0
+cd ./l4t-gcc/6.0
+wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/toolchain/aarch64--glibc--stable-2022.08-1.tar.bz2 -O aarch64--glibc--stable-final.tar.bz2
+tar xf aarch64--glibc--stable-final.tar.bz2 --strip-components 1
+cd ../..
+wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/sources/public_sources.tbz2
+tar xjf public_sources.tbz2
+cd Linux_for_Tegra/source
+tar xjf kernel_src.tbz2
+tar xjf kernel_oot_modules_src.tbz2
+tar xjf nvidia_kernel_display_driver_source.tbz2
+
 # JetPack 5.1.2
 mkdir -p l4t-gcc/5.1.2
 cd ./l4t-gcc/5.1.2
@@ -43,14 +60,14 @@ tar xjf kernel_src.tbz2
 mkdir -p l4t-gcc/5.0.2
 cd ./l4t-gcc/5.0.2
 wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93 -O aarch64--glibc--stable-final.tar.gz
-tar xf aarch64--glibc--stable-final.tar.gz
+tar xf aarch64--glibc--stable-final.tar.gz --strip-components 1
 cd ../..
 wget https://developer.nvidia.com/embedded/l4t/r35_release_v1.0/sources/public_sources.tbz2
 tar xjf public_sources.tbz2
 cd Linux_for_Tegra/source/public
 tar xjf kernel_src.tbz2
 
-# or JetPack 4.6.1
+# JetPack 4.6.1
 mkdir -p l4t-gcc/4.6.1
 cd ./l4t-gcc/4.6.1
 wget http://releases.linaro.org/components/toolchain/binaries/7.3-2018.05/aarch64-linux-gnu/gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu.tar.xz
@@ -70,6 +87,8 @@ Apply D457 patches and build the kernel image, dtb and D457 driver.
 
 # or, if using direct download method
 # ./apply_patches_ext.sh [--one-cam | --dual-cam] ./Linux_for_tegra/source/public [JetPack_version]
+# for JP6.0, source path is ./Linux_for_tegra/source :
+# ./apply_patches_ext.sh ./Linux_for_tegra/source 6.0
 
 Note: The `--one-cam` and `--dual-cam` option applies only for JetPack 5.0.2,
 compatible with adapter: https://store.intelrealsense.com/buy-intel-realsense-des457.html.
@@ -91,6 +110,71 @@ sudo apt install build-essential bc flex bison
 
 Debian packages will be generated in `images` folder.
 
+## Install kernel and D457 driver to Jetson Orin
+<details>
+<summary>JP6.0 build results</summary>
+
+- kernel image (not modified): `images/6.0/rootfs/boot/Image`
+- dtb overlay: `images/6.0/rootfs/boot/tegra234-camera-d4xx-overlay.dtbo`
+- oot modules: `images/6.0/rootfs/lib/modules/5.15.122-tegra/extra`
+
+Following steps required:
+
+1.	Copy entire directory `images/6.0/rootfs/lib/modules/5.15.122-tegra/extra/` from host to `/lib/modules/5.15.122-tegra/extra/` on Orin
+2.	Copy `tegra234-camera-d4xx-overlay.dtbo` from host to `/boot/tegra234-camera-d4xx-overlay.dtbo` on Orin
+3.	Run  $ `sudo /opt/nvidia/jetson-io/jetson-io.py`
+    1.	Configure Jetson AGX CSI Connector
+    2.	Configure for compatible hardware
+    3.	Jetson RealSense Camera D457
+    4.	$ `sudo depmod`
+    5.	$ `echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf`
+4.	Reboot
+
+Copy them to the right places:
+
+```
+scp -r images/6.0/rootfs/boot/tegra234-camera-d4xx-overlay.dtbo nvidia@10.0.0.116:~/
+scp -r images/6.0/rootfs/lib/modules/5.15.122-tegra/extra nvidia@10.0.0.116:~/
+```
+
+on target:
+
+```
+sudo cp ~/tegra234-camera-d4xx-overlay.dtbo /boot/
+# backup:
+sudo tar -cjf /lib/modules/$(uname -r)/modules_$(uname -r)_extra.tar.bz2 /lib/modules/$(uname -r)/extra
+sudo cp -r ~/extra /lib/modules/$(uname -r)/
+```
+
+Enable d4xx overlay:
+
+With Jetson-IO tool:
+`sudo /opt/nvidia/jetson-io/jetson-io.py`
+
+1.	Configure Jetson AGX CSI Connector
+2.	Configure for compatible hardware
+3.	Jetson RealSense Camera D457
+
+With command line
+
+`sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Jetson RealSense Camera D457"`
+
+Expected:
+```
+nvidia@ubuntu:~$ sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Jetson RealSense Camera D457"
+Configuration saved to /boot/tegra234-camera-d4xx-overlay.dtbo.
+Reboot system to reconfigure.
+```
+Enable d4xx autoload:
+
+`echo "d4xx" | sudo tee /etc/modules-load.d/d4xx.conf`
+
+`sudo depmod`
+
+---
+
+</details>
+
 ## Install kernel and D457 driver to Jetson AGX Xavier
 
 1. Install the kernel and modules
@@ -101,7 +185,8 @@ Copy the Debian package `linux-image-5.10.104-d457_5.10.104-d457-1_arm64.deb` to
 
 1.2 If building with `build_all.sh`
 
-The necessary files are at
+The necessary files are:
+
 - kernel image `images/<JetPack_version>/arch/arm64/boot/Image`
 - dtb `images/<JetPack_version>/arch/arm64/boot/dts/nvidia/tegra194-p2888-0001-p2822-0000.dtb`, or `images/4.6.1/arch/arm64/boot/dts/tegra194-p2888-0001-p2822-0000.dtb` for JetPack 4.6.1.
 - D457 driver `images/<JetPack_version>/drivers/media/i2c/d4xx.ko`

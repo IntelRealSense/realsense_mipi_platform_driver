@@ -26,7 +26,7 @@ function DisplayNvidiaLicense {
 if [[ "$1" == "-h" ]]; then
     echo "setup_workspace.sh [JetPack_version]"
     echo "setup_workspace.sh -h"
-    echo "JetPack_version can be 4.6.1, 5.0.2, 5.1.2"
+    echo "JetPack_version can be 4.6.1, 5.0.2, 5.1.2, 6.0"
     exit 1
 fi
 
@@ -42,7 +42,10 @@ DisplayNvidiaLicense ""
 if [[ ! -d "$DEVDIR/l4t-gcc/$JETPACK_VERSION/bin/" ]]; then
     mkdir -p $DEVDIR/l4t-gcc/$JETPACK_VERSION
     cd $DEVDIR/l4t-gcc/$JETPACK_VERSION
-    if [[ "$JETPACK_VERSION" == "5.1.2" ]]; then
+    if [[ "$JETPACK_VERSION" == "6.0" ]]; then
+        wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v2.0/toolchain/aarch64--glibc--stable-2022.08-1.tar.bz2 -O aarch64--glibc--stable-final.tar.bz2
+        tar xf aarch64--glibc--stable-final.tar.bz2 --strip-components 1
+    elif [[ "$JETPACK_VERSION" == "5.1.2" ]]; then
         wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93 -O aarch64--glibc--stable-final.tar.gz
         tar xf aarch64--glibc--stable-final.tar.gz
     elif [[ "$JETPACK_VERSION" == "5.0.2" ]]; then
@@ -58,3 +61,15 @@ fi
 cd $DEVDIR
 ./scripts/source_sync_$JETPACK_VERSION.sh -t $L4T_VERSION -d sources_$JETPACK_VERSION
 
+# copy Makefile for jp6
+if [[ "$JETPACK_VERSION" == "6.0" ]]; then
+    cp ./nvidia-oot/Makefile ./sources_$JETPACK_VERSION/
+    cp ./kernel/kernel-jammy-src/Makefile ./sources_$JETPACK_VERSION/kernel
+fi
+
+# remove BUILD_NUMBER env dependency kernel vermagic
+if [[ "${JETPACK_VERSION}" == "4.6.1" ]]; then
+    sed -i s/'UTS_RELEASE=\$(KERNELRELEASE)-ab\$(BUILD_NUMBER)'/'UTS_RELEASE=\$(KERNELRELEASE)'/g ./sources_$JETPACK_VERSION/kernel/kernel-4.9/Makefile
+    sed -i 's/the-space :=/E =/g' ./sources_$JETPACK_VERSION/kernel/kernel-4.9/scripts/Kbuild.include
+    sed -i 's/the-space += /the-space = \$E \$E/g' ./sources_$JETPACK_VERSION/kernel/kernel-4.9/scripts/Kbuild.include
+fi

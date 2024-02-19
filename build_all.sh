@@ -9,15 +9,18 @@ if [[ "$1" == "-h" ]]; then
 fi
 
 export DEVDIR=$(cd `dirname $0` && pwd)
+NPROC=$(nproc)
 
 . $DEVDIR/scripts/setup-common "$1"
 
 SRCS="$DEVDIR/sources_$JETPACK_VERSION"
 if [[ -n "$2" ]]; then
-    SRCS="$2"
+    SRCS=$(realpath $2)
 fi
 
-if [[ "$JETPACK_VERSION" == "5.1.2" ]]; then
+if [[ "$JETPACK_VERSION" == "6.0" ]]; then
+    export CROSS_COMPILE=$DEVDIR/l4t-gcc/$JETPACK_VERSION/bin/aarch64-buildroot-linux-gnu-
+elif [[ "$JETPACK_VERSION" == "5.1.2" ]]; then
     export CROSS_COMPILE=$DEVDIR/l4t-gcc/$JETPACK_VERSION/bin/aarch64-buildroot-linux-gnu-
 elif [[ "$JETPACK_VERSION" == "5.0.2" ]]; then
     export CROSS_COMPILE=$DEVDIR/l4t-gcc/$JETPACK_VERSION/bin/aarch64-buildroot-linux-gnu-
@@ -32,8 +35,28 @@ export KERNEL_MODULES_OUT=$TEGRA_KERNEL_OUT/modules
 # Check if BUILD_NUMBER is set as it will add a postfix to the kernel name "vermagic" (normally it happens on CI who have BUILD_NUMBER defined)
 [[ -n "${BUILD_NUMBER}" ]] && echo "Warning! You have BUILD_NUMBER set to ${BUILD_NUMBER}, This will affect your vermagic"
 
-cd $SRCS/$KERNEL_DIR
+# Build jp6 out-of-tree modules
+# following: 
+# https://docs.nvidia.com/jetson/archives/r36.2/DeveloperGuide/SD/Kernel/KernelCustomization.html#building-the-jetson-linux-kernel
+if [[ "$JETPACK_VERSION" == "6.0" ]]; then
+    cd $SRCS
+    export KERNEL_HEADERS=$SRCS/kernel/kernel-jammy-src
+    ln -sf $TEGRA_KERNEL_OUT $SRCS/out
+    make ARCH=arm64 -C kernel
+    # export KERNEL_HEADERS=$SRCS/out
+    make ARCH=arm64 modules
+    make ARCH=arm64 dtbs
+    mkdir -p $TEGRA_KERNEL_OUT/rootfs/boot/dtb
+    cp $SRCS/nvidia-oot/device-tree/platform/generic-dts/dtbs/tegra234-p3737-0000+p3701-0000-nv.dtb $TEGRA_KERNEL_OUT/rootfs/boot/dtb/
+    cp $SRCS/nvidia-oot/device-tree/platform/generic-dts/dtbs/tegra234-camera-d4xx-overlay.dtbo $TEGRA_KERNEL_OUT/rootfs/boot/
+    export INSTALL_MOD_PATH=$TEGRA_KERNEL_OUT/rootfs/
+    make ARCH=arm64 install -C kernel
+    make ARCH=arm64 modules_install
+else
+#jp4/5
+    cd $SRCS/$KERNEL_DIR
+    make ARCH=arm64 O=$TEGRA_KERNEL_OUT tegra_defconfig
+    make ARCH=arm64 O=$TEGRA_KERNEL_OUT -j${NPROC}
+    make ARCH=arm64 O=$TEGRA_KERNEL_OUT modules_install INSTALL_MOD_PATH=$KERNEL_MODULES_OUT
+fi
 
-make ARCH=arm64 O=$TEGRA_KERNEL_OUT tegra_defconfig
-make ARCH=arm64 O=$TEGRA_KERNEL_OUT -j`nproc`
-make ARCH=arm64 O=$TEGRA_KERNEL_OUT modules_install INSTALL_MOD_PATH=$KERNEL_MODULES_OUT -j`nproc`
