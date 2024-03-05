@@ -5049,10 +5049,11 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
 #endif
 	/* Verify communication */
 	do {
-		msleep_range(100);
 		ret = ds5_read(state, DS5_FW_VERSION, &state->fw_version);
+		if (ret)
+			msleep_range(10);
 	} while (retry-- && ret != 0 );
-	if (!ret) {
+	if (ret) {
 		dev_warn(&state->client->dev,
 			"%s(): no communication with d4xx\n", __func__);
 		return ret;
