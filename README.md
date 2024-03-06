@@ -135,6 +135,8 @@ Copy them to the right places:
 ```
 scp -r images/6.0/rootfs/boot/tegra234-camera-d4xx-overlay.dtbo nvidia@10.0.0.116:~/
 scp -r images/6.0/rootfs/lib/modules/5.15.122-tegra/extra nvidia@10.0.0.116:~/
+# Kernel Image with SENSOR_HID support for RealSense USB cameras with IMU
+scp -r images/6.0/rootfs/boot/Image nvidia@10.0.0.116:~/
 ```
 
 on target:
@@ -144,6 +146,9 @@ sudo cp ~/tegra234-camera-d4xx-overlay.dtbo /boot/
 # backup:
 sudo tar -cjf /lib/modules/$(uname -r)/modules_$(uname -r)_extra.tar.bz2 /lib/modules/$(uname -r)/extra
 sudo cp -r ~/extra /lib/modules/$(uname -r)/
+# backup kernel (better to have additional boot entry in extlinux.conf)
+sudo cp /boot/Image /boot/Image.orig
+sudo cp Image /boot/Image
 ```
 
 Enable d4xx overlay:
