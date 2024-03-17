@@ -863,6 +863,16 @@ static const struct ds5_resolution ds5_size_imu[] = {
 	},
 };
 
+// 32 bit IMU introduced with IMU sensitivity attribute Firmware
+static const struct ds5_resolution ds5_size_imu_extended[] = {
+	{
+	.width = 38,
+	.height = 1,
+	.framerates = ds5_imu_framerates,
+	.n_framerates = ARRAY_SIZE(ds5_imu_framerates),
+	},
+};
+
 static const struct ds5_format ds5_depth_formats_d43x[] = {
 	{
 		// TODO: 0x31 is replaced with 0x1e since it caused low FPS in Jetson.
@@ -956,6 +966,16 @@ static const struct ds5_format ds5_imu_formats[] = {
 		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
 		.n_resolutions = ARRAY_SIZE(ds5_size_imu),
 		.resolutions = ds5_size_imu,
+	},
+};
+
+static const struct ds5_format ds5_imu_formats_extended[] = {
+	{
+		/* First format: default */
+		.data_type = GMSL_CSI_DT_RAW_8,	/* IMU DT */
+		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
+		.n_resolutions = ARRAY_SIZE(ds5_size_imu_extended),
+		.resolutions = ds5_size_imu_extended,
 	},
 };
 
@@ -4594,7 +4614,15 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
 	sensor->mux_pad = DS5_MUX_PAD_RGB;
 
 	sensor = &state->imu.sensor;
-	sensor->formats = ds5_imu_formats;
+
+	/* For fimware version starting from: 5.16,
+	   IMU will have 32bit axis values.
+ 	   5.16.x.y = firmware version: 0x0510 */
+	if (state->fw_version >= 0x510)
+		sensor->formats = ds5_imu_formats_extended;
+	else
+		sensor->formats = ds5_imu_formats;
+	
 	sensor->n_formats = 1;
 	sensor->mux_pad = DS5_MUX_PAD_IMU;
 
