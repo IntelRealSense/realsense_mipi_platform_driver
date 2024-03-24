@@ -2534,8 +2534,10 @@ static int ds5_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 			u16 dataLen = 0;
 			u16 bufLen = ctrl->dims[0];
 			ret = ds5_get_hwmc(state, data,	bufLen, &dataLen);
-			if (ret)
+			if (ret) {
+				ret = 0; // LRS doesn't expect to get errors with HWMC
 				break;
+			}
 			/* This is needed for librealsense, to align there code with UVC,
 		 	 * last word is length - 4 bytes header length */
 			dataLen -= 4;
@@ -5637,4 +5639,4 @@ MODULE_AUTHOR("Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
 				Shikun Ding <shikun.ding@intel.com>");
 MODULE_AUTHOR("Dmitry Perchanov <dmitry.perchanov@intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION("1.0.1.20");
+MODULE_VERSION("1.0.1.21");
