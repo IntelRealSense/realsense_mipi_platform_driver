@@ -1,4 +1,4 @@
-name: C/C++ CI
+name: Build JP 5.1.2
 
 on:
   push:
@@ -16,8 +16,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: setup workspace
-      run: yes | ./setup_workspace.sh 5.0.2
+      run: yes | ./setup_workspace.sh 5.1.2
     - name: apply patches
-      run: git config --global user.email "builder@example.com" && git config --global user.name "builder" && ./apply_patches.sh apply 5.0.2
+      run: git config --global user.email "builder@example.com" && git config --global user.name "builder" && ./apply_patches.sh apply 5.1.2
     - name: build
-      run: ./build_all.sh 5.0.2
+      run: ./build_all.sh 5.1.2
