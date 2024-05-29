@@ -431,7 +431,7 @@ struct ds5_dfu_dev {
 	enum dfu_state dfu_state_flag;
 	unsigned char *dfu_msg;
 	u16 msg_write_once;
-	unsigned char init_v4l_f;
+	// unsigned char init_v4l_f; // need refactoring
 	u32 bus_clk_rate;
 };
 
@@ -4824,18 +4824,33 @@ static ssize_t ds5_dfu_device_read(struct file *flip,
 {
 	struct ds5 *state = flip->private_data;
 	u16 fw_ver, fw_build;
-	char msg[32];
+	char msg[64];
 	int ret = 0;
+	struct __fw_status f = {0};
 
 	if (mutex_lock_interruptible(&state->lock))
 		return -ERESTARTSYS;
-	ret |= ds5_read(state, DS5_FW_VERSION, &fw_ver);
-	ret |= ds5_read(state, DS5_FW_BUILD, &fw_build);
-	if (ret < 0)
-		goto e_dfu_read_failed;
-	snprintf(msg, sizeof(msg) ,"DFU info: \tver:  %d.%d.%d.%d\n",
+	if (state->dfu_dev.dfu_state_flag == DS5_DFU_RECOVERY) {
+		/* Read device info in recovery mode */
+		ret = ds5_dfu_detach(state);
+		if (ret < 0)
+			goto e_dfu_read_failed;
+		ret = ds5_dfu_get_dev_info(state, &f);
+		if (ret < 0)
+			goto e_dfu_read_failed;
+		snprintf(msg, sizeof(msg) ,
+			 "DFU info: \trecovery:  %02x%02x%02x%02x%02x%02x\n",
+			 f.ivcamSerialNum[0], f.ivcamSerialNum[1], f.ivcamSerialNum[2],
+			 f.ivcamSerialNum[3], f.ivcamSerialNum[4], f.ivcamSerialNum[5] );
+	} else {
+		ret |= ds5_read(state, DS5_FW_VERSION, &fw_ver);
+		ret |= ds5_read(state, DS5_FW_BUILD, &fw_build);
+		if (ret < 0)
+			goto e_dfu_read_failed;
+		snprintf(msg, sizeof(msg) ,"DFU info: \tver:  %d.%d.%d.%d\n",
 			(fw_ver >> 8) & 0xff, fw_ver & 0xff,
 			(fw_build >> 8) & 0xff, fw_build & 0xff);
+	}
 
 	if (copy_to_user(buffer, msg, strlen(msg)))
 		ret = -EFAULT;
@@ -4877,7 +4892,8 @@ static ssize_t ds5_dfu_device_write(struct file *flip,
 			goto dfu_write_error;
 		}
 		state->dfu_dev.dfu_state_flag = DS5_DFU_IN_PROGRESS;
-		state->dfu_dev.init_v4l_f = 1;
+	/* find a better way to reinitialize driver from recovery to operational */
+		// state->dfu_dev.init_v4l_f = 1;
 	/* fallthrough - procceed to download */
 	__attribute__((__fallthrough__));
 	case DS5_DFU_IN_PROGRESS: {
@@ -4915,7 +4931,8 @@ static ssize_t ds5_dfu_device_write(struct file *flip,
 				goto dfu_write_error;
 			state->dfu_dev.dfu_state_flag = DS5_DFU_DONE;
 		}
-		dev_notice(&state->client->dev, "%s(): DFU block (%d) bytes written\n",
+		if (len)
+			dev_notice(&state->client->dev, "%s(): DFU block (%d) bytes written\n",
 				__func__, (int)len);
 		break;
 	}
@@ -5044,10 +5061,12 @@ static int ds5_dfu_device_release(struct inode *inode, struct file *file)
 	state->dfu_dev.device_open_count--;
 	if (state->dfu_dev.dfu_state_flag != DS5_DFU_RECOVERY)
 		state->dfu_dev.dfu_state_flag = DS5_DFU_IDLE;
-	if (state->dfu_dev.dfu_state_flag == DS5_DFU_DONE
-			&& state->dfu_dev.init_v4l_f)
-		ds5_v4l_init(state->client, state);
-	state->dfu_dev.init_v4l_f = 0;
+	/* We disable this section as it has no effect when device in operational
+	   mode and has not enough effect when device in recovery mode */
+	// if (state->dfu_dev.dfu_state_flag == DS5_DFU_DONE
+	// 		&& state->dfu_dev.init_v4l_f)
+	// 	ds5_v4l_init(state->client, state);
+	// state->dfu_dev.init_v4l_f = 0;
 	if (state->dfu_dev.dfu_msg)
 		devm_kfree(&state->client->dev, state->dfu_dev.dfu_msg);
 	state->dfu_dev.dfu_msg = NULL;
@@ -5478,6 +5497,8 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 	if (rec_state == 0x201) {
 		dev_info(&c->dev, "%s(): D4XX recovery state\n", __func__);
 		state->dfu_dev.dfu_state_flag = DS5_DFU_RECOVERY;
+		/* Override I2C drvdata with state for use in remove function */
+		i2c_set_clientdata(c, state);
 		return 0;
 	}
 
@@ -5492,8 +5513,6 @@ static int ds5_probe(struct i2c_client *c, const struct i2c_device_id *id)
 	ret = ds5_v4l_init(c, state);
 	if (ret < 0)
 		goto e_chardev;
-	/* Override I2C drvdata */
-	/* i2c_set_clientdata(c, state); */
 
 /*	regulators? clocks?
  *	devm_regulator_bulk_get(&c->dev, DS5_N_SUPPLIES, state->supplies);
@@ -5530,10 +5549,15 @@ e_regulator:
 
 static int ds5_remove(struct i2c_client *c)
 {
-	struct ds5 *state = container_of(i2c_get_clientdata(c), struct ds5, mux.sd.subdev);
-
 #ifdef CONFIG_VIDEO_D4XX_SERDES
 	int i, ret;
+#endif
+	struct ds5 *state = container_of(i2c_get_clientdata(c), struct ds5, mux.sd.subdev);
+	if (state && !state->mux.sd.subdev.v4l2_dev) {
+		state = i2c_get_clientdata(c);
+	}
+
+#ifdef CONFIG_VIDEO_D4XX_SERDES
 	for (i = 0; i < MAX_DEV_NUM; i++) {
 		if (serdes_inited[i] && serdes_inited[i] == state) {
 			serdes_inited[i] = NULL;
@@ -5578,14 +5602,16 @@ static int ds5_remove(struct i2c_client *c)
 		regulator_disable(state->vcc);
 //	gpio_free(state->pwdn_gpio);
 
-	if (state->dfu_dev.dfu_state_flag != DS5_DFU_RECOVERY) {
+	if (state->dfu_dev.dfu_state_flag != DS5_DFU_RECOVERY && \
+		 state->mux.sd.subdev.v4l2_dev) {
 #ifdef CONFIG_SYSFS
 		sysfs_remove_group(&c->dev.kobj, &ds5_attr_group);
 #endif
 		ds5_mux_remove(state);
-		if (state->is_depth) {
-			ds5_chrdev_remove(state);
-		}
+	}
+
+	if (state->is_depth && state->dfu_dev.ds5_class) {
+		ds5_chrdev_remove(state);
 	}
 
 	return 0;
@@ -5628,4 +5654,4 @@ MODULE_AUTHOR("Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
 				Shikun Ding <shikun.ding@intel.com>");
 MODULE_AUTHOR("Dmitry Perchanov <dmitry.perchanov@intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION("1.0.1.22");
+MODULE_VERSION("1.0.1.23");
