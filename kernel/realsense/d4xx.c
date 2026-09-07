@@ -1661,6 +1661,7 @@ static const struct ds5_resolution d58x_depth_sizes[] = {
 	DS5_RES(640, 480, ds5_framerate_to_90)
 	DS5_RES(480, 270, ds5_framerate_to_90)
 	DS5_RES(424, 240, ds5_framerate_to_90)
+	DS5_RES(256, 144, ds5_framerate_to_90)
 };
 
 static const struct ds5_resolution d58x_y8_sizes[] = {
@@ -1671,6 +1672,7 @@ static const struct ds5_resolution d58x_y8_sizes[] = {
 	DS5_RES(640, 480, ds5_framerate_to_90)
 	DS5_RES(480, 270, ds5_framerate_to_90)
 	DS5_RES(424, 240, ds5_framerate_to_90)
+	DS5_RES(256, 144, ds5_framerate_to_90)
 };
 
 static const struct ds5_resolution d58x_calibration_sizes[] = {
