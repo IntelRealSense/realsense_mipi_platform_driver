@@ -1,0 +1,138 @@
+Subject: [PATCH] Allow board-specific MAX96712 CSI output rates
+
+Select the deserializer-to-host lane rate independently of the camera
+input rate. Preserve legacy defaults when the DT property is absent.
+For an explicit rate above 1.5 Gbps/lane, arm automatic initial deskew
+and periodic deskew when the board enables a continuous clock.
+
+---
+diff --git a/drivers/media/i2c/max96712.c b/drivers/media/i2c/max96712.c
+--- a/drivers/media/i2c/max96712.c
++++ b/drivers/media/i2c/max96712.c
+@@ -53,6 +53,14 @@
+ #define MAX96712_BACKTOP25_PHY1_SW_OVRR_OFFS 0x5
+ #define MAX96712_BACKTOP25_2500Mbps 0x19
+ #define MAX96712_BACKTOP25_1300Mbps 0xd
++
++/* Deserializer-to-host D-PHY rate, independent of camera CSI/GMSL rates. */
++#define MAX96712_CSI_RATE_STEP_MBPS 100U
++#define MAX96712_CSI_RATE_MAX_MBPS 2500U
++#define MAX96712_CSI_DESKEW_THRESHOLD_MBPS 1500U
++#define MAX96712_DESKEW_INIT(phy) (0x0903 + (phy) * 0x40)
++#define MAX96712_DESKEW_PER(phy) (0x0904 + (phy) * 0x40)
++#define MAX96712_DESKEW_ENABLE BIT(7)
+ 
+ #define MAX96712_MIPI_TX_EXT0_ADDR 0x800
+ #define MAX96712_MIPI_TX_EXT1_ADDR 0x801
+@@ -184,6 +192,8 @@
+ 	u8 vc_remap[MAX96712_MAX_LINKS][MAX96712_MAX_SER_VCS];
+ 	bool force_clk0;
+ 	int lane_cnt;
++	u32 csi_lane_rate_mbps;
++	bool csi_lane_rate_override;
+ 	bool fangzhu_fg12_reverse_lane_polarity;
+ 	bool fangzhu_fg12_poc_enable;
+ };
+@@ -594,6 +604,26 @@
+ 			of_property_read_bool(np, "fangzhu,fg12-reverse-lane-polarity");
+ 		priv->fangzhu_fg12_poc_enable =
+ 			of_property_read_bool(np, "fangzhu,fg12-poc-enable");
++	}
++
++	/* Keep the existing defaults unless this board selects an output rate. */
++	priv->csi_lane_rate_mbps = MAX96712_CSI_RATE_STEP_MBPS *
++		((priv->lane_cnt == 4) ? MAX96712_BACKTOP25_1300Mbps :
++		 MAX96712_BACKTOP25_2500Mbps);
++	priv->csi_lane_rate_override =
++		np && of_find_property(np, "csi-lane-rate-mbps", NULL);
++	if (priv->csi_lane_rate_override) {
++		err = of_property_read_u32(np, "csi-lane-rate-mbps",
++					   &priv->csi_lane_rate_mbps);
++		if (err)
++			return err;
++		if (priv->csi_lane_rate_mbps < MAX96712_CSI_RATE_STEP_MBPS ||
++		    priv->csi_lane_rate_mbps > MAX96712_CSI_RATE_MAX_MBPS ||
++		    priv->csi_lane_rate_mbps % MAX96712_CSI_RATE_STEP_MBPS) {
++			dev_err(&client->dev,
++				"csi-lane-rate-mbps must be 100..2500 in 100 Mbps steps\n");
++			return -EINVAL;
++		}
+ 	}
+ 
+ 	err = max96712_parse_vc_remap(priv, np);
+@@ -1103,6 +1133,34 @@
+ 	return err;
+ }
+ 
++static int max96712_setup_output_deskew(struct max96712 *priv)
++{
++	u8 initial, periodic;
++	int phy, err;
++
++	/* Leave deskew settings on legacy boards unchanged. */
++	if (!priv->csi_lane_rate_override)
++		return 0;
++
++	initial = priv->csi_lane_rate_mbps > MAX96712_CSI_DESKEW_THRESHOLD_MBPS ?
++		MAX96712_DESKEW_ENABLE : 0;
++	/* Periodic calibration requires the clock lane to remain in HS mode. */
++	periodic = priv->force_clk0 ? initial : 0;
++	/* This driver routes port A through PHY0/PHY1; PHY2/PHY3 stay disabled. */
++	for (phy = 0; phy < 2; phy++) {
++		err = regmap_update_bits(priv->regmap, MAX96712_DESKEW_INIT(phy),
++					 MAX96712_DESKEW_ENABLE, initial);
++		if (err)
++			return err;
++		err = regmap_update_bits(priv->regmap, MAX96712_DESKEW_PER(phy),
++					 MAX96712_DESKEW_ENABLE, periodic);
++		if (err)
++			return err;
++	}
++
++	return 0;
++}
++
+ int max96712_init_settings(struct device *dev)
+ {
+ 	int err = 0;
+@@ -1117,8 +1175,7 @@
+ 		{MAX96712_VIDEO_PIPE_EN_ADDR, 0x00}, //0xF4, Disable all pipes for now
+ 	};
+ 
+-	/* 1300Mbps per lane for 4 lanes, 2500Mbps per lane for 2 lanes */
+-	uint8_t lane_rate = (priv->lane_cnt == 4) ? MAX96712_BACKTOP25_1300Mbps : MAX96712_BACKTOP25_2500Mbps;
++	uint8_t lane_rate = priv->csi_lane_rate_mbps / MAX96712_CSI_RATE_STEP_MBPS;
+ 
+ 	struct reg_pair map_phy_opt[] =
+ 	{
+@@ -1150,9 +1207,16 @@
+ 
+ 	mutex_lock(&priv->lock);
+ 
+-	err |= max96712_set_registers(priv, map_pipe_opt, ARRAY_SIZE(map_pipe_opt));
+-	err |= max96712_set_registers(priv, map_phy_opt, ARRAY_SIZE(map_phy_opt));
+-
++	err = max96712_set_registers(priv, map_pipe_opt, ARRAY_SIZE(map_pipe_opt));
++	if (err)
++		goto out_clear_mapping;
++	/* Arm calibration before the PHYs and CSI output are enabled. */
++	err = max96712_setup_output_deskew(priv);
++	if (err)
++		goto out_clear_mapping;
++	err = max96712_set_registers(priv, map_phy_opt, ARRAY_SIZE(map_phy_opt));
++
++out_clear_mapping:
+ 	/*
+ 	 * map_pipe_opt just disabled every video pipe (PIPE_EN = 0), so any
+ 	 * previously written multi-VC mapping is now void. Forget the
+@@ -1162,6 +1226,10 @@
+ 	 * left intact, matching how the dynamic allocation state persists here.
+ 	 */
+ 	memset(priv->multi_vc_configured, 0, sizeof(priv->multi_vc_configured));
++
++	if (!err)
++		dev_info(dev, "CSI output: %u Mbps/lane, %d lanes\n",
++			 priv->csi_lane_rate_mbps, priv->lane_cnt);
+ 
+ 	mutex_unlock(&priv->lock);
+ 
