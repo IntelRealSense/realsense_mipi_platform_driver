@@ -18,10 +18,12 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/crc32.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/kernel.h>
+#include <linux/list.h>
 #include <linux/media.h>
 #include <linux/module.h>
 #include <linux/of_gpio.h>
@@ -146,6 +148,78 @@ struct ser_interface {
 #define DS5_DEVICE_TYPE_D45X		6
 #define DS5_DEVICE_TYPE_D43X		5
 #define DS5_DEVICE_TYPE_UNKNOWN		0
+
+/* Camera-resident format descriptor: a little-endian blob in a read-only
+ * register aperture, read host-native like every other FW register here.
+ * Every TOC entry carries its record stride, so a driver built against
+ * older records strides past fields newer FW appends. */
+#define RS_DESC_BASE            0x6000  /* FW: REG_BASE_MIPI_FORMAT_DESC (I2cSlaveHostIf.h) */
+#define RS_DESC_MAX_SIZE        2048
+#define RS_DESC_CHUNK           256
+#define RS_DESC_MAGIC           0x53445352      /* "RSDS" */
+#define RS_DESC_VER_MAJOR       1
+
+struct rs_desc_header {
+	u32 magic;
+	u16 header_size;       /* offset of the TOC */
+	u16 total_size;
+	u8 ver_major;          /* bump = incompatible layout */
+	u8 ver_minor;          /* bump = fields appended */
+	u8 n_tables;
+	u8 rsvd;
+	u32 crc32;             /* CRC-32 (zlib) over [header_size, total_size) */
+} __packed;
+
+struct rs_desc_toc {
+	u16 type;
+	u16 entry_size;
+	u16 n_entries;
+	u16 offset;
+} __packed;
+
+enum rs_desc_table {
+	RS_DESC_T_STREAM = 1,
+	RS_DESC_T_FORMAT,
+	RS_DESC_T_RESOLUTION,
+	RS_DESC_T_FRAMERATE,    /* flat u16 pool */
+	RS_DESC_T_MAX = RS_DESC_T_FRAMERATE,
+};
+
+struct rs_desc_stream {
+	u16 stream_id;         /* DS5_STREAM_*: the FW's own ids */
+	u16 fmt_first;         /* range into the FORMAT table */
+	u16 fmt_count;
+} __packed;
+
+struct rs_desc_format {
+	u16 pixfmt_id;         /* enum rs_pixfmt, never a Linux mbus code */
+	u8 src_data_type;      /* written to the stream DT register */
+	u8 wire_data_type;     /* CSI DT on the wire; == src when not overridden */
+	u16 res_first;         /* range into the RESOLUTION table */
+	u16 res_count;
+} __packed;
+
+
+struct rs_desc_resolution {
+	u16 width;
+	u16 height;
+	u16 fps_first;         /* range into the FRAMERATE pool */
+	u16 fps_count;
+} __packed;
+
+/* Pixel-format registry shared with firmware. */
+enum rs_pixfmt {
+	RS_PIXFMT_Z16 = 1,
+	RS_PIXFMT_Y8,
+	RS_PIXFMT_Y8I,
+	RS_PIXFMT_Y12I,
+	RS_PIXFMT_Y16I,
+	RS_PIXFMT_UYVY,
+	RS_PIXFMT_NV12_FLAT,
+	RS_PIXFMT_GRBG16,
+	RS_PIXFMT_SBGGR10P,
+	RS_PIXFMT_IMU,
+};
 /*
  * FW version major byte identifies the family in recovery, where DEVICE_TYPE
  * (0x0310) is not served: D58x reports 7 or 8, D4xx reports 5.
@@ -659,6 +733,14 @@ struct ds5 {
 	struct ds5_dev *ds5_dev; /* pointer to DS5 device struct */
 };
 
+enum ds5_desc_state {
+	DS5_DESC_UNKNOWN,
+	DS5_DESC_READY,
+	DS5_DESC_ABSENT,        /* none served, or rejected: static tables in use */
+};
+
+struct ds5_desc;
+
 struct ds5_dev {
 	struct mutex lock;
 
@@ -681,6 +763,12 @@ struct ds5_dev {
 	*/
 	u16 cached_device_type;
 	u16 d585_product_id;
+
+	/* Camera-resident format descriptor, parsed once per camera. Written
+	 * under lock before any subdev registers; the tables it points at live
+	 * until module exit, so stream-time readers need no lock. */
+	struct ds5_desc *desc;
+	enum ds5_desc_state desc_state;
 
 	/* Timestamp (jiffies) of last completed HW reset.
 	* Used to enforce DS5_HW_RESET_COOLDOWN_MS between consecutive resets
@@ -1036,6 +1124,495 @@ static int ds5_raw_read(struct ds5 *state, u16 reg, void *val, size_t val_len)
 			__func__, DS5_I2C_RETRY_COUNT, reg, (int)val_len, ret);
 
 	return ret;
+}
+
+/* Camera-resident format descriptor: fetch, validate, parse. */
+
+struct ds5_desc_stream {
+	struct ds5_format *formats;
+	unsigned int n_formats;
+};
+
+/* Wire stream ids are the FW's (depth 0, RGB 1, IMU 2, IR 4); slot 3 is unused. */
+static const u8 ds5_desc_stream_ids[] = {
+	DS5_STREAM_DEPTH, DS5_STREAM_RGB, DS5_STREAM_IMU, DS5_STREAM_IR,
+};
+#define DS5_DESC_STREAM_SLOTS	(DS5_STREAM_IR + 1)
+
+struct ds5_desc {
+	struct list_head node;
+	struct ds5_desc_stream streams[DS5_DESC_STREAM_SLOTS];
+	u16 *framerates;
+	u32 crc;
+	u8 ver_major;
+	u8 ver_minor;
+};
+
+/* A sibling subdev can outlive the primary that owns the slot (sysfs unbind),
+ * so parsed tables are never freed while the module is loaded. */
+static LIST_HEAD(ds5_desc_all);
+static DEFINE_MUTEX(ds5_desc_all_lock);
+
+static const struct {
+	u16 pixfmt;
+	u32 mbus_code;
+} ds5_desc_pixfmt_map[] = {
+	{ RS_PIXFMT_Z16,        MEDIA_BUS_FMT_UYVY8_1X16 },
+	{ RS_PIXFMT_Y8,         MEDIA_BUS_FMT_Y8_1X8 },
+	{ RS_PIXFMT_Y8I,        MEDIA_BUS_FMT_VYUY8_1X16 },
+	{ RS_PIXFMT_Y12I,       MEDIA_BUS_FMT_RGB888_1X24 },
+	{ RS_PIXFMT_Y16I,       MEDIA_BUS_FMT_ARGB8888_1X32 },
+	{ RS_PIXFMT_UYVY,       MEDIA_BUS_FMT_YUYV8_1X16 },
+	{ RS_PIXFMT_NV12_FLAT,  MEDIA_BUS_FMT_RS_NV12_FLAT_1X8 },
+	{ RS_PIXFMT_GRBG16,     MEDIA_BUS_FMT_SGRBG16_1X16 },
+	{ RS_PIXFMT_SBGGR10P,   MEDIA_BUS_FMT_RS_SBGGR10P_1X8 },
+	{ RS_PIXFMT_IMU,        MEDIA_BUS_FMT_Y8_1X8 },
+};
+
+/* Legacy FW answers an unmapped register with one 16-bit word and its I2C
+ * slave wedges if the master clocks past it, so the aperture is probed a
+ * word at a time until the magic proves the whole blob is being served. */
+static bool ds5_desc_probe_magic(struct ds5 *state)
+{
+	u16 word;
+	unsigned int i;
+
+	for (i = 0; i < sizeof(u32) / sizeof(word); i++) {
+		if (regmap_raw_read(state->regmap, RS_DESC_BASE + i * sizeof(word),
+				    &word, sizeof(word)))
+			return false;
+		if (word != ((RS_DESC_MAGIC >> (16 * i)) & 0xffff))
+			return false;
+	}
+	return true;
+}
+
+static bool ds5_desc_stream_valid(u16 id)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(ds5_desc_stream_ids); i++)
+		if (ds5_desc_stream_ids[i] == id)
+			return true;
+	return false;
+}
+
+static u32 ds5_desc_mbus_code(u16 pixfmt)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(ds5_desc_pixfmt_map); i++)
+		if (ds5_desc_pixfmt_map[i].pixfmt == pixfmt)
+			return ds5_desc_pixfmt_map[i].mbus_code;
+	return 0;
+}
+
+static void ds5_desc_free(struct ds5_desc *desc)
+{
+	unsigned int s, f;
+
+	if (!desc)
+		return;
+	for (s = 0; s < DS5_DESC_STREAM_SLOTS; s++) {
+		for (f = 0; f < desc->streams[s].n_formats; f++)
+			kfree(desc->streams[s].formats[f].resolutions);
+		kfree(desc->streams[s].formats);
+	}
+	kfree(desc->framerates);
+	kfree(desc);
+}
+
+/* The blob's stride may be shorter (older FW: missing fields read as 0)
+ * or longer (newer FW: extra fields skipped) than the driver's record. */
+static void ds5_desc_rec(const u8 *blob, const struct rs_desc_toc *toc,
+			 unsigned int i, void *dst, size_t dst_size)
+{
+	size_t stride = toc->entry_size;
+
+	memset(dst, 0, dst_size);
+	memcpy(dst, blob + toc->offset + i * stride,
+		   min(dst_size, stride));
+}
+
+static int ds5_desc_read_blob(struct ds5 *state, u8 **blob_out)
+{
+	struct rs_desc_header header;
+	size_t header_size, total, off;
+	u8 *blob;
+	u32 crc;
+	int ret;
+
+	if (!ds5_desc_probe_magic(state))
+		return -ENODEV;
+	ret = regmap_raw_read(state->regmap, RS_DESC_BASE, &header, sizeof(header));
+	if (ret < 0)
+		return ret;
+	if (header.magic != RS_DESC_MAGIC)
+		return -ENODEV;
+	if (header.ver_major != RS_DESC_VER_MAJOR) {
+		dev_warn(&state->client->dev,
+			 "format descriptor v%u.%u unsupported (driver v%u)\n",
+			 header.ver_major, header.ver_minor, RS_DESC_VER_MAJOR);
+		return -EPROTONOSUPPORT;
+	}
+	header_size = header.header_size;
+	total = header.total_size;
+	if (header_size < sizeof(header) || total > RS_DESC_MAX_SIZE ||
+	    total < header_size + header.n_tables * sizeof(struct rs_desc_toc)) {
+		dev_warn(&state->client->dev,
+			 "format descriptor: bad sizes (header %zu, total %zu, %u tables)\n",
+			 header_size, total, header.n_tables);
+		return -EINVAL;
+	}
+
+	blob = kzalloc(total, GFP_KERNEL);
+	if (!blob)
+		return -ENOMEM;
+	memcpy(blob, &header, sizeof(header));
+	for (off = sizeof(header); off < total; off += RS_DESC_CHUNK) {
+		ret = ds5_raw_read(state, (u16)(RS_DESC_BASE + off), blob + off,
+				   min_t(size_t, RS_DESC_CHUNK, total - off));
+		if (ret < 0)
+			goto err;
+	}
+	crc = crc32_le(~0, blob + header_size, total - header_size) ^ ~0;
+	if (crc != header.crc32) {
+		dev_warn(&state->client->dev,
+			 "format descriptor CRC 0x%08x, expected 0x%08x\n",
+			 crc, header.crc32);
+		ret = -EBADMSG;
+		goto err;
+	}
+	*blob_out = blob;
+	return 0;
+err:
+	kfree(blob);
+	return ret;
+}
+
+static int ds5_desc_find_tables(struct ds5 *state, const u8 *blob,
+				const struct rs_desc_toc **tabs)
+{
+	const struct rs_desc_header *header = (const void *)blob;
+	const struct rs_desc_toc *toc =
+		(const void *)(blob + header->header_size);
+	u32 total = header->total_size;
+	unsigned int i;
+
+	memset(tabs, 0, sizeof(*tabs) * (RS_DESC_T_MAX + 1));
+	for (i = 0; i < header->n_tables; i++, toc++) {
+		u32 type = toc->type;
+		u32 stride = toc->entry_size;
+		u32 n = toc->n_entries;
+		u32 off = toc->offset;
+
+		if (!stride || !n || off + n * stride > total) {
+			dev_warn(&state->client->dev,
+				 "format descriptor: toc[%u] type %u: %u x %u @ %u exceeds %u\n",
+				 i, type, n, stride, off, total);
+			return -EINVAL;
+		}
+		/* Table types this driver predates are skipped by contract. */
+		if (type == 0 || type > RS_DESC_T_MAX)
+			continue;
+		if (tabs[type]) {
+			dev_warn(&state->client->dev,
+				 "format descriptor: duplicate table type %u\n", type);
+			return -EINVAL;
+		}
+		tabs[type] = toc;
+	}
+	for (i = RS_DESC_T_STREAM; i <= RS_DESC_T_MAX; i++) {
+		if (!tabs[i]) {
+			dev_warn(&state->client->dev,
+				 "format descriptor: table type %u missing\n", i);
+			return -EINVAL;
+		}
+	}
+	if (tabs[RS_DESC_T_FRAMERATE]->entry_size != sizeof(u16)) {
+		dev_warn(&state->client->dev, "format descriptor: framerate stride %u != 2\n",
+			 tabs[RS_DESC_T_FRAMERATE]->entry_size);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int ds5_desc_parse_framerates(struct ds5 *state, struct ds5_desc *desc,
+					 const u8 *blob, const struct rs_desc_toc *toc,
+					 unsigned int *n_out)
+{
+	unsigned int n = toc->n_entries, i;
+	const u8 *src = blob + toc->offset;
+
+	desc->framerates = kcalloc(n, sizeof(u16), GFP_KERNEL);
+	if (!desc->framerates)
+		return -ENOMEM;
+	for (i = 0; i < n; i++) {
+		u16 v;
+
+		memcpy(&v, src + i * sizeof(v), sizeof(v));
+		desc->framerates[i] = v;
+		if (!desc->framerates[i]) {
+			dev_warn(&state->client->dev, "format descriptor: framerate[%u] is 0\n", i);
+			return -EINVAL;
+		}
+	}
+	*n_out = n;
+	return 0;
+}
+
+static struct ds5_resolution *
+ds5_desc_build_resolutions(struct ds5 *state, const struct ds5_desc *desc,
+			   unsigned int n_fps, const u8 *blob,
+			   const struct rs_desc_toc *toc,
+			   unsigned int first, unsigned int count)
+{
+	struct ds5_resolution *res;
+	unsigned int i;
+
+	if (!count || first + count > toc->n_entries) {
+		dev_warn(&state->client->dev,
+			 "format descriptor: resolution range %u+%u exceeds %u\n",
+			 first, count, toc->n_entries);
+		return ERR_PTR(-EINVAL);
+	}
+	res = kcalloc(count, sizeof(*res), GFP_KERNEL);
+	if (!res)
+		return ERR_PTR(-ENOMEM);
+	for (i = 0; i < count; i++) {
+		struct rs_desc_resolution rec;
+		unsigned int fps_first;
+		u16 width, height;
+
+		ds5_desc_rec(blob, toc, first + i, &rec, sizeof(rec));
+		width = rec.width;
+		height = rec.height;
+		fps_first = rec.fps_first;
+		if (!width || !height || !rec.fps_count ||
+		    rec.fps_count > U8_MAX ||
+		    fps_first + rec.fps_count > n_fps) {
+			dev_warn(&state->client->dev,
+				 "format descriptor: resolution[%u] %ux%u fps %u+%u invalid (pool %u)\n",
+				 first + i, width, height, fps_first,
+				 rec.fps_count, n_fps);
+			kfree(res);
+			return ERR_PTR(-EINVAL);
+		}
+		res[i].width = width;
+		res[i].height = height;
+		res[i].n_framerates = rec.fps_count;
+		res[i].framerates = &desc->framerates[fps_first];
+	}
+	return res;
+}
+
+static int ds5_desc_build_stream(struct ds5 *state, struct ds5_desc *desc,
+				 unsigned int n_fps, const u8 *blob,
+				 const struct rs_desc_toc **tabs,
+				 const struct rs_desc_stream *st)
+{
+	const struct rs_desc_toc *ftoc = tabs[RS_DESC_T_FORMAT];
+	struct ds5_desc_stream *out;
+	unsigned int first = st->fmt_first;
+	unsigned int count = st->fmt_count;
+	unsigned int i;
+
+	if (!ds5_desc_stream_valid(st->stream_id)) {
+		dev_warn(&state->client->dev,
+			 "format descriptor: stream id %u unknown\n", st->stream_id);
+		return -EINVAL;
+	}
+	out = &desc->streams[st->stream_id];
+	if (out->formats || !count ||
+	    first + count > ftoc->n_entries) {
+		dev_warn(&state->client->dev,
+			 "format descriptor: stream %u: format range %u+%u exceeds %u%s\n",
+			 st->stream_id, first, count, ftoc->n_entries,
+			 out->formats ? " (duplicate stream)" : "");
+		return -EINVAL;
+	}
+	out->formats = kcalloc(count, sizeof(*out->formats), GFP_KERNEL);
+	if (!out->formats)
+		return -ENOMEM;
+
+	for (i = 0; i < count; i++) {
+		struct rs_desc_format rec;
+		struct ds5_resolution *res;
+		struct ds5_format *fmt;
+		u16 pixfmt;
+		u32 mbus;
+
+		ds5_desc_rec(blob, ftoc, first + i, &rec, sizeof(rec));
+		pixfmt = rec.pixfmt_id;
+		mbus = ds5_desc_mbus_code(pixfmt);
+		if (!mbus) {
+			dev_warn(&state->client->dev,
+				 "format descriptor: pixfmt %u unknown, skipped\n",
+				 pixfmt);
+			continue;
+		}
+		res = ds5_desc_build_resolutions(state, desc, n_fps, blob,
+						 tabs[RS_DESC_T_RESOLUTION],
+						 rec.res_first,
+						 rec.res_count);
+		if (IS_ERR(res))
+			return PTR_ERR(res);
+
+		fmt = &out->formats[out->n_formats];
+		fmt->mbus_code = mbus;
+		fmt->data_type = rec.src_data_type;
+		fmt->override_data_type = rec.wire_data_type != rec.src_data_type ?
+					  rec.wire_data_type : 0;
+		fmt->resolutions = res;
+		fmt->n_resolutions = rec.res_count;
+		out->n_formats++;
+	}
+	return out->n_formats ? 0 : -EINVAL;
+}
+
+/* Caller holds ds5_dev->lock. */
+static int ds5_desc_load_locked(struct ds5 *state)
+{
+	struct ds5_dev *dd = state->ds5_dev;
+	const struct rs_desc_toc *tabs[RS_DESC_T_MAX + 1];
+	const struct rs_desc_header *header;
+	struct ds5_desc *desc = NULL;
+	unsigned int n_fps = 0, i, attempt;
+	u8 *blob = NULL;
+	int ret;
+
+	for (attempt = 0; attempt < 2; attempt++) {
+		ret = ds5_desc_read_blob(state, &blob);
+		if (ret != -EBADMSG)
+			break;
+	}
+	if (ret)
+		goto out;
+	header = (const void *)blob;
+	ret = ds5_desc_find_tables(state, blob, tabs);
+	if (ret)
+		goto out;
+	desc = kzalloc(sizeof(*desc), GFP_KERNEL);
+	if (!desc) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	desc->crc = header->crc32;
+	desc->ver_major = header->ver_major;
+	desc->ver_minor = header->ver_minor;
+
+	ret = ds5_desc_parse_framerates(state, desc, blob,
+					tabs[RS_DESC_T_FRAMERATE],
+					&n_fps);
+	if (ret)
+		goto out;
+	for (i = 0; i < tabs[RS_DESC_T_STREAM]->n_entries; i++) {
+		struct rs_desc_stream st;
+
+		ds5_desc_rec(blob, tabs[RS_DESC_T_STREAM], i, &st, sizeof(st));
+		ret = ds5_desc_build_stream(state, desc, n_fps, blob, tabs, &st);
+		if (ret)
+			goto out;
+	}
+	/* Every subdev registers unconditionally, so each needs a format list. */
+	for (i = 0; i < ARRAY_SIZE(ds5_desc_stream_ids); i++) {
+		if (!desc->streams[ds5_desc_stream_ids[i]].n_formats) {
+			dev_warn(&state->client->dev, "format descriptor: stream %u missing\n",
+				 ds5_desc_stream_ids[i]);
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+out:
+	kfree(blob);
+	if (ret) {
+		ds5_desc_free(desc);
+		dd->desc_state = DS5_DESC_ABSENT;
+		if (ret == -ENODEV)
+			dev_warn(&state->client->dev,
+				 "format descriptors not provided by camera, using built-in tables\n");
+		else
+			dev_warn(&state->client->dev,
+				 "format descriptor rejected (%d), using built-in tables\n",
+				 ret);
+		return ret;
+	}
+	mutex_lock(&ds5_desc_all_lock);
+	list_add(&desc->node, &ds5_desc_all);
+	mutex_unlock(&ds5_desc_all_lock);
+	dd->desc = desc;
+	dd->desc_state = DS5_DESC_READY;
+	dev_info(&state->client->dev,
+		 "format descriptor v%u.%u crc 0x%08x: %u/%u/%u/%u formats (depth/ir/rgb/imu)\n",
+		 desc->ver_major, desc->ver_minor, desc->crc,
+		 desc->streams[DS5_STREAM_DEPTH].n_formats,
+		 desc->streams[DS5_STREAM_IR].n_formats,
+		 desc->streams[DS5_STREAM_RGB].n_formats,
+		 desc->streams[DS5_STREAM_IMU].n_formats);
+	return 0;
+}
+
+static void ds5_desc_apply_sensor(struct ds5_sensor *sensor,
+				  const struct ds5_desc_stream *st, u16 mux_pad)
+{
+	sensor->formats = st->formats;
+	sensor->n_formats = st->n_formats;
+	sensor->mux_pad = mux_pad;
+}
+
+/* True when the camera's descriptor supplied every sensor's format table. */
+static bool ds5_desc_apply(struct ds5 *state)
+{
+	struct ds5_dev *dd = state->ds5_dev;
+	const struct ds5_desc *desc = NULL;
+
+	mutex_lock(&dd->lock);
+	if (dd->desc_state == DS5_DESC_UNKNOWN)
+		ds5_desc_load_locked(state);
+	if (dd->desc_state == DS5_DESC_READY)
+		desc = dd->desc;
+	mutex_unlock(&dd->lock);
+	if (!desc)
+		return false;
+
+	ds5_desc_apply_sensor(&state->depth.sensor,
+				  &desc->streams[DS5_STREAM_DEPTH],
+				  DS5_MUX_PAD_DEPTH);
+	ds5_desc_apply_sensor(&state->ir.sensor,
+				  &desc->streams[DS5_STREAM_IR], DS5_MUX_PAD_IR);
+	ds5_desc_apply_sensor(&state->rgb.sensor,
+				  &desc->streams[DS5_STREAM_RGB], DS5_MUX_PAD_RGB);
+	ds5_desc_apply_sensor(&state->imu.sensor,
+				  &desc->streams[DS5_STREAM_IMU], DS5_MUX_PAD_IMU);
+	return true;
+}
+
+/* The V4L2 topology cannot be re-plumbed on a live device, so a descriptor
+ * that changed across a HW reset is reported rather than re-applied. */
+static void ds5_desc_recheck(struct ds5 *state)
+{
+	struct ds5_dev *dd = state->ds5_dev;
+	struct rs_desc_header header;
+	bool present;
+	u32 crc;
+
+	present = ds5_desc_probe_magic(state);
+	crc = 0;
+	if (present) {
+		if (regmap_raw_read(state->regmap, RS_DESC_BASE, &header, sizeof(header)))
+			return;
+		crc = header.crc32;
+	}
+
+	mutex_lock(&dd->lock);
+	if (dd->desc_state == DS5_DESC_READY && crc != dd->desc->crc)
+		dev_warn(&state->client->dev,
+			 "format descriptor changed across reset (crc 0x%08x -> 0x%08x); reload d4xx to apply\n",
+			 dd->desc->crc, crc);
+	else if (dd->desc_state == DS5_DESC_ABSENT && present)
+		dev_warn(&state->client->dev,
+			 "camera now serves a format descriptor; reload d4xx to apply\n");
+	mutex_unlock(&dd->lock);
 }
 
 /* Pad ops */
@@ -3549,6 +4126,8 @@ static int ds5_hw_reset_with_recovery(struct ds5 *state)
 			return ret;
 	}
 
+	ds5_desc_recheck(state);
+
 	dev_info(&state->client->dev,
 		"%s(): HW reset complete. Device type 0x%04x, firmware: %d.%d.%d.%d\n",
 		__func__,
@@ -5039,6 +5618,8 @@ static void ds5_init_ds5_dev(struct ds5 *state, struct ds5_dev *ds5_dev)
 	ds5_dev->configured_device_mode = D500_DEVICE_MODE_3C;
 	ds5_dev->active_device_mode = D500_DEVICE_MODE_3C;
 	ds5_dev->device_mode_valid = false;
+	ds5_dev->desc = NULL;
+	ds5_dev->desc_state = DS5_DESC_UNKNOWN;
 	mutex_unlock(&ds5_dev->lock);
 	ds5_reset_streaming_flags(ds5_dev);
 }
@@ -7256,8 +7837,28 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
 	dev_dbg(&client->dev, "%s(): cfg1 %x %ux%u cfg1_md %x %ux%u\n", __func__,
 		 cfg1, dw, dh, cfg1_md, yw, yh);
 
-	sensor = &state->depth.sensor;
 	dev_type = ds5_dev_type(state, dev_type);
+
+	state->d58x_pixel_mode = false;
+#ifdef CONFIG_VIDEO_D4XX_SERDES
+	/* D58x on a MAX96712 deserializer runs the serdes link in PIXEL mode. */
+	state->d58x_pixel_mode = (dev_type == DS5_DEVICE_TYPE_D58X) &&
+				 (state->dser_ops == &max96712_interface);
+	/* The FW serves only the formats valid for the serdes link mode, which
+	 * the host alone knows: tell it before asking for the descriptor.
+	 */
+	if (state->d58x_pixel_mode) {
+		ret = ds5_write(state, DS5_MIPI_SERDES_PIXEL_MODE, 1);
+		if (ret)
+			return ret;
+	}
+
+#endif
+
+	if (ds5_desc_apply(state))
+		goto formats_done;
+	
+	sensor = &state->depth.sensor;
 	switch (dev_type) {
 	case DS5_DEVICE_TYPE_D41X:
 		sensor->formats = ds5_depth_formats_d41x;
@@ -7337,13 +7938,6 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
 
 	sensor = &state->imu.sensor;
 
-	state->d58x_pixel_mode = false;
-#ifdef CONFIG_VIDEO_D4XX_SERDES
-	/* D58x on a MAX96712 deserializer runs the serdes link in PIXEL mode. */
-	state->d58x_pixel_mode = (dev_type == DS5_DEVICE_TYPE_D58X) &&
-				 (state->dser_ops == &max96712_interface);
-#endif
-
 	/* For fimware version starting from: 5.16,
 	   IMU will have 32bit axis values.
  	   5.16.x.y = firmware version: 0x0510 */
@@ -7363,6 +7957,7 @@ static int ds5_fixed_configuration(struct i2c_client *client, struct ds5 *state)
 	sensor->n_formats = 1;
 	sensor->mux_pad = DS5_MUX_PAD_IMU;
 
+formats_done:
 	/* Development: set a configuration during probing */
 	if ((cfg0 & 0xff00) == 0x1800) {
 		/* MIPI CSI-2 YUV420 isn't supported by V4L, reconfigure to Y8 */
@@ -8564,7 +9159,21 @@ static struct i2c_driver ds5_i2c_driver = {
 	.id_table	= ds5_id,
 };
 
-module_i2c_driver(ds5_i2c_driver);
+static int __init ds5_module_init(void)
+{
+	return i2c_add_driver(&ds5_i2c_driver);
+}
+
+static void __exit ds5_module_exit(void)
+{
+	struct ds5_desc *desc, *tmp;
+
+	i2c_del_driver(&ds5_i2c_driver);
+	list_for_each_entry_safe(desc, tmp, &ds5_desc_all, node)
+		ds5_desc_free(desc);
+}
+module_init(ds5_module_init);
+module_exit(ds5_module_exit);
 
 MODULE_DESCRIPTION("RealSense D4XX and D5XX MIPI Camera Driver");
 MODULE_AUTHOR("Guennadi Liakhovetski <guennadi.liakhovetski@intel.com>,\n\
