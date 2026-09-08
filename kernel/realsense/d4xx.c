@@ -32,6 +32,7 @@
 #include <linux/videodev2.h>
 #include <linux/version.h>
 #include <linux/mutex.h>
+#include <asm/unaligned.h>
 #include <media/media-entity.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -3595,6 +3596,59 @@ static int ds5_hw_reset_with_recovery(struct ds5 *state)
 }
 
 static int ds5_mux_s_stream(struct v4l2_subdev *sd, int on);
+
+#if defined(CONFIG_TEGRA_CAMERA_PLATFORM) && \
+	defined(TEGRA_HAS_EMBEDDED_METADATA_OPS)
+#define D500_CSI_METADATA_UVC_HEADER_SIZE	12U
+#define D500_CSI_METADATA_UVC_INFO_BASE		0x8eU
+#define D500_CSI_METADATA_UVC_FID_MASK		0x01U
+#define D500_CSI_METADATA_BLOCK_HEADER_SIZE	8U
+#define D500_CSI_METADATA_CAPTURE_TIMING_ID	0x80000001U
+#define D500_CSI_METADATA_MAX_SIZE		0xffU
+
+/*
+ * D500 sends its UVC metadata header and payload unchanged over CSI.  Byte 0
+ * carries the frame's actual length, which differs between sensor streams.
+ * Validate the transport framing here; semantic parsing stays in userspace.
+ */
+static size_t d500_csi_metadata_bytesused(const u8 *data,
+					  size_t captured_size)
+{
+	u32 first_block_size;
+	size_t bytesused;
+
+	if (!data || captured_size < D500_CSI_METADATA_UVC_HEADER_SIZE +
+				      D500_CSI_METADATA_BLOCK_HEADER_SIZE)
+		return 0;
+
+	bytesused = data[0];
+	if (bytesused < D500_CSI_METADATA_UVC_HEADER_SIZE +
+			D500_CSI_METADATA_BLOCK_HEADER_SIZE ||
+	    bytesused > captured_size)
+		return 0;
+
+	if ((data[1] & ~D500_CSI_METADATA_UVC_FID_MASK) !=
+	    D500_CSI_METADATA_UVC_INFO_BASE)
+		return 0;
+
+	if (get_unaligned_le32(data + D500_CSI_METADATA_UVC_HEADER_SIZE) !=
+	    D500_CSI_METADATA_CAPTURE_TIMING_ID)
+		return 0;
+
+	first_block_size = get_unaligned_le32(data +
+		D500_CSI_METADATA_UVC_HEADER_SIZE + sizeof(u32));
+	if (first_block_size < D500_CSI_METADATA_BLOCK_HEADER_SIZE ||
+	    D500_CSI_METADATA_UVC_HEADER_SIZE + first_block_size > bytesused)
+		return 0;
+
+	return bytesused;
+}
+
+static const struct tegra_embedded_metadata_ops d500_csi_metadata_ops = {
+	.max_buffer_size = D500_CSI_METADATA_MAX_SIZE,
+	.get_bytesused = d500_csi_metadata_bytesused,
+};
+#endif
 
 static int ds5_s_ctrl(struct v4l2_ctrl *ctrl)
 {
@@ -7204,6 +7258,11 @@ static int ds5_mux_init(struct i2c_client *c, struct ds5 *state)
 		state->mux.last_set = &state->imu.sensor;
 
 	state->mux.sd.dev = &c->dev;
+#if defined(CONFIG_TEGRA_CAMERA_PLATFORM) && \
+	defined(TEGRA_HAS_EMBEDDED_METADATA_OPS)
+	if (ds5_is_d58x(state))
+		state->mux.sd.embedded_metadata_ops = &d500_csi_metadata_ops;
+#endif
 	ret = camera_common_initialize(&state->mux.sd, "d4xx");
 	if (ret) {
 		dev_err(&c->dev, "Failed to initialize d4xx.\n");

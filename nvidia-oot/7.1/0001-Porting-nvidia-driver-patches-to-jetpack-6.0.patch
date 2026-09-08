@@ -1,32 +1,33 @@
-From 0c9ebb8cd406ec764ab44f6692c07596f1b7ba2b Mon Sep 17 00:00:00 2001
+From f96c37fa87be511e988c2d5aba5351a5a86b55b4 Mon Sep 17 00:00:00 2001
 From: Dmitry Perchanov <dmitry.perchanov@intel.com>
-Date: Mon, 20 May 2024 18:08:02 +0300
+Date: Tue, 8 Sep 2026 17:30:26 +0800
 Subject: [PATCH] Porting nvidia driver patches to jetpack 6.0
 
-Allocate one page-aligned embedded-metadata DMA slot per VI capture descriptor.
-Descriptor setup and completion use the same slot so in-flight frames cannot
-overwrite each other's metadata.
+Allocate one page-aligned embedded-metadata DMA slot per VI capture descriptor. Descriptor setup and completion use the same slot so in-flight frames cannot overwrite each other metadata.
+
+Add a per-sensor metadata hook so queue capacity and each frame actual payload length remain separate. Legacy D4xx keeps its 68-byte contract; sensors with variable metadata publish validated bytesused.
 
 Signed-off-by: Dmitry Perchanov <dmitry.perchanov@intel.com>
 ---
  drivers/media/i2c/Makefile                    |   5 +
  drivers/media/i2c/max9295.c                   | 139 ++++++
- drivers/media/i2c/max9296.c                   | 193 +++++++++
+ drivers/media/i2c/max9296.c                   | 193 ++++++++
  .../platform/tegra/camera/sensor_common.c     |   4 +
- .../media/platform/tegra/camera/vi/channel.c  | 408 +++++++++++++++++-
- .../media/platform/tegra/camera/vi/graph.c    |  38 +-
+ .../media/platform/tegra/camera/vi/channel.c  | 420 +++++++++++++++++-
+ .../media/platform/tegra/camera/vi/graph.c    |  39 +-
  .../platform/tegra/camera/vi/mc_common.c      |  27 ++
- .../media/platform/tegra/camera/vi/vi5_fops.c | 188 ++++++--
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 223 ++++++++--
  .../platform/tegra/camera/vi/vi5_formats.h    |  30 +-
+ include/media/camera_common.h                 |   8 +
  include/media/gmsl-link.h                     |   5 +
  include/media/max9295.h                       |   4 +
  include/media/max9296.h                       |   8 +
- include/media/mc_common.h                     |  23 +
+ include/media/mc_common.h                     |  29 ++
  include/media/tegra_camera_core.h             |  10 +-
- 14 files changed, 1029 insertions(+), 53 deletions(-)
+ 15 files changed, 1091 insertions(+), 53 deletions(-)
 
 diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
-index 3b3a3c1..293b9cf 100644
+index 3b3a3c14..293b9cf3 100644
 --- a/drivers/media/i2c/Makefile
 +++ b/drivers/media/i2c/Makefile
 @@ -17,6 +17,11 @@ subdir-ccflags-y += -Werror
@@ -42,7 +43,7 @@ index 3b3a3c1..293b9cf 100644
  obj-m += max96712.o
  
 diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
-index b363d5f..b2b3599 100644
+index b363d5f6..b2b3599c 100644
 --- a/drivers/media/i2c/max9295.c
 +++ b/drivers/media/i2c/max9295.c
 @@ -465,6 +465,145 @@ static  struct regmap_config max9295_regmap_config = {
@@ -192,7 +193,7 @@ index b363d5f..b2b3599 100644
  static int max9295_probe(struct i2c_client *client)
  #else
 diff --git a/drivers/media/i2c/max9296.c b/drivers/media/i2c/max9296.c
-index 1ceaf3c..46516d6 100644
+index 1ceaf3cd..46516d63 100644
 --- a/drivers/media/i2c/max9296.c
 +++ b/drivers/media/i2c/max9296.c
 @@ -34,6 +34,8 @@
@@ -410,7 +411,7 @@ index 1ceaf3c..46516d6 100644
  	{ .compatible = "maxim,max9296", },
  	{ },
 diff --git a/drivers/media/platform/tegra/camera/sensor_common.c b/drivers/media/platform/tegra/camera/sensor_common.c
-index f31bba7..9812286 100644
+index f31bba7d..9812286a 100644
 --- a/drivers/media/platform/tegra/camera/sensor_common.c
 +++ b/drivers/media/platform/tegra/camera/sensor_common.c
 @@ -357,6 +357,10 @@ static int extract_pixel_format(
@@ -425,7 +426,7 @@ index f31bba7..9812286 100644
  		pr_err("%s: Need to extend format%s\n", __func__, pixel_t);
  		return -EINVAL;
 diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
-index 5febe52..19b9bc4 100644
+index 5febe52e..efffe87c 100644
 --- a/drivers/media/platform/tegra/camera/vi/channel.c
 +++ b/drivers/media/platform/tegra/camera/vi/channel.c
 @@ -231,7 +231,12 @@ static void tegra_channel_fmt_align(struct tegra_channel *chan,
@@ -529,7 +530,7 @@ index 5febe52..19b9bc4 100644
  };
  
  static int tegra_channel_close(struct file *fp);
-@@ -2674,6 +2743,334 @@ static int tegra_channel_csi_init(struct tegra_channel *chan)
+@@ -2674,6 +2743,346 @@ static int tegra_channel_csi_init(struct tegra_channel *chan)
  	return ret;
  }
  
@@ -596,10 +597,19 @@ index 5febe52..19b9bc4 100644
 +	return 0;
 +}
 +
++static unsigned int tegra_metadata_buffer_size(struct tegra_channel *chan)
++{
++	if (chan->embedded.ops && chan->embedded.ops->max_buffer_size)
++		return chan->embedded.ops->max_buffer_size;
++
++	return D4XX_META_BUFSIZE;
++}
++
 +static int tegra_metadata_get_format(struct file *file, void *fh,
 +                                    struct v4l2_format *format)
 +{
 +	struct v4l2_fh *vfh = file->private_data;
++	struct tegra_channel *chan = video_drvdata(file);
 +	struct v4l2_meta_format *fmt = &format->fmt.meta;
 +
 +	if (format->type != vfh->vdev->queue->type)
@@ -608,7 +618,7 @@ index 5febe52..19b9bc4 100644
 +	memset(fmt, 0, sizeof(*fmt));
 +
 +	fmt->dataformat = V4L2_META_FMT_D4XX;
-+	fmt->buffersize = 255;
++	fmt->buffersize = tegra_metadata_buffer_size(chan);
 +
 +	return 0;
 +}
@@ -644,19 +654,20 @@ index 5febe52..19b9bc4 100644
 +                    unsigned int sizes[], struct device *alloc_devs[])
 +{
 +	struct tegra_channel *chan = vb2_get_drv_priv(vq);
++	unsigned int size = tegra_metadata_buffer_size(chan);
 +
 +	if (*nplanes) {
 +		if (*nplanes != 1)
 +			return -EINVAL;
 +
-+		if (sizes[0] < 255)
++		if (sizes[0] < size)
 +			return -EINVAL;
 +
 +		return 0;
 +	}
 +
 +	*nplanes = 1;
-+	sizes[0] = 255;
++	sizes[0] = size;
 +	alloc_devs[0] = chan->vi->dev;
 +
 +
@@ -665,10 +676,12 @@ index 5febe52..19b9bc4 100644
 +
 +static int tegra_metadata_buffer_prepare(struct vb2_buffer *vb)
 +{
++	struct tegra_channel *chan = vb2_get_drv_priv(vb->vb2_queue);
++
 +	if (vb->num_planes != 1)
 +		return -EINVAL;
 +
-+	if (vb2_plane_size(vb, 0) < 255)
++	if (vb2_plane_size(vb, 0) < tegra_metadata_buffer_size(chan))
 +		return -EINVAL;
 +
 +	return 0;
@@ -864,7 +877,7 @@ index 5febe52..19b9bc4 100644
  int tegra_channel_init_video(struct tegra_channel *chan)
  {
  	struct tegra_mc_vi *vi = chan->vi;
-@@ -2874,6 +3271,13 @@ int tegra_channel_cleanup(struct tegra_channel *chan)
+@@ -2874,6 +3283,13 @@ int tegra_channel_cleanup(struct tegra_channel *chan)
  			chan->emb_buf_size,
  			chan->emb_buf_addr, chan->emb_buf);
  		chan->emb_buf_size = 0;
@@ -879,7 +892,7 @@ index 5febe52..19b9bc4 100644
  
  	tegra_channel_dealloc_buffer_queue(chan);
 diff --git a/drivers/media/platform/tegra/camera/vi/graph.c b/drivers/media/platform/tegra/camera/vi/graph.c
-index 097db3f..8e2a600 100644
+index 097db3f7..b652336e 100644
 --- a/drivers/media/platform/tegra/camera/vi/graph.c
 +++ b/drivers/media/platform/tegra/camera/vi/graph.c
 @@ -291,6 +291,11 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
@@ -894,7 +907,7 @@ index 097db3f..8e2a600 100644
  	int ret;
  
  	dev_dbg(chan->vi->dev, "notify complete, all subdevs registered\n");
-@@ -324,16 +329,46 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
+@@ -324,16 +329,47 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
  	if (ret < 0)
  		goto graph_error;
  
@@ -909,6 +922,7 @@ index 097db3f..8e2a600 100644
 +
 +	if (sensor_mode &&
 +		sensor_mode->image_properties.embedded_metadata_height > 0) {
++		chan->embedded.ops = s_data ? s_data->embedded_metadata_ops : NULL;
 +		ret = tegra_channel_init_video_embedded(chan);
 +		if (ret < 0) {
 +			dev_err(chan->vi->dev,
@@ -942,7 +956,7 @@ index 097db3f..8e2a600 100644
  graph_error:
  	video_unregister_device(chan->video);
  register_device_error:
-@@ -397,6 +432,7 @@ static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
+@@ -397,6 +433,7 @@ static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
  
  	/* cleanup for complete */
  	if (chan->link_status) {
@@ -951,7 +965,7 @@ index 097db3f..8e2a600 100644
  		tegra_channel_cleanup_video(chan);
  		chan->link_status--;
 diff --git a/drivers/media/platform/tegra/camera/vi/mc_common.c b/drivers/media/platform/tegra/camera/vi/mc_common.c
-index ee1d6e2..a499d8d 100644
+index ee1d6e26..a499d8d1 100644
 --- a/drivers/media/platform/tegra/camera/vi/mc_common.c
 +++ b/drivers/media/platform/tegra/camera/vi/mc_common.c
 @@ -164,6 +164,10 @@ static int vi_parse_dt(struct tegra_mc_vi *vi, struct platform_device *dev)
@@ -996,10 +1010,10 @@ index ee1d6e2..a499d8d 100644
  	if (ports == NULL)
  		ports = node;
 diff --git a/drivers/media/platform/tegra/camera/vi/vi5_fops.c b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
-index 0535607..c858d91 100644
+index 05356074..90cc0bd3 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi5_fops.c
 +++ b/drivers/media/platform/tegra/camera/vi/vi5_fops.c
-@@ -7,6 +7,7 @@
+@@ -7,11 +7,13 @@
  #include <linux/fs.h>
  #include <linux/kthread.h>
  #include <linux/nvhost.h>
@@ -1007,7 +1021,13 @@ index 0535607..c858d91 100644
  #include <linux/pm_runtime.h>
  #include <linux/semaphore.h>
  #include <linux/syscalls.h>
-@@ -67,6 +68,8 @@ static const struct capture_descriptor capture_template = {
+ #include <media/fusa-capture/capture-vi-channel.h>
+ #include <media/fusa-capture/capture-vi.h>
++#include <media/camera_common.h>
+ #include <media/mc_common.h>
+ #include <media/tegra-v4l2-camera.h>
+ #include <media/tegra_camera_platform.h>
+@@ -67,6 +69,8 @@ static const struct capture_descriptor capture_template = {
  	},
  };
  
@@ -1016,7 +1036,7 @@ index 0535607..c858d91 100644
  static void vi5_init_video_formats(struct tegra_channel *chan)
  {
  	int i;
-@@ -442,12 +445,15 @@ static void vi5_setup_surface(struct tegra_channel *chan,
+@@ -442,12 +446,15 @@ static void vi5_setup_surface(struct tegra_channel *chan,
  	}
  
  	if (chan->embedded_data_height > 0) {
@@ -1033,10 +1053,35 @@ index 0535607..c858d91 100644
  		desc_memoryinfo->surface[VI_ATOMP_SURFACE_EMBEDDED].size
  			= desc->ch_cfg.frame.embed_x * desc->ch_cfg.frame.embed_y;
  
-@@ -463,6 +469,56 @@ static void vi5_setup_surface(struct tegra_channel *chan,
+@@ -463,6 +470,90 @@ static void vi5_setup_surface(struct tegra_channel *chan,
  		chan->capture_descr_sequence += 1;
  }
  
++static unsigned int vi5_metadata_buffer_size(struct tegra_channel *chan)
++{
++	if (chan->embedded.ops && chan->embedded.ops->max_buffer_size)
++		return chan->embedded.ops->max_buffer_size;
++
++	return D4XX_META_BUFSIZE;
++}
++
++static unsigned int vi5_metadata_bytesused(struct tegra_channel *chan,
++					   const void *metadata_addr,
++					   unsigned int captured_size)
++{
++	const struct tegra_embedded_metadata_ops *ops = chan->embedded.ops;
++	size_t bytesused;
++
++	if (!ops || !ops->get_bytesused)
++		return captured_size;
++
++	bytesused = ops->get_bytesused(metadata_addr, captured_size);
++	if (bytesused && bytesused <= captured_size)
++		return bytesused;
++
++	return 0;
++}
++
 +static void vi5_release_metadata_buffer(struct tegra_channel *chan,
 +	struct tegra_channel_buffer *buf)
 +{
@@ -1045,6 +1090,8 @@ index 0535607..c858d91 100644
 +	struct vb2_v4l2_buffer *vbuf = &buf->buf;
 +	void *frm_buffer;
 +	void *metadata_addr;
++	unsigned int buffer_size = vi5_metadata_buffer_size(chan);
++	unsigned int bytesused;
 +	unsigned int descr_index = buf->capture_descr_index[0];
 +	unsigned int emb_offset;
 +
@@ -1069,20 +1116,27 @@ index 0535607..c858d91 100644
 +	}
 +
 +	if (!chan->emb_buf_stride ||
-+		chan->emb_buf_size < 255 ||
++		chan->emb_buf_size < buffer_size ||
++		vb2_plane_size(evb, 0) < buffer_size ||
 +		descr_index >= chan->capture_queue_depth ||
 +		check_mul_overflow(descr_index, chan->emb_buf_stride,
 +			&emb_offset) ||
-+		emb_offset > chan->emb_buf_size - 255) {
++		emb_offset > chan->emb_buf_size - buffer_size) {
 +		vb2_buffer_done(evb, VB2_BUF_STATE_ERROR);
 +		return;
 +	}
 +
 +	metadata_addr = (u8 *)chan->emb_buf_addr + emb_offset;
-+	memcpy(frm_buffer, metadata_addr, 255);
++	bytesused = vi5_metadata_bytesused(chan, metadata_addr, buffer_size);
++	if (!bytesused) {
++		vb2_buffer_done(evb, VB2_BUF_STATE_ERROR);
++		return;
++	}
++
++	memcpy(frm_buffer, metadata_addr, bytesused);
 +	evbuf = to_vb2_v4l2_buffer(evb);
 +	evbuf->sequence = vbuf->sequence;
-+	vb2_set_plane_payload(evb, 0, 255);
++	vb2_set_plane_payload(evb, 0, bytesused);
 +	evb->timestamp = vbuf->vb2_buf.timestamp;
 +	vb2_buffer_done(evb, VB2_BUF_STATE_DONE);
 +}
@@ -1090,7 +1144,7 @@ index 0535607..c858d91 100644
  static void vi5_release_buffer(struct tegra_channel *chan,
  	struct tegra_channel_buffer *buf)
  {
-@@ -477,6 +533,9 @@ static void vi5_release_buffer(struct tegra_channel *chan,
+@@ -477,6 +568,9 @@ static void vi5_release_buffer(struct tegra_channel *chan,
  	vbuf->field = V4L2_FIELD_NONE;
  	vb2_set_plane_payload(&vbuf->vb2_buf, 0, chan->format.sizeimage);
  
@@ -1100,7 +1154,7 @@ index 0535607..c858d91 100644
  	vb2_buffer_done(&vbuf->vb2_buf, buf->vb2_state);
  }
  
-@@ -718,6 +777,15 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
+@@ -718,6 +812,15 @@ static int vi5_channel_error_recover(struct tegra_channel *chan,
  			err = PTR_ERR(chan);
  			goto done;
  		}
@@ -1116,7 +1170,7 @@ index 0535607..c858d91 100644
  		err = tegra_channel_capture_setup(chan, vi_port);
  		if (err < 0)
  			goto done;
-@@ -911,6 +979,75 @@ static void vi5_unit_get_device_handle(struct platform_device *pdev,
+@@ -911,6 +1014,75 @@ static void vi5_unit_get_device_handle(struct platform_device *pdev,
  		dev_err(&pdev->dev, "dev pointer is NULL\n");
  }
  
@@ -1192,7 +1246,7 @@ index 0535607..c858d91 100644
  static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
  {
  	struct tegra_channel *chan = vb2_get_drv_priv(vq);
-@@ -923,7 +1060,6 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
+@@ -923,7 +1095,6 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
  	struct device_node *node;
  	struct sensor_mode_properties *sensor_mode;
  	struct camera_common_data *s_data;
@@ -1200,7 +1254,7 @@ index 0535607..c858d91 100644
  
  	/* Skip in bypass mode */
  	if (!chan->bypass) {
-@@ -946,7 +1082,6 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
+@@ -946,7 +1117,6 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
  				if (s_data != NULL && node != NULL) {
  					int idx = s_data->mode_prop_idx;
  
@@ -1208,7 +1262,7 @@ index 0535607..c858d91 100644
  					if (idx < s_data->sensor_props.\
  								num_modes) {
  						sensor_mode =
-@@ -960,46 +1095,14 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
+@@ -960,46 +1130,14 @@ static int vi5_channel_start_streaming(struct vb2_queue *vq, u32 count)
  							sensor_mode->\
  							 image_properties.\
  						      embedded_metadata_height;
@@ -1261,7 +1315,7 @@ index 0535607..c858d91 100644
  				}
  			}
  			ret = tegra_channel_capture_setup(chan, vi_port);
-@@ -1089,7 +1192,10 @@ static int vi5_channel_stop_streaming(struct vb2_queue *vq)
+@@ -1089,7 +1227,10 @@ static int vi5_channel_stop_streaming(struct vb2_queue *vq)
  										&vi_unit_dev);
  				dma_free_coherent(vi_unit_dev, chan->emb_buf_size,
  								chan->emb_buf_addr, chan->emb_buf);
@@ -1273,7 +1327,7 @@ index 0535607..c858d91 100644
  
  			vi_channel_close_ex(chan->vi_channel_id[vi_port],
 diff --git a/drivers/media/platform/tegra/camera/vi/vi5_formats.h b/drivers/media/platform/tegra/camera/vi/vi5_formats.h
-index d040393..bd22b58 100644
+index d0403936..bd22b58c 100644
 --- a/drivers/media/platform/tegra/camera/vi/vi5_formats.h
 +++ b/drivers/media/platform/tegra/camera/vi/vi5_formats.h
 @@ -88,6 +88,8 @@ static const struct tegra_video_format vi5_video_formats[] = {
@@ -1335,8 +1389,34 @@ index d040393..bd22b58 100644
  };
  
  #endif
+diff --git a/include/media/camera_common.h b/include/media/camera_common.h
+index a7a1d267..e453509e 100644
+--- a/include/media/camera_common.h
++++ b/include/media/camera_common.h
+@@ -41,6 +41,13 @@
+ #include <media/v4l2-ctrls.h>
+ #include <media/tegracam_core.h>
+ 
++#define TEGRA_HAS_EMBEDDED_METADATA_OPS 1
++
++struct tegra_embedded_metadata_ops {
++	u32 max_buffer_size;
++	size_t (*get_bytesused)(const u8 *data, size_t captured_size);
++};
++
+ /*
+  * Scaling factor for converting a Q10.22 fixed point value
+  * back to its original floating point value
+@@ -255,6 +262,7 @@ struct camera_common_data {
+ 	int	sensor_mode_id;
+ 	bool	use_sensor_mode_id;
+ 	bool	override_enable;
++	const struct tegra_embedded_metadata_ops *embedded_metadata_ops;
+ 	u32	version;
+ };
+ 
 diff --git a/include/media/gmsl-link.h b/include/media/gmsl-link.h
-index ad902d0..cebeb37 100644
+index ad902d0a..cebeb37e 100644
 --- a/include/media/gmsl-link.h
 +++ b/include/media/gmsl-link.h
 @@ -40,6 +40,11 @@
@@ -1352,7 +1432,7 @@ index ad902d0..cebeb37 100644
  #define GMSL_ST_ID_UNUSED 0xFF
  
 diff --git a/include/media/max9295.h b/include/media/max9295.h
-index bf801aa..c576e3e 100644
+index bf801aa2..c576e3e5 100644
 --- a/include/media/max9295.h
 +++ b/include/media/max9295.h
 @@ -12,6 +12,7 @@
@@ -1381,7 +1461,7 @@ index bf801aa..c576e3e 100644
  
  #endif  /* __MAX9295_H__ */
 diff --git a/include/media/max9296.h b/include/media/max9296.h
-index 210dbc8..6b4c796 100644
+index 210dbc80..6b4c796e 100644
 --- a/include/media/max9296.h
 +++ b/include/media/max9296.h
 @@ -12,6 +12,7 @@
@@ -1414,10 +1494,19 @@ index 210dbc8..6b4c796 100644
  
  #endif  /* __MAX9296_H__ */
 diff --git a/include/media/mc_common.h b/include/media/mc_common.h
-index 607f1f5..7ad678d 100644
+index 607f1f5f..73768f05 100644
 --- a/include/media/mc_common.h
 +++ b/include/media/mc_common.h
-@@ -238,6 +238,23 @@ struct tegra_channel {
+@@ -43,6 +43,8 @@
+ #define	MAX_SUBDEVICES	4
+ #define	QUEUED_BUFFERS	4
+ #define	ENABLE		1
++
++struct tegra_embedded_metadata_ops;
+ #define	DISABLE		0
+ #define MAX_SYNCPT_PER_CHANNEL	3
+ 
+@@ -238,6 +240,24 @@ struct tegra_channel {
  	unsigned int embedded_data_width;
  	unsigned int embedded_data_height;
  
@@ -1436,12 +1525,13 @@ index 607f1f5..7ad678d 100644
 +		void *alloc_ctx;
 +		struct media_pad pad;
 +		struct v4l2_ctrl_handler ctrl_handler;
++		const struct tegra_embedded_metadata_ops *ops;
 +	} embedded;
 +
  	DECLARE_BITMAP(fmts_bitmap, MAX_FORMAT_NUM);
  	atomic_t power_on_refcnt;
  	struct v4l2_fh *fh;
-@@ -278,6 +295,7 @@ struct tegra_channel {
+@@ -278,6 +298,7 @@ struct tegra_channel {
  
  	dma_addr_t emb_buf;
  	void *emb_buf_addr;
@@ -1449,7 +1539,7 @@ index 607f1f5..7ad678d 100644
  	unsigned int emb_buf_size;
  };
  
-@@ -319,6 +337,9 @@ struct tegra_mc_vi {
+@@ -319,6 +340,9 @@ struct tegra_mc_vi {
  	unsigned int num_channels;
  	unsigned int num_subdevs;
  
@@ -1459,9 +1549,13 @@ index 607f1f5..7ad678d 100644
  	struct tegra_csi_device *csi;
  	struct list_head vi_chans;
  	struct tegra_channel *tpg_start;
-@@ -415,7 +436,9 @@ struct tegra_channel_buffer *dequeue_inflight(struct tegra_channel *chan);
+@@ -414,8 +438,13 @@ void enqueue_inflight(struct tegra_channel *chan,
+ struct tegra_channel_buffer *dequeue_inflight(struct tegra_channel *chan);
  int tegra_channel_set_power(struct tegra_channel *chan, bool on);
  
++/* Legacy D4xx embedded-metadata allocation and payload contract. */
++#define D4XX_META_BUFSIZE	68
++
  int tegra_channel_init_video(struct tegra_channel *chan);
 +int tegra_channel_init_video_embedded(struct tegra_channel *chan);
  int tegra_channel_cleanup_video(struct tegra_channel *chan);
@@ -1470,7 +1564,7 @@ index 607f1f5..7ad678d 100644
  struct tegra_vi_fops {
  	int (*vi_power_on)(struct tegra_channel *chan);
 diff --git a/include/media/tegra_camera_core.h b/include/media/tegra_camera_core.h
-index be84820..0e8acb1 100644
+index be84820c..0e8acb1f 100644
 --- a/include/media/tegra_camera_core.h
 +++ b/include/media/tegra_camera_core.h
 @@ -30,7 +30,7 @@
@@ -1504,5 +1598,3 @@ index be84820..0e8acb1 100644
  };
  
  /* Supported CSI to VI Data Formats */
--- 
-2.34.1
