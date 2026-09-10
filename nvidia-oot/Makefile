@@ -30,10 +30,21 @@ help:
 	@echo   "   make clean            # to make clean driver sources"
 	@echo   "================================================================================"
 
+# SKIP_NVIDIA_DISPLAY=1 omits building/installing the NVIDIA display stack
+# (nvidia.ko / nvidia-modeset.ko / nvidia-drm.ko). Used on JP7 (Thor), where the
+# board keeps its matched BSP display modules and the bundled nvdisplay source is
+# a non-matching pre-release. Nothing depends on nvidia-display, so dropping it is safe.
+SKIP_NVIDIA_DISPLAY ?= 0
+ifeq ($(SKIP_NVIDIA_DISPLAY),1)
+modules: hwpm nvidia-oot nvgpu
+modules_install: hwpm nvidia-oot nvgpu
+clean: hwpm nvidia-oot nvgpu nvidia-dtbs-clean
+else
 modules: hwpm nvidia-oot nvgpu nvidia-display
-dtbs: nvidia-dtbs
 modules_install: hwpm nvidia-oot nvgpu nvidia-display-install
 clean: hwpm nvidia-oot nvgpu nvidia-display-clean nvidia-dtbs-clean
+endif
+dtbs: nvidia-dtbs
 
 
 conftest:
@@ -82,6 +93,8 @@ nvidia-oot: conftest hwpm
 		srctree.nvidia-oot=$(MAKEFILE_DIR)/nvidia-oot \
 		srctree.hwpm=$(MAKEFILE_DIR)/hwpm \
 		srctree.nvconftest=$(NVIDIA_CONFTEST) \
+		NV_OOT_IVC_EXT_SKIP_BUILD=y \
+		NV_OOT_TEGRA_HV_SKIP_BUILD=y \
 		KBUILD_EXTRA_SYMBOLS=$(MAKEFILE_DIR)/hwpm/drivers/tegra/hwpm/Module.symvers \
 		$(MAKECMDGOALS)
 
@@ -107,7 +120,6 @@ nvgpu: conftest nvidia-oot
 define display-cmd
 	$(MAKE) -j $(NPROC) ARCH=arm64 TARGET_ARCH=aarch64 \
 		-C $(MAKEFILE_DIR)/nvdisplay \
-		LOCALVERSION=$(version) \
 		NV_VERBOSE=0 \
 		KERNELRELEASE="" \
 		SYSSRC=$(NVIDIA_HEADERS) \

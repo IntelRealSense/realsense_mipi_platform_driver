@@ -5,8 +5,8 @@ Subject: [PATCH] Porting driver patches to jetpack 5.1.2
 
 Signed-off-by: Dmitry Perchanov <dmitry.perchanov@intel.com>
 ---
- drivers/media/i2c/Kconfig                     |  21 +
- drivers/media/i2c/Makefile                    |   1 +
+ drivers/media/i2c/Kconfig                     |  29 +
+ drivers/media/i2c/Makefile                    |   3 +
  drivers/media/i2c/max9295.c                   | 145 ++++++-
  drivers/media/i2c/max9296.c                   | 189 ++++++++
  .../platform/tegra/camera/sensor_common.c     |   4 +
@@ -14,24 +14,32 @@ Signed-off-by: Dmitry Perchanov <dmitry.perchanov@intel.com>
  .../media/platform/tegra/camera/vi/graph.c    |  48 +-
  .../platform/tegra/camera/vi/mc_common.c      |  32 ++
  .../platform/tegra/camera/vi/vi4_formats.h    |  32 +-
- .../media/platform/tegra/camera/vi/vi5_fops.c | 139 +++++-
- .../platform/tegra/camera/vi/vi5_formats.h    |  30 +-
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 132 +-
+ .../platform/tegra/camera/vi/vi5_formats.h    |  28 -
  .../tegra/camera/tegra_camera_platform.c      |   5 +
- include/media/gmsl-link.h                     |   3 +
+ include/media/gmsl-link.h                     |   4 ++
  include/media/max9295.h                       |   4 +
  include/media/max9296.h                       |   8 +
  include/media/mc_common.h                     |  23 +
  include/media/tegra_camera_core.h             |   8 +
- 17 files changed, 1073 insertions(+), 29 deletions(-)
+ 17 files changed, 1066 insertions(+), 29 deletions(-)
 
 diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
 index 5ec3c683c..7f288faf7 100644
 --- a/drivers/media/i2c/Kconfig
 +++ b/drivers/media/i2c/Kconfig
-@@ -210,6 +210,27 @@ config NV_VIRTUAL_I2C_MUX
+@@ -210,6 +210,35 @@ config NV_VIRTUAL_I2C_MUX
  
  	  To compile this driver as a module, choose M here: the module
  	  will be called virtual_i2c_mux.
++
++config NV_SER_MAX96717
++	tristate "MAX92717 Serializer"
++	help
++	  If you say yes here you get support for the MAX92717 serializer.
++
++	  To compile this driver as a module, choose M here: the module
++	  will be called max96717.
 +
 +config VIDEO_D4XX
 +	tristate "D4XX camera sensor support"
@@ -60,11 +68,13 @@ diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
 index c4708d8c7..e11e8ad39 100644
 --- a/drivers/media/i2c/Makefile
 +++ b/drivers/media/i2c/Makefile
-@@ -27,3 +27,4 @@ obj-$(CONFIG_NV_VIDEO_HAWK_OWL) += nv_hawk_owl.o
+@@ -27,3 +27,6 @@ obj-$(CONFIG_NV_VIDEO_HAWK_OWL) += nv_hawk_owl.o
  obj-$(CONFIG_NV_DESER_MAX96712) += max96712.o
  obj-$(CONFIG_VIDEO_ECAM) += ar1335.o
  ar1335-objs :=  ar1335_common.o
++obj-$(CONFIG_VIDEO_D4XX) += max96717.o
 +obj-$(CONFIG_VIDEO_D4XX) += d4xx.o
++obj-$(CONFIG_VIDEO_D4XX) += max96724.o
 diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
 index 110f861c3..6311d97d7 100644
 --- a/drivers/media/i2c/max9295.c
@@ -138,7 +148,7 @@ index 110f861c3..6311d97d7 100644
 +	err |= max9295_set_registers(dev, map_bpp8dbl, ARRAY_SIZE(map_bpp8dbl));
 +
 +	if (data_type1 == GMSL_CSI_DT_RGB_888)
-+		bpp = 0x18;
++		bpp = 0x20 | 0x18; /* Enable soft_bpp and 24 bit */
 +
 +	map_pipe_control[0].addr += 0x2 * pipe_id;
 +	map_pipe_control[1].addr += 0x2 * pipe_id;
@@ -241,12 +251,15 @@ index 5f48c9b9f..316e687a1 100644
  
  #define MAX9296_PIPE_X_ST_SEL_ADDR 0x50
  
-@@ -260,6 +262,9 @@ void max9296_power_off(struct device *dev)
+@@ -260,6 +262,12 @@ void max9296_power_off(struct device *dev)
  	mutex_lock(&priv->lock);
  	priv->pw_ref--;
- 
-+	if (priv->pw_ref < 0)
+
++	if (priv->pw_ref < 0) {
 +		priv->pw_ref = 0;
++		mutex_unlock(&priv->lock);
++		return;
++	}
 +
  	if (priv->pw_ref == 0) {
  		/* enter reset mode: XCLR */
@@ -1398,13 +1411,15 @@ diff --git a/include/media/gmsl-link.h b/include/media/gmsl-link.h
 index 1eab7bac9..533f31eb8 100644
 --- a/include/media/gmsl-link.h
 +++ b/include/media/gmsl-link.h
-@@ -53,6 +53,9 @@
+@@ -53,6 +53,11 @@
  #define GMSL_CSI_DT_RAW_12 0x2C
  #define GMSL_CSI_DT_UED_U1 0x30
  #define GMSL_CSI_DT_EMBED 0x12
 +#define GMSL_CSI_DT_YUV422_8 0x1E
 +#define GMSL_CSI_DT_RGB_888 0x24
 +#define GMSL_CSI_DT_RAW_8 0x2A
++#define GMSL_CSI_DT_RAW_16 0x2E
++#define GMSL_CSI_DT_YUV420_8 0x18
  
  #define GMSL_ST_ID_UNUSED 0xFF
  
@@ -1548,10 +1563,11 @@ index 788cf77dc..421c22491 100644
  	TEGRA_IMAGE_DT_YUV420_8 = 24,
  	TEGRA_IMAGE_DT_YUV420_10,
  
-@@ -56,6 +58,12 @@ enum tegra_image_dt {
+@@ -56,6 +58,13 @@ enum tegra_image_dt {
  	TEGRA_IMAGE_DT_RAW10,
  	TEGRA_IMAGE_DT_RAW12,
  	TEGRA_IMAGE_DT_RAW14,
++	TEGRA_IMAGE_DT_RAW16,
 +
 +	TEGRA_IMAGE_DT_USER_1 = 48,
 +	TEGRA_IMAGE_DT_USER_2,
@@ -1561,6 +1577,13 @@ index 788cf77dc..421c22491 100644
  };
  
  /* Supported CSI to VI Data Formats */
+@@ -66,6 +66,7 @@ enum tegra_vf_code {
+ 	TEGRA_VF_RAW10,
+ 	TEGRA_VF_RAW12,
+ 	TEGRA_VF_RAW14,
++	TEGRA_VF_RAW16,
+ 	TEGRA_VF_EMBEDDED8,
+ 	TEGRA_VF_RGB565,
+ 	TEGRA_VF_RGB555,
 -- 
 2.34.1
-

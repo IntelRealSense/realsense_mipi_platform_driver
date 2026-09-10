@@ -1,0 +1,14 @@
+{
+  "C_Cpp.default.configurationProvider": "ms-vscode.cpptools",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
+  "C_Cpp.intelliSenseEngine": "Default",
+  "files.exclude": {
+    "**/.cache": true,
+    "**/images": true,
+    "**/kernel_mod": true,
+    "**/l4t-gcc": true,
+    "**/test.logs": true,
+    "**/.pytest_cache": true,
+    "sources_*/out": true
+  }
+}

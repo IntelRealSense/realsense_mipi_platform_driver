@@ -2,151 +2,178 @@
 
 set -e
 
-if [[ $# < 1 ]]; then
-    echo "apply_patches.sh [--one-cam | --dual-cam] JetPack_version [apply]"
-    echo "apply_patches.sh JetPack_version reset"
-    exit 1
-fi
-
+ACTION="apply"
 # Default to single camera DT for JetPack 5.0.2
 # single - jp5 [default] single cam GMSL board
 # dual - dual cam GMSL board SC20220126
 JP5_D4XX_DTSI="tegra194-camera-d4xx-single.dtsi"
-if [[ "$1" == "--one-cam" ]]; then
-    JP5_D4XX_DTSI="tegra194-camera-d4xx-single.dtsi"
+while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--one-cam" ]]; then
+        JP5_D4XX_DTSI="tegra194-camera-d4xx-single.dtsi"
+    elif [[ "$1" == "--dual-cam" ]]; then
+        JP5_D4XX_DTSI="tegra194-camera-d4xx-dual.dtsi"
+    elif [[ "$1" == "--max96712-EVB" ]]; then
+        JP5_D4XX_DTSI="tegra194-camera-d4xx-max96712-EVB.dtsi"
+    elif [[ "$1" == "--fg12-16ch" ]]; then
+        JP5_D4XX_DTSI="tegra194-camera-d4xx-fg12-16ch.dtsi"
+    elif [[ "$1" == "--fg12-16ch-dual" ]]; then
+        JP5_D4XX_DTSI="tegra194-camera-d4xx-fg12-16ch-dual.dtsi"
+    elif [[ "$1" == reset ]]; then
+        ACTION="reset"
+    elif [[ $1 == "-h" ]]; then
+        echo Usage:
+        echo "$0 [--one-cam | --dual-cam | --max96712-EVB | --fg12-16ch | --fg12-16ch-dual ] [reset] [-h]"
+        echo -e 'reset\t: hard reset (git) to version from jetpack_version file'
+        echo -e '-h\t: show this help'
+        exit 0
+    else break
+    fi
     shift
-elif [[ "$1" == "--dual-cam" ]]; then
-    JP5_D4XX_DTSI="tegra194-camera-d4xx-dual.dtsi"
-    shift
-fi
+done
 
-. scripts/setup-common "$1"
+. scripts/setup-common
 
-# Determine which sources directory exists (specific version like 6.0 or normalized like 6.x)
-if [[ -d "sources_$1" ]]; then
-    SOURCES_VERSION="$1"
-elif [[ -d "sources_$JETPACK_VERSION" ]]; then
-    SOURCES_VERSION="$JETPACK_VERSION"
-else
-    SOURCES_VERSION="$1"  # Default to original input if neither exists yet
-fi
-
-ACTION="$2"
-[[ -z "$ACTION" ]] && ACTION="apply"
-
-# set JP4 devicetree
-if [[ "$JETPACK_VERSION" == "4.6.1" ]]; then
-    JP5_D4XX_DTSI="tegra194-camera-d4xx.dtsi"
-fi
-if [[ "$JETPACK_VERSION" == "6.x" ]]; then
-    D4XX_SRC_DST=nvidia-oot
-else
+if version_lt "$JETPACK_VERSION" "6.0"; then
     D4XX_SRC_DST=kernel/nvidia
-fi
-
-# NVIDIA SDK Manager's JetPack 4.6.1 source_sync.sh doesn't set the right folder name, it mismatches with the direct tar
-# package source code. Correct the folder name.
-if [[ "$ACTION" == apply && -d "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen-industrial-dts" ]]; then
-    mv sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen-industrial-dts sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen-industrial
-fi
-if [[ "$ACTION" == reset && -d "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen-industrial" ]]; then
-    rm -rfv "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen-industrial" > /dev/null
+else
+    D4XX_SRC_DST=nvidia-oot
 fi
 
 # Create nvethernetrm symlink for JP 6.x (moved from source_sync_6.x.sh)
 # JP 5.x handles nvethernetrm differently (full path clone, not a symlink)
 # Must remove the directory first since git reset restores it as a real directory
 # and ln -sf cannot replace a directory with a symlink
-if [[ "$JETPACK_VERSION" =~ ^6\. ]]; then
+if ! version_lt "$JETPACK_VERSION" 6.0; then
     if [[ "$ACTION" == reset ]] || [[ "$ACTION" == apply ]]; then
-        rm -rf "sources_$SOURCES_VERSION/nvidia-oot/drivers/net/ethernet/nvidia/nvethernet/nvethernetrm"
-        ln -sf ../../../../../../nvethernetrm "sources_$SOURCES_VERSION/nvidia-oot/drivers/net/ethernet/nvidia/nvethernet/nvethernetrm"
+        rm -rf "${BUILD_SRCS}/nvidia-oot/drivers/net/ethernet/nvidia/nvethernet/nvethernetrm"
+        ln -sf ../../../../../../nvethernetrm "${BUILD_SRCS}/nvidia-oot/drivers/net/ethernet/nvidia/nvethernet/nvethernetrm"
     fi
 fi
 
 apply_external_patches() {
-    git -C "sources_$SOURCES_VERSION/$3" status > /dev/null
-    if [[ "$1" == 'apply' ]]; then
-        if ! git -C "sources_$SOURCES_VERSION/$3" diff --quiet || ! git -C "sources_$SOURCES_VERSION/$3" diff --cached --quiet; then
-	    read -p "Repo sources_$SOURCES_VERSION/$3 has changes that may disturb applying patches. Continue (y/N)? " confirm
-            [[ "$confirm" != "y" && "$confirm" != "Y" ]] && exit 1
+	local source="${BUILD_SRCS}/$2"
+    git -C "${source}" status > /dev/null
+    if [[ "$ACTION" == 'apply' ]]; then
+        if ! git -C "${source}" diff --quiet || ! git -C "${source}" diff --cached --quiet; then
+            read -p "Repo ${source} has changes that may disturb applying patches. Continue (Y/n)? " confirm
+            [[ -n "$confirm" && "$confirm" != "y" && "$confirm" != "Y" ]] && exit 1
         fi
-        ls -Ld "${PWD}/$3/$2"
-        ls -Lw1 "${PWD}/$3/$2"
-        # Store the original commit hash before applying patches
-        ORIGINAL_COMMIT=$(git -C "sources_$SOURCES_VERSION/$3" rev-parse HEAD)
-        echo "$ORIGINAL_COMMIT" > "sources_$SOURCES_VERSION/$3/.realsense_patch_base"
-        git -C "sources_$SOURCES_VERSION/$3" apply "${PWD}/$3/$2"/*
-    elif [ "$1" = "reset" ]; then
-        if ! git -C "sources_$SOURCES_VERSION/$3" diff --quiet || ! git -C "sources_$SOURCES_VERSION/$3" diff --cached --quiet; then
-            read -p "Repo sources_$SOURCES_VERSION/$3 has changes that will be hard reset. Continue (y/N)? " confirm
-            [[ "$confirm" != "y" && "$confirm" != "Y" ]] && exit 1
+        echo -e "\e[33m$(ls -Ld ${PWD}/$2/$1)\e[0m"
+        ls -Lw1 "${PWD}/$2/$1"
+        git -C "${source}" apply "${PWD}/$2/$1"/*
+    elif [[ "$ACTION" = "reset" ]]; then
+        if ! git -C "${source}" diff --quiet || ! git -C "${source}" diff --cached --quiet; then
+            read -p "Repo ${source} has changes that will be hard reset. Continue (Y/n)? " confirm
+            [[ -n "$confirm" && "$confirm" != "y" && "$confirm" != "Y" ]] && exit 1
         fi
-        echo -n "$(ls -d "sources_$SOURCES_VERSION/$3"): "
-        # Reset to original commit if .realsense_patch_base exists, otherwise use L4T_VERSION
-        if [[ -f "sources_$SOURCES_VERSION/$3/.realsense_patch_base" ]]; then
-            RESET_TARGET=$(cat "sources_$SOURCES_VERSION/$3/.realsense_patch_base")
-            git -C "sources_$SOURCES_VERSION/$3" reset --hard "$RESET_TARGET"
-            rm -f "sources_$SOURCES_VERSION/$3/.realsense_patch_base"
-        else
-            git -C "sources_$SOURCES_VERSION/$3" reset --hard $4
-        fi
+        echo -n "$(ls -d ${source}): "
+        git -C "${source}" reset --hard $L4T_VERSION
     fi
 }
 
-apply_external_patches "$ACTION" "$1" "$D4XX_SRC_DST" "$L4T_VERSION"
-
-[[ -d "sources_$SOURCES_VERSION/$KERNEL_DIR" ]] && apply_external_patches "$ACTION" "$1" "$KERNEL_DIR" "$L4T_VERSION"
-
-if [[ "$JETPACK_VERSION" == "6.x" ]]; then
-    apply_external_patches "$ACTION" "$JETPACK_VERSION" "hardware/nvidia/t23x/nv-public" "$L4T_VERSION"
-else
-    apply_external_patches "$ACTION" "$1" "hardware/nvidia/platform/t19x/galen/kernel-dts" "$L4T_VERSION"
+if [[ ! -d "${BUILD_SRCS}" ]]; then
+    echo "Sources folder not found. Run ./setup_workspace.sh first"
+    exit 2
 fi
 
+apply_external_patches "$JP_INPUT_VERSION" "$D4XX_SRC_DST"
+apply_external_patches "$JP_INPUT_VERSION" "$KERNEL_DIR"
+
+if version_lt "$JETPACK_VERSION" "6.0"; then
+    apply_external_patches "$JETPACK_VERSION" "hardware/nvidia/platform/t19x/galen/kernel-dts"
+elif version_lt "$JETPACK_VERSION" "7.0"; then
+	# from JP7 DT files are handled in kernel tree
+    apply_external_patches "$JETPACK_VERSION" "hardware/nvidia/t23x/nv-public"
+fi
+
+echo "Patches applied successfully"
+
 if [[ "$ACTION" = "apply" ]]; then
-    cp -i kernel/realsense/d4xx.c "sources_$SOURCES_VERSION/${D4XX_SRC_DST}/drivers/media/i2c/"
-    if [[ "$JETPACK_VERSION" == "6.x" ]]; then
-        # jp6 overlay
-        cp hardware/realsense/tegra234-camera-d4xx-overlay*.dts "sources_$SOURCES_VERSION/hardware/nvidia/t23x/nv-public/overlay/"
+    version_lt "$JETPACK_VERSION" "5.0" || ln -f -s "$(pwd)/kernel/realsense/d4xx.c" "${BUILD_SRCS}/${D4XX_SRC_DST}/drivers/media/i2c/"
+    if version_lt "$JETPACK_VERSION" "6.0"; then
+        # device tree
+        cp "hardware/realsense/${JP5_D4XX_DTSI}" "${BUILD_SRCS}/hardware/nvidia/platform/t19x/galen/kernel-dts/common/tegra194-camera-d4xx.dtsi"
+        # max96712 header
+        ln -f -s $(pwd)/kernel/nvidia/max96712.h "${BUILD_SRCS}/kernel/nvidia/include/media/"
+        # MAX96717/MAX96724 use the same implementation on JP5 and JP6.
+        ln -f -s $(pwd)/nvidia-oot/max96717.h "${BUILD_SRCS}/kernel/nvidia/include/media/"
+        ln -f -s $(pwd)/nvidia-oot/max96717.c "${BUILD_SRCS}/kernel/nvidia/drivers/media/i2c/"
+        ln -f -s $(pwd)/nvidia-oot/max96724.h "${BUILD_SRCS}/kernel/nvidia/include/media/"
+        ln -f -s $(pwd)/nvidia-oot/max96724.c "${BUILD_SRCS}/kernel/nvidia/drivers/media/i2c/"
     else
-        cp "hardware/realsense/${JP5_D4XX_DTSI}" "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts/common/tegra194-camera-d4xx.dtsi"
+        # max96712 header
+        ln -f -s $(pwd)/nvidia-oot/max96712.h "${BUILD_SRCS}/nvidia-oot/include/media/"
+        # max96717 header and source
+        ln -f -s $(pwd)/nvidia-oot/max96717.h "${BUILD_SRCS}/nvidia-oot/include/media/"
+        ln -f -s $(pwd)/nvidia-oot/max96717.c "${BUILD_SRCS}/nvidia-oot/drivers/media/i2c/"
+        # max96724 tunnel-mode deserializer header and source
+        ln -f -s $(pwd)/nvidia-oot/max96724.h "${BUILD_SRCS}/nvidia-oot/include/media/"
+        ln -f -s $(pwd)/nvidia-oot/max96724.c "${BUILD_SRCS}/nvidia-oot/drivers/media/i2c/"
+        if version_lt "$JETPACK_VERSION" "7.0"; then
+            # jp6 overlay
+            ln -f -s $(pwd)/hardware/realsense/tegra234-camera-d4xx-overlay*.dts "${BUILD_SRCS}/hardware/nvidia/t23x/nv-public/overlay/"
+            ln -f ${BUILD_SRCS}/hardware/nvidia/t23x/nv-public/include/platforms/dt-bindings/tegra234-p3737-0000+p3701-0000.h \
+                    ${BUILD_SRCS}/$KERNEL_DIR/include/dt-bindings/
+        else
+            # Copy tegra264-gpio.h for Thor overlay compilation if not already present
+            if [[ ! -f "${BUILD_SRCS}/$KERNEL_DIR/include/dt-bindings/gpio/tegra264-gpio.h" ]]; then
+                ln -f "${BUILD_SRCS}/$KERNEL_DIR/3rdparty/canonical/linux-noble/include/dt-bindings/gpio/tegra264-gpio.h" \
+                    "${BUILD_SRCS}/$KERNEL_DIR/include/dt-bindings/gpio/" 2>/dev/null || true
+            fi
+            # JP7.x supports overlays with .dtso extension (234 for Orin and 264 for Thor)
+            ln -f -s $(pwd)/hardware/realsense/tegra234-camera-d4xx-overlay*.dtso "${BUILD_SRCS}/$KERNEL_DIR/arch/arm64/boot/dts/nvidia/"
+            ln -f -s $(pwd)/hardware/realsense/tegra264-camera-d4xx-overlay*.dtso "${BUILD_SRCS}/$KERNEL_DIR/arch/arm64/boot/dts/nvidia/"
+        fi
     fi
-    
+
     # Stage all modified files after patching
-    git -C "sources_$SOURCES_VERSION/$D4XX_SRC_DST" add -A
-    [[ -d "sources_$SOURCES_VERSION/$KERNEL_DIR" ]] && git -C "sources_$SOURCES_VERSION/$KERNEL_DIR" add -A
-    if [[ -d "sources_$SOURCES_VERSION/hardware/nvidia/t23x/nv-public" ]]; then
-        git -C "sources_$SOURCES_VERSION/hardware/nvidia/t23x/nv-public" add -A
-    elif [[ -d "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts" ]]; then
-        git -C "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts" add -A
+    git -C "${BUILD_SRCS}/$D4XX_SRC_DST" add drivers/media/i2c/d4xx.c
+    git -C "${BUILD_SRCS}/$D4XX_SRC_DST" add -u
+    [[ -d "${BUILD_SRCS}/$KERNEL_DIR" ]] && git -C "${BUILD_SRCS}/$KERNEL_DIR" add -A
+    if [[ -d "${BUILD_SRCS}/hardware/nvidia/t23x/nv-public" ]]; then
+        git -C "${BUILD_SRCS}/hardware/nvidia/t23x/nv-public" add -A
     fi
-    
+    if [[ -d "${BUILD_SRCS}/hardware/nvidia/platform/t19x/galen/kernel-dts" ]]; then
+        git -C "${BUILD_SRCS}/hardware/nvidia/platform/t19x/galen/kernel-dts" add -A
+    fi
+
     # Get author identity from root repo
-    GIT_AUTHOR_NAME=$(git config user.name)
-    GIT_AUTHOR_EMAIL=$(git config user.email)
-    
-    # Update local git identity for subrepos
-    git -C "sources_$SOURCES_VERSION/$D4XX_SRC_DST" config user.name "$GIT_AUTHOR_NAME"
-    git -C "sources_$SOURCES_VERSION/$D4XX_SRC_DST" config user.email "$GIT_AUTHOR_EMAIL"
-    if [[ -d "sources_$SOURCES_VERSION/$KERNEL_DIR" ]]; then
-        git -C "sources_$SOURCES_VERSION/$KERNEL_DIR" config user.name "$GIT_AUTHOR_NAME"
-        git -C "sources_$SOURCES_VERSION/$KERNEL_DIR" config user.email "$GIT_AUTHOR_EMAIL"
+    if git config user.name > /dev/null; then
+        GIT_AUTHOR_NAME=$(git config user.name)
+    else
+            read -p "Enter your git user name: " GIT_AUTHOR_NAME
+            git config user.name "$GIT_AUTHOR_NAME"
     fi
-    if [[ -d "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts" ]]; then
-        git -C "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts" config user.name "$GIT_AUTHOR_NAME"
-        git -C "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts" config user.email "$GIT_AUTHOR_EMAIL"
-    elif [[ -d "sources_$SOURCES_VERSION/hardware/nvidia/t23x/nv-public" ]]; then
-        git -C "sources_$SOURCES_VERSION/hardware/nvidia/t23x/nv-public" config user.name "$GIT_AUTHOR_NAME"
-        git -C "sources_$SOURCES_VERSION/hardware/nvidia/t23x/nv-public" config user.email "$GIT_AUTHOR_EMAIL"
+    if git config user.email > /dev/null; then
+        GIT_AUTHOR_EMAIL=$(git config user.email)
+    else
+            read -p "Enter your git user e-mail: " GIT_AUTHOR_EMAIL
+            git config user.email "$GIT_AUTHOR_EMAIL"
+    fi
+
+    # Update local git identity for subrepos
+    git -C "${BUILD_SRCS}/$D4XX_SRC_DST" config user.name "$GIT_AUTHOR_NAME"
+    git -C "${BUILD_SRCS}/$D4XX_SRC_DST" config user.email "$GIT_AUTHOR_EMAIL"
+    if [[ -d "${BUILD_SRCS}/$KERNEL_DIR" ]]; then
+        git -C "${BUILD_SRCS}/$KERNEL_DIR" config user.name "$GIT_AUTHOR_NAME"
+        git -C "${BUILD_SRCS}/$KERNEL_DIR" config user.email "$GIT_AUTHOR_EMAIL"
+    fi
+    if [[ -d "${BUILD_SRCS}/hardware/nvidia/platform/t19x/galen/kernel-dts" ]]; then
+        git -C "${BUILD_SRCS}/hardware/nvidia/platform/t19x/galen/kernel-dts" config user.name "$GIT_AUTHOR_NAME"
+        git -C "${BUILD_SRCS}/hardware/nvidia/platform/t19x/galen/kernel-dts" config user.email "$GIT_AUTHOR_EMAIL"
+    fi
+    if [[ -d "${BUILD_SRCS}/hardware/nvidia/t23x/nv-public" ]]; then
+        git -C "${BUILD_SRCS}/hardware/nvidia/t23x/nv-public" config user.name "$GIT_AUTHOR_NAME"
+        git -C "${BUILD_SRCS}/hardware/nvidia/t23x/nv-public" config user.email "$GIT_AUTHOR_EMAIL"
     fi
 
     # Commit all staged files
-    git -C "sources_$SOURCES_VERSION/$D4XX_SRC_DST" commit -m "RS patched" || true
-    [[ -d "sources_$SOURCES_VERSION/$KERNEL_DIR" ]] && git -C "sources_$SOURCES_VERSION/$KERNEL_DIR" commit -m "RS patched" || true
-    if [[ -d "sources_$SOURCES_VERSION/hardware/nvidia/t23x/nv-public" ]]; then
-        git -C "sources_$SOURCES_VERSION/hardware/nvidia/t23x/nv-public" commit -m "RS patched" || true
-    elif [[ -d "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts" ]]; then
-        git -C "sources_$SOURCES_VERSION/hardware/nvidia/platform/t19x/galen/kernel-dts" commit -m "RS patched" || true
+    git -C "${BUILD_SRCS}/$D4XX_SRC_DST" commit -m "RS patched" || true
+    [[ -d "${BUILD_SRCS}/$KERNEL_DIR" ]] && git -C "${BUILD_SRCS}/$KERNEL_DIR" commit -m "RS patched" || true
+    if [[ -d "${BUILD_SRCS}/hardware/nvidia/t23x/nv-public" ]]; then
+        git -C "${BUILD_SRCS}/hardware/nvidia/t23x/nv-public" commit -m "RS patched" || true
+    fi
+    if [[ -d "${BUILD_SRCS}/hardware/nvidia/platform/t19x/galen/kernel-dts" ]]; then
+        git -C "${BUILD_SRCS}/hardware/nvidia/platform/t19x/galen/kernel-dts" commit -m "RS patched" || true
     fi
 fi

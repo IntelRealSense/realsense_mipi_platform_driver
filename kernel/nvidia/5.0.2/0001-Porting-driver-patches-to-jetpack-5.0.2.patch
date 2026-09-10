@@ -5,8 +5,8 @@ Subject: [PATCH] Porting driver patches to jetpack 5.0.2
 
 Signed-off-by: Junze Wu <junze.wu@intel.com>
 ---
- drivers/media/i2c/Kconfig                     |  10 +
- drivers/media/i2c/Makefile                    |   1 +
+ drivers/media/i2c/Kconfig                     |  18 +
+ drivers/media/i2c/Makefile                    |   3 +
  drivers/media/i2c/max9295.c                   | 389 ++++++++++++++++
  drivers/media/i2c/max9296.c                   | 399 ++++++++++++++++
  .../platform/tegra/camera/sensor_common.c     |   4 +
@@ -14,24 +14,32 @@ Signed-off-by: Junze Wu <junze.wu@intel.com>
  .../media/platform/tegra/camera/vi/graph.c    |  50 +-
  .../platform/tegra/camera/vi/mc_common.c      |  32 ++
  .../platform/tegra/camera/vi/vi4_formats.h    |  32 +-
- .../media/platform/tegra/camera/vi/vi5_fops.c | 143 +++++-
- .../platform/tegra/camera/vi/vi5_formats.h    |  30 +-
+ .../media/platform/tegra/camera/vi/vi5_fops.c | 136 +-
+ .../platform/tegra/camera/vi/vi5_formats.h    |  28 -
  .../tegra/camera/tegra_camera_platform.c      |   5 +
  include/media/gmsl-link.h                     |   7 +
  include/media/max9295.h                       |   2 +
  include/media/max9296.h                       |   3 +
  include/media/mc_common.h                     |  25 +
  include/media/tegra_camera_core.h             |  10 +-
- 17 files changed, 1542 insertions(+), 29 deletions(-)
+ 17 files changed, 1534 insertions(+), 29 deletions(-)
 
 diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
 index 8362bc85b..90f5a90e6 100644
 --- a/drivers/media/i2c/Kconfig
 +++ b/drivers/media/i2c/Kconfig
-@@ -184,6 +184,16 @@ config NV_VIDEO_AR0234
+@@ -184,6 +184,24 @@ config NV_VIDEO_AR0234
  	  To compile this driver as a module, choose M here: the module
  	  will be called ar0234.
  
++config NV_SER_MAX96717
++	tristate "MAX92717 Serializer"
++	help
++	  If you say yes here you get support for the MAX92717 serializer.
++
++	  To compile this driver as a module, choose M here: the module
++	  will be called max96717.
++
 +config VIDEO_D4XX
 +	tristate "D4XX camera sensor support"
 +	depends on I2C && VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
@@ -49,11 +57,13 @@ diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
 index af6122bca..0784f0362 100644
 --- a/drivers/media/i2c/Makefile
 +++ b/drivers/media/i2c/Makefile
-@@ -23,3 +23,4 @@ obj-$(CONFIG_I2C_IOEXPANDER_DESER_MAX9296) += max9296.o
+@@ -23,3 +23,6 @@ obj-$(CONFIG_I2C_IOEXPANDER_DESER_MAX9296) += max9296.o
  obj-$(CONFIG_NV_VIDEO_IMX390) += nv_imx390.o
  obj-$(CONFIG_NV_VIDEO_AR0234) += nv_ar0234.o
  obj-$(CONFIG_NV_DESER_MAX96712) += max96712.o
++obj-$(CONFIG_VIDEO_D4XX) += max96717.o
 +obj-$(CONFIG_VIDEO_D4XX) += d4xx.o
++obj-$(CONFIG_VIDEO_D4XX) += max96724.o
 diff --git a/drivers/media/i2c/max9295.c b/drivers/media/i2c/max9295.c
 index 110f861c3..03040ccb9 100644
 --- a/drivers/media/i2c/max9295.c
@@ -2094,10 +2104,11 @@ index 788cf77dc..1f57648f7 100644
  	TEGRA_IMAGE_DT_YUV420_8 = 24,
  	TEGRA_IMAGE_DT_YUV420_10,
  
-@@ -56,6 +58,12 @@ enum tegra_image_dt {
+@@ -56,6 +58,13 @@ enum tegra_image_dt {
  	TEGRA_IMAGE_DT_RAW10,
  	TEGRA_IMAGE_DT_RAW12,
  	TEGRA_IMAGE_DT_RAW14,
++	TEGRA_IMAGE_DT_RAW16,
 +
 +	TEGRA_IMAGE_DT_USER_1 = 48,
 +	TEGRA_IMAGE_DT_USER_2,
@@ -2107,6 +2118,13 @@ index 788cf77dc..1f57648f7 100644
  };
  
  /* Supported CSI to VI Data Formats */
+@@ -66,6 +66,7 @@ enum tegra_vf_code {
+ 	TEGRA_VF_RAW10,
+ 	TEGRA_VF_RAW12,
+ 	TEGRA_VF_RAW14,
++	TEGRA_VF_RAW16,
+ 	TEGRA_VF_EMBEDDED8,
+ 	TEGRA_VF_RGB565,
+ 	TEGRA_VF_RGB555,
 -- 
 2.32.0
-

@@ -1,0 +1,299 @@
+# RealSense™ camera driver for GMSL* interface
+
+# D457 MIPI on NVIDIA® Jetson AGX Orin™ JetPack 7.x
+The RealSense™ MIPI platform driver enables the user to control and stream RealSense™ 3D MIPI cameras.
+The system shall include:
+* NVIDIA® Jetson™ platform Supported JetPack versions are:
+    - 7.2 production release (Jetson Linux R39.2)
+    - 7.1 production release (Jetson Linux R38.4)
+    - 7.0 production release (Jetson Linux R38.2)
+* RealSense™ De-Serialize board
+* Jetson AGX Orin™ Passive adapter board from [Leopard Imaging® LI-JTX1-SUB-ADPT](https://leopardimaging.com/product/accessories/adapters-carrier-boards/for-nvidia-jetson/li-jtx1-sub-adpt/)
+* RS MIPI camera [D457](https://store.realsenseai.com/buy-intel-realsense-depth-camera-d457.html)
+
+![orin_adapter](https://github.com/dmipx/realsense_mipi_platform_driver/assets/104717350/524e3eb6-6e6b-41cf-9562-9c0f920dd821)
+
+
+> Note: This MIPI reference driver is based on RealSense™ de-serialize board. For other de-serialize boards, modification might be needed. 
+
+### Links
+- RealSense™ camera driver for GMSL* interface [Front Page](./README.md)
+- NVIDIA® Jetson AGX Orin™ board setup - AGX Orin™ [JetPack 6.0](./README_JP6.0.md) setup guide
+- NVIDIA® Jetson AGX Orin™ board setup - AGX Orin™ [JetPack 6.2](./README_JP6.2.md) setup guide
+- NVIDIA® Jetson AGX Xavier™ board setup - AGX Xavier™ [JetPack 5.x.2](./README_JP5.md) setup guide
+- Build Tools manual page [Build Manual page](./README_tools.md)
+- Driver API manual page [Driver API page](./README_driver.md)
+
+## NVIDIA® Jetson AGX Orin™ board setup
+
+Please follow the [instruction](https://docs.nvidia.com/sdk-manager/install-with-sdkm-jetson/index.html) to flash JetPack to the NVIDIA® Jetson AGX Orin™ with NVIDIA® SDK Manager or other methods NVIDIA provides. Make sure the board is ready to use.
+
+## Build environment prerequisites
+```
+sudo apt-get install -y build-essential bc wget flex bison curl libssl-dev xxd tar
+```
+## Build NVIDIA® kernel drivers, dtb and D457 driver
+
+These are descriptiver steps. Bash commands to be issued follow:
+1. Clone [realsense_mipi_platform_driver](https://github.com/realsenseai/realsense_mipi_platform_driver.git) repo.
+2. Checkout dev branch.
+3. The developers can set up build environment, ARM64 compiler, kernel sources and NVIDIA's Jetson git repositories by using the setup script.
+4. Apply patches for kernel drivers, nvidia-oot module and tegra devicetree.
+5. Build project
+6. Apply build results to target (Jetson).
+7. Configure target.
+
+Assuming building for 7.1. One can also build for 7.0 or 7.2 just replace the last parameter.
+Build version can be specified only once. It will be written to jetpack_version.txt file and used for later steps.
+You can display the current version cating the file jetpack_version. It will be show at the beginning of each script.
+```
+git clone --branch dev --single-branch https://github.com/realsenseai/realsense_mipi_platform_driver.git
+cd realsense_mipi_platform_driver
+./setup_workspace.sh 7.1
+./apply_patches.sh
+./build_all.sh
+```
+Note: dev_dbg() log support will not be enabled by default. If needed, run the `./build_all.sh` script with `--dev-dbg` option like below.
+```
+./build_all.sh --dev-dbg
+```
+
+## Install kernel drivers, extra modules and device-tree to Jetson AGX Orin
+
+> **Note (JP7 / Thor — NVIDIA display stack):** On JetPack 7.x the build intentionally does **not**
+> produce the NVIDIA display/GPU modules (`nvidia.ko`, `nvidia-modeset.ko`, `nvidia-drm.ko`) — the
+> bundled `nvdisplay` source is a pre-release that does not match the board's flashed BSP userspace
+> driver and cannot initialize the GPU. The board therefore keeps its **matched BSP display modules**.
+> Because of this, the module copy must **overlay** (merge) onto the existing
+> `/lib/modules/6.8.12-tegra` — **do not delete it first.** The `cp -r ... /lib/modules/` commands below
+> already merge, and `scripts/install_to_kernel.sh` likewise overlays on JP7 (no `rm -rf`). Installing
+> a full rebuilt module tree that *replaces* the BSP `nvidia*.ko` results in a black screen / blinking
+> text cursor with no GUI (see Known issues).
+
+Following steps required:
+
+1. Copy build artifacts:
+If you build locally (native build on Jetson) use the following bash commands:
+```
+sudo cp -r ./images/7.1/rootfs/lib/modules/6.8.12-tegra /lib/modules/
+sudo cp    ./images/7.1/rootfs/boot/tegra264-camera-d4xx-*.dtbo /boot/dev/
+sudo mv -f /boot/dev/Image /boot/dev/Image.old
+sudo cp    ./images/7.1/rootfs/boot/Image /boot/dev/
+```
+In case of crossbuild on host prepare a tarball to ssh copy to Jetson target.
+Example user 'nvidia' on Jetson with host name 'jetson.domain'
+```
+tar czf rootfs.tar.gz -C images/7.1/rootfs boot lib
+scp rootfs.tar.gz nvidia@jetson.domain:
+```
+Log in into Jetson target, extract the tarball and install extracted files:
+```
+tar xf rootfs.tar.gz
+sudo cp -r ./lib/modules/6.8.12-tegra /lib/modules/
+sudo cp    ./boot/tegra264-camera-d4xx-overlay-Advantech.dtbo /boot/
+sudo cp    ./boot/Image /boot/dev/
+```
+
+2.	Enable and run depmod
+```
+# update driver cache
+sudo depmod
+```
+3. Select the correct overlay for your HW:
+
+    Currently supported overlays are -
+
+    | Overlay file | Description |
+    |---|---|
+    | `tegra264-camera-d4xx-overlay.dtbo` | max9296 deserializer board w/ one camera |
+    | `tegra264-camera-d4xx-overlay-max96712-EVB.dtbo` | max96712 evaluation board w/ one camera |
+    | `tegra234-camera-d4xx-overlay-fg12-16ch.dtbo` | Fangzhu/FG12-16CH (max96712) w/ one camera (link 0) — **AGX Orin (tegra234)**, not Thor (see note below) |
+    | `tegra234-camera-d4xx-overlay-fg12-16ch-cams-0-1-2-3.dtbo` | Fangzhu/FG12-16CH (max96712) w/ four cameras (links 0-3) — **AGX Orin (tegra234)**, not Thor |
+    | `tegra264-camera-d4xx-overlay-advantech.dtbo` | Advantech board w/ one camera on the bottom right of the left port (i2c9) |
+    | `tegra264-camera-d4xx-overlay-advantech-cams-0-1-2-3.dtbo` | Advantech board w/ four cameras on the left port (i2c9) |
+    | `tegra264-camera-d4xx-overlay-advantech-cams-4-5.dtbo` | Advantech board w/ two cameras on the bottom right and top right of the right port (i2c12) |
+    | `tegra264-camera-d4xx-overlay-advantech-cams-4-5-6-7.dtbo` | Advantech board w/ four cameras on the right port (i2c12) |
+    | `tegra264-camera-d4xx-overlay-advantech-cams-0-1-2-3-4-5.dtbo` | Advantech board w/ six cameras - four on the left port (i2c9) + two on the bottom right and top right of the right port (i2c12) |
+    | `tegra264-camera-d4xx-overlay-advantech-cams-0-1-2-3-4-5-6-7.dtbo` | Advantech board w/ all eight cameras - four on the left port (i2c9) + four on the right port (i2c12) |
+
+4. Edit bootloader configuration
+```
+cat /boot/extlinux/extlinux.conf
+----<CUT>----
+LABEL JetsonIO
+    MENU LABEL Custom Header Config: <CSI Jetson RealSense Camera D457>
+    LINUX /boot/dev/Image
+    FDT /boot/dtb/kernel_tegra264-p4071-0000+p3834-0008-nv.dtb
+    APPEND ${cbootargs} root=PARTUUID=bbb3b34e-......
+    OVERLAYS /boot/tegra264-camera-d4xx-overlay.dtbo
+----<CUT>----
+```
+On Jetson target (user home folder) assuming backup step was followed:
+
+## Running JP7.2 on AGX Orin (tegra234)
+
+JP7.2 (Jetson Linux R39.2) is a unified release that runs on both Jetson Thor™ (tegra264) and AGX Orin™ (tegra234). The overlays listed above are Thor (tegra264); on AGX Orin use a tegra234 overlay — `tegra234-camera-d4xx-overlay-fg12-16ch.dtbo` (one camera) or `tegra234-camera-d4xx-overlay-fg12-16ch-cams-0-1-2-3.dtbo` (four cameras).
+
+Two things differ when installing the rebuilt kernel onto an AGX Orin that was just flashed with SDK Manager:
+
+1. **Kernel version & initrd.** The rebuilt kernel reports `6.8.12-tegra`, while a freshly-flashed image runs `6.8.12-1021-tegra`. Because the NVMe root driver is a kernel *module*, you must install the new modules under the new version **and regenerate an initrd for it**, otherwise the device cannot mount the root filesystem and will not boot:
+```
+sudo cp -r ./lib/modules/6.8.12-tegra /lib/modules/
+sudo depmod 6.8.12-tegra
+sudo cp ./boot/Image /boot/Image-6.8.12-tegra
+sudo cp ./boot/tegra234-camera-d4xx-overlay-fg12-16ch.dtbo /boot/
+sudo update-initramfs -c -k 6.8.12-tegra        # -> /boot/initrd.img-6.8.12-tegra
+```
+
+2. **extlinux entry needs both `FDT` and `OVERLAYS`.** The bootloader applies `OVERLAYS` only when the boot entry also has an `FDT` line pointing at the Orin base DTB; without `FDT` the overlay is silently ignored. Add a new `LABEL` and keep the stock `primary` as a fallback (recoverable from the serial console):
+```
+LABEL d4xx
+      MENU LABEL d4xx JP7.2 test kernel (tegra234)
+      LINUX /boot/Image-6.8.12-tegra
+      INITRD /boot/initrd.img-6.8.12-tegra
+      FDT /boot/dtb/kernel_tegra234-p3737-0000+p3701-0000-nv.dtb
+      APPEND ${cbootargs} root=/dev/nvme0n1p1 rw rootwait rootfstype=ext4 ...   # copy verbatim from the primary entry
+      OVERLAYS /boot/tegra234-camera-d4xx-overlay-fg12-16ch.dtbo
+```
+Set `DEFAULT d4xx`, then reboot. The D457 (depth/RGB/IR/IMU) is discovered as `/dev/video0`–`video6`.
+
+> Note: overlays in this repo are `*.dtso` sources (the noble kernel build rule is `%.dtbo: %.dtso`).
+
+### Verify driver loaded - on Jetson:
+- Driver API manual page [Driver API page](./README_driver.md)
+
+```
+nvidia@ubuntu:~$ sudo dmesg | grep tegra-capture-vi
+[    9.357521] platform 13e00000.host1x:nvcsi@15a00000: Fixing up cyclic dependency with tegra-capture-vi
+[    9.419926] tegra-camrtc-capture-vi tegra-capture-vi: ep of_device is not enabled endpoint.
+[    9.419932] tegra-camrtc-capture-vi tegra-capture-vi: ep of_device is not enabled endpoint.
+[   10.001170] tegra-camrtc-capture-vi tegra-capture-vi: subdev DS5 mux 9-001a bound
+[   10.025295] tegra-camrtc-capture-vi tegra-capture-vi: subdev DS5 mux 12-001a bound
+[   10.040934] tegra-camrtc-capture-vi tegra-capture-vi: subdev DS5 mux 13-001a bound
+[   10.056151] tegra-camrtc-capture-vi tegra-capture-vi: subdev DS5 mux 14-001a bound
+[   10.288088] tegra-camrtc-capture-vi tegra-capture-vi: subdev 13e00000.host1x:nvcsi@15a00000- bound
+[   10.324025] tegra-camrtc-capture-vi tegra-capture-vi: subdev 13e00000.host1x:nvcsi@15a00000- bound
+[   10.324631] tegra-camrtc-capture-vi tegra-capture-vi: subdev 13e00000.host1x:nvcsi@15a00000- bound
+[   10.325056] tegra-camrtc-capture-vi tegra-capture-vi: subdev 13e00000.host1x:nvcsi@15a00000- bound
+
+nvidia@ubuntu:~$ sudo dmesg | grep d4xx
+[    9.443608] d4xx 9-001a: Probing driver for D45x
+[    9.983168] d4xx 9-001a: ds5_chrdev_init() class_create
+[    9.989521] d4xx 9-001a: D4XX Sensor: DEPTH, firmware build: 5.15.1.0
+[   10.007813] d4xx 12-001a: Probing driver for D45x
+[   10.013899] d4xx 12-001a: D4XX Sensor: RGB, firmware build: 5.15.1.0
+[   10.025787] d4xx 13-001a: Probing driver for D45x
+[   10.029095] d4xx 13-001a: D4XX Sensor: Y8, firmware build: 5.15.1.0
+[   10.041282] d4xx 14-001a: Probing driver for D45x
+[   10.044759] d4xx 14-001a: D4XX Sensor: IMU, firmware build: 5.15.1.0
+
+```
+
+### JP7.2 on AGX Thor — first deploy after a fresh SDK flash
+
+JP7.2 (L4T R39.2) was validated on the Advantech AGX Thor Developer Kit with a D457
+(single camera on the left port, `i2c9`, overlay `tegra264-camera-d4xx-overlay-advantech.dtbo`;
+DEPTH/RGB/Y8/IMU all bound).
+
+A freshly SDK-flashed Thor runs the stock kernel (`6.8.12-1021-tegra`) while this build
+produces `6.8.12-tegra`. Because the NVMe root driver is a **module** (`CONFIG_BLK_DEV_NVME=m`),
+a full kernel swap needs a matching initrd or the root filesystem will not mount. Deploy
+additively and keep the stock kernel as a fallback boot entry:
+
+```
+# After copying the rootfs (boot/ + lib/) to the target:
+sudo cp -r lib/modules/6.8.12-tegra /lib/modules/
+sudo sed -i 's/search updates/search extra updates kernel/g' /etc/depmod.d/ubuntu.conf
+sudo depmod 6.8.12-tegra
+# Build an initrd for the new kernel (pulls in the nvme module):
+sudo update-initramfs -c -k 6.8.12-tegra
+sudo rm -f /boot/initrd
+sudo ln -s /boot/initrd.img-6.8.12-tegra /boot/initrd
+# Install the kernel under a new name so the stock /boot/Image stays intact:
+sudo cp boot/Image /boot/dev/Image
+sudo cp boot/tegra264-camera-d4xx-overlay*.dtbo /boot/
+```
+
+Then add a new boot entry to `/boot/extlinux/extlinux.conf` (do not overwrite the stock
+`primary` entry) and point `DEFAULT` at it. Reuse the stock entry's `APPEND` (`root=PARTUUID=...`)
+and `FDT` lines verbatim:
+
+```
+LABEL d4xx
+      MENU LABEL d4xx kernel (JP7.2 RealSense D457)
+      LINUX /boot/dev/Image
+      INITRD /boot/initrd
+      APPEND ${cbootargs} root=PARTUUID=<as in primary> rw rootwait rootfstype=ext4 ...
+      FDT /boot/dtb/kernel_tegra264-p4071-0000+p3834-0008-nv.dtb
+      OVERLAYS /boot/tegra264-camera-d4xx-overlay-advantech.dtbo
+```
+
+Keep the stock `primary` entry so the device can fall back to it from the serial-console boot
+menu (`TIMEOUT`) if the custom kernel fails to boot.
+
+### Known issues
+- No GUI after installing the driver — black screen / blinking text cursor (SSH still works)
+
+This means the BSP NVIDIA display modules were overwritten by rebuilt ones that don't match the
+board's userspace driver. Check:
+```
+# kernel module must report the BSP release (e.g. 580.00), NOT "TempVersion"
+cat /proc/driver/nvidia/version
+# X fails to bring up the GPU:
+grep "Failed to initialize the NVIDIA graphics device" /var/log/Xorg.0.log
+```
+Fix: keep the BSP display stack. With a current build (which no longer produces `nvidia.ko` /
+`nvidia-modeset.ko` / `nvidia-drm.ko` on JP7) just re-overlay the modules — do not wipe
+`/lib/modules`. If they were already clobbered, restore the three `nvidia*.ko` from the board's BSP
+rootfs, then `sudo depmod` and reboot. See the Note at the top of the install section.
+
+- Camera not recognized
+Verify I2C MUX detected. If "probe failed" reported, replace extension board adapter (LI-JTX1-SUB-ADPT).
+```
+nvidia@ubuntu:~$ sudo dmesg | grep pca954x
+[    3.933113] pca954x 2-0072: probe failed
+```
+
+- Configuration with jetson-io tool system fail to boot with message "couldn't find root partition"
+Verify bootloader configuration
+`/boot/extlinux/extlinux.conf`
+Sometimes configuration tool missing APPEND parameters. Duplicate `primary` section `APPEND` line to `JetsonIO` `APPEND` section, verify it's similar.
+
+Example Bad:
+```
+LABEL primary
+    MENU LABEL primary kernel
+    LINUX /boot/Image
+    INITRD /boot/initrd
+    APPEND ${cbootargs} root=PARTUUID=634b7e44-aacc-4dd9-a769-3a664b83b159 rw rootwait rootfstype=ext4 mminit_loglevel=4 console=ttyTCU0,115200 console=ttyAMA0,115200 firmware_class.path=/etc/firmware fbcon=map:0 net.ifnames=0 nospectre_bhb video=efifb:off console=tty0 nv-auto-config
+
+LABEL JetsonIO
+    MENU LABEL Custom Header Config: <CSI Jetson RealSense Camera D457 dual>
+    LINUX /boot/Image
+    FDT /boot/dtb/kernel_tegra234-p3737-0000+p3701-0000-nv.dtb
+    INITRD /boot/initrd
+    APPEND ${cbootargs}
+    OVERLAYS /boot/tegra234-camera-d4xx-overlay-dual.dtbo
+```
+Example Good:
+```
+LABEL primary
+    MENU LABEL primary kernel
+    LINUX /boot/Image
+    INITRD /boot/initrd
+    APPEND ${cbootargs} root=PARTUUID=634b7e44-aacc-4dd9-a769-3a664b83b159 rw rootwait rootfstype=ext4 mminit_loglevel=4 console=ttyTCU0,115200 console=ttyAMA0,115200 firmware_class.path=/etc/firmware fbcon=map:0 net.ifnames=0 nospectre_bhb video=efifb:off console=tty0 nv-auto-config
+
+LABEL JetsonIO
+    MENU LABEL Custom Header Config: <CSI Jetson RealSense Camera D457 dual>
+    LINUX /boot/dev/Image
+    FDT /boot/dtb/kernel_tegra264-p4071-0000+p3834-0008-nv.dtb
+    INITRD /boot/initrd
+    APPEND ${cbootargs} root=PARTUUID=634b7e44-aacc-4dd9-a769-3a664b83b159 rw rootwait rootfstype=ext4 mminit_loglevel=4 console=ttyTCU0,115200 console=ttyAMA0,115200 firmware_class.path=/etc/firmware fbcon=map:0 net.ifnames=0 nospectre_bhb video=efifb:off console=tty0 nv-auto-config
+    OVERLAYS /boot/tegra264-camera-d4xx-overlay.dtbo
+```
+- Configuration tool jetson-io terminates without configuration menu.
+verify that `/boot/dtb` has only one dtb file
+```
+nvidia@ubuntu:~$ ls /boot/dtb/
+kernel_tegra264-p4071-0000+p3834-0008-nv.dtb
+```
